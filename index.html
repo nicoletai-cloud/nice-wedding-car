@@ -4329,6 +4329,28 @@
     '如乘客詢問後續訂車或其他服務，請統一引導乘客洽詢好好禮車客服。\n' +
     '☎️ 好好禮車緊急聯繫：0981-836-668\n' +
     '感謝各位司機的配合，一起維持好好禮車的服務品質與客戶信任。';
+  var OLD_DEFAULT_DRIVER_NOTICE_V4 =
+    '🚘 好好禮車｜接送司機注意事項\n' +
+    '為維持服務品質，執行任務請務必配合：\n' +
+    '1｜服裝儀容\n' +
+    '請穿著 襯衫＋西裝褲＋皮鞋，保持整潔、專業。\n' +
+    '2｜主動聯繫客人\n' +
+    '接機任務請於航班落地後主動聯繫客人，確認接送狀況並保持聯絡。\n' +
+    '3｜車內服務\n' +
+    '請準備進口瓶裝水，每位乘客一瓶，並保持車內外整潔、無異味。\n' +
+    '4｜四階段確實回報\n' +
+    '請於群組依序回報：\n' +
+    '出發 → 到點 → 客上 → 客下\n' +
+    '每一階段皆須確實回報，請勿遺漏。\n' +
+    '5｜無法準時接客，務必立即通知\n' +
+    '如遇任何狀況，預計無法於指定時間準時抵達接客，請第一時間主動通知客服，請勿等到客人反映後才告知。\n' +
+    '6｜服務與行車品質\n' +
+    '請保持禮貌、專業，主動協助客人上下行李；行車以安全、平穩、舒適為原則，避免急加速、急煞車。\n' +
+    '7｜禁止私下接洽／洗客\n' +
+    '請勿私下安排或承接客人後續行程，亦請避免主動與客人談論訂車、價格、私下聯絡、下次用車等相關或擦邊話題。\n' +
+    '如客人詢問後續訂車或其他服務，請統一引導洽詢好好禮車客服。\n' +
+    '☎️ 緊急聯繫｜0981-836-668\n' +
+    '感謝各位司機配合，一起維持好好禮車的服務品質與客戶信任。';
   var DEFAULT_DRIVER_NOTICE =
     '🚘 好好禮車｜接送司機注意事項\n' +
     '為維持服務品質，執行任務請務必配合：\n' +
@@ -4349,6 +4371,7 @@
     '7｜禁止私下接洽／洗客\n' +
     '請勿私下安排或承接客人後續行程，亦請避免主動與客人談論訂車、價格、私下聯絡、下次用車等相關或擦邊話題。\n' +
     '如客人詢問後續訂車或其他服務，請統一引導洽詢好好禮車客服。\n' +
+    '\n' +
     '☎️ 緊急聯繫｜0981-836-668\n' +
     '感謝各位司機配合，一起維持好好禮車的服務品質與客戶信任。';
 
@@ -4398,7 +4421,7 @@
     }
     if (els.dDriverNoticeBlock){
       var storedDriverNotice = safeGet('hhlc_driver_notice_block');
-      if (!storedDriverNotice || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V1 || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V2 || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V3){
+      if (!storedDriverNotice || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V1 || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V2 || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V3 || storedDriverNotice === OLD_DEFAULT_DRIVER_NOTICE_V4){
         storedDriverNotice = DEFAULT_DRIVER_NOTICE;
         safeSet('hhlc_driver_notice_block', storedDriverNotice);
       }
