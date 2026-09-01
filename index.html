@@ -1622,11 +1622,10 @@
 
       <div class="actions">
         <button type="button" class="primary" id="shareReceiptBtn">📤 分享收據 PDF 給客人</button>
-        <button type="button" class="secondary" id="exportBtn">改用列印視窗</button>
         <button type="button" class="secondary" id="resetBtn">開立新收據（清空表單）</button>
       </div>
       <div class="status" id="statusMsg"></div>
-      <div class="helper-note">「分享收據 PDF」會直接開啟手機原生分享選單，可傳送給 LINE／訊息或儲存到檔案；若裝置不支援，會提示改用「改用列印視窗」。點擊即視為開立一張收據，編號會往前推進一號</div>
+      <div class="helper-note">「分享收據 PDF」會直接開啟手機原生分享選單，可傳送給 LINE／訊息或儲存到檔案；電腦瀏覽器則會在新分頁開啟 PDF，可從分頁上的下載／分享圖示傳送給客人。點擊即視為開立一張收據，編號會往前推進一號</div>
     </div>
   </div>
   </section>
@@ -1718,7 +1717,6 @@
     mastLogo: document.getElementById('mastLogo'),
     receiptLogo: document.getElementById('receiptLogo'),
     shareReceiptBtn: document.getElementById('shareReceiptBtn'),
-    exportBtn: document.getElementById('exportBtn'),
     resetBtn: document.getElementById('resetBtn'),
     statusMsg: document.getElementById('statusMsg'),
     rPhone: document.getElementById('rPhone'),
@@ -2408,7 +2406,7 @@
     document.body.className = '';
   });
 
-  // shared readiness check used by both the "分享收據 PDF" and "改用列印視窗" buttons
+  // readiness check used by the "分享收據 PDF" button
   function ensureReceiptReadyForExport(){
     if (!els.issueDate.value){
       setStatus('請先選擇付款日期，才能產生收據編號', 'err');
@@ -2529,7 +2527,7 @@
           if (err && err.name === 'AbortError'){
             setStatus('已取消分享，收據編號未使用', 'ok');
           } else {
-            setStatus('分享視窗開啟失敗，請改用下方「改用列印視窗」按鈕', 'err');
+            setStatus('分享視窗開啟失敗，請再試一次', 'err');
           }
         });
         return;
@@ -2547,37 +2545,14 @@
           commitCounter(issueDateAtClick);
           setStatus('PDF 已在新分頁開啟，請點擊分享或下載圖示傳送給客人', 'ok');
         } else {
-          setStatus('此瀏覽環境封鎖了跳出視窗，請允許此網站的快顯視窗（網址列附近會有提示）後再試一次，或改用下方「改用列印視窗」按鈕', 'err');
+          setStatus('此瀏覽環境封鎖了跳出視窗，請允許此網站的快顯視窗（網址列附近會有提示）後再試一次', 'err');
         }
       }
       setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
     }).catch(function(){
       if (preOpenedTab && !preOpenedTab.closed) preOpenedTab.close();
-      setStatus('PDF 產生功能載入失敗，請確認網路連線，或改用下方「改用列印視窗」按鈕', 'err');
+      setStatus('PDF 產生功能載入失敗，請確認網路連線後再試一次', 'err');
     });
-  });
-
-  els.exportBtn.addEventListener('click', function(){
-    if (!ensureReceiptReadyForExport()) return;
-    document.title = buildFilenameBase();
-    document.body.className = 'print-receipt';
-    var printStarted = false;
-    function onBeforePrint(){
-      printStarted = true;
-      commitCounter(els.issueDate.value);
-    }
-    window.addEventListener('beforeprint', onBeforePrint, { once: true });
-    setStatus('已開啟列印視窗，選擇「儲存為 PDF」即可完成下載', 'ok');
-    window.print();
-    setTimeout(function(){
-      window.removeEventListener('beforeprint', onBeforePrint);
-      if (!printStarted){
-        // 部分手機 App 內建瀏覽器不支援 window.print()，列印視窗不會跳出來
-        document.title = PAGE_TITLE;
-        document.body.className = '';
-        setStatus('此瀏覽環境無法開啟列印視窗（常見於 App 內建瀏覽器），請改用手機的 Safari／Chrome 開啟這個頁面的連結，再點一次「改用列印視窗」', 'err');
-      }
-    }, 900);
   });
 
   // =====================================================================
