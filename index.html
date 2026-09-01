@@ -1471,26 +1471,12 @@
 
         <div class="check-row">
           <input type="checkbox" id="custIsCompany">
-          <label for="custIsCompany" style="margin:0;">企業客戶（收據改用公司抬頭／地址）</label>
+          <label for="custIsCompany" style="margin:0;">企業客戶（收據改用公司抬頭）</label>
         </div>
         <div id="companyFields" hidden>
           <div class="field">
             <label for="custCompanyName">公司名稱（收據抬頭）</label>
             <input type="text" id="custCompanyName" placeholder="例如：好好股份有限公司">
-          </div>
-          <div class="field">
-            <label for="custCompanyAddr">公司地址</label>
-            <input type="text" id="custCompanyAddr" placeholder="完整地址">
-          </div>
-          <div class="row2">
-            <div class="field">
-              <label for="custRecipientName">收件人姓名</label>
-              <input type="text" id="custRecipientName" placeholder="收據聯絡窗口">
-            </div>
-            <div class="field">
-              <label for="custRecipientPhone">收件人電話</label>
-              <input type="text" id="custRecipientPhone">
-            </div>
           </div>
         </div>
 
@@ -1598,8 +1584,6 @@
 
           <div class="r-lines">
             <div class="r-line"><span class="k" id="rNameLabel">客戶姓名</span><span class="v" id="rName">—</span></div>
-            <div class="r-line" id="rCompanyAddrLine" hidden><span class="k" id="rCompanyAddrLabel">公司地址</span><span class="v" id="rCompanyAddr">—</span></div>
-            <div class="r-line" id="rRecipientLine" hidden><span class="k" id="rRecipientLabel">收件人</span><span class="v" id="rRecipient">—</span></div>
             <div class="r-line" id="rPeriodLine" hidden><span class="k" id="rPeriodLabel">月結期間</span><span class="v num" id="rPeriod">—</span></div>
             <div class="r-line"><span class="k" id="rPayLabel">付款方式</span><span class="v" id="rPay">—</span></div>
           </div>
@@ -1697,9 +1681,6 @@
     custIsCompany: document.getElementById('custIsCompany'),
     companyFields: document.getElementById('companyFields'),
     custCompanyName: document.getElementById('custCompanyName'),
-    custCompanyAddr: document.getElementById('custCompanyAddr'),
-    custRecipientName: document.getElementById('custRecipientName'),
-    custRecipientPhone: document.getElementById('custRecipientPhone'),
     payMethod: document.getElementById('payMethod'),
     periodField: document.getElementById('periodField'),
     periodStart: document.getElementById('periodStart'),
@@ -1723,12 +1704,6 @@
     rNo: document.getElementById('rNo'),
     rIssueDate: document.getElementById('rIssueDate'),
     rName: document.getElementById('rName'),
-    rCompanyAddrLine: document.getElementById('rCompanyAddrLine'),
-    rCompanyAddrLabel: document.getElementById('rCompanyAddrLabel'),
-    rCompanyAddr: document.getElementById('rCompanyAddr'),
-    rRecipientLine: document.getElementById('rRecipientLine'),
-    rRecipientLabel: document.getElementById('rRecipientLabel'),
-    rRecipient: document.getElementById('rRecipient'),
     rPeriodLine: document.getElementById('rPeriodLine'),
     rPeriod: document.getElementById('rPeriod'),
     rPay: document.getElementById('rPay'),
@@ -1987,7 +1962,7 @@
     'zh-TW': {
       title: '收　據', no: '編號', paymentDate: '付款日期', customer: '客戶姓名',
       paymentMethod: '付款方式', billingPeriod: '月結期間', total: '金額合計',
-      companyName: '公司抬頭', companyAddr: '公司地址', recipient: '收件人',
+      companyName: '公司抬頭',
       notePrefix: '備註：', tel: '電話｜', tripLabel: '行程',
       thanks: '感謝您選擇好好禮車',
       footer: '祝您旅途愉快・此為系統產生之電子收據',
@@ -1996,7 +1971,7 @@
     'zh-CN': {
       title: '收　据', no: '编号', paymentDate: '付款日期', customer: '客户姓名',
       paymentMethod: '付款方式', billingPeriod: '月结期间', total: '金额合计',
-      companyName: '公司抬头', companyAddr: '公司地址', recipient: '收件人',
+      companyName: '公司抬头',
       notePrefix: '备注：', tel: '电话｜', tripLabel: '行程',
       thanks: '感谢您选择好好礼车',
       footer: '祝您旅途愉快·此为系统生成的电子收据',
@@ -2005,7 +1980,7 @@
     'en': {
       title: 'RECEIPT', no: 'No.', paymentDate: 'Payment Date', customer: 'Customer',
       paymentMethod: 'Payment Method', billingPeriod: 'Billing Period', total: 'Total Amount',
-      companyName: 'Bill To', companyAddr: 'Company Address', recipient: 'Recipient',
+      companyName: 'Bill To',
       notePrefix: 'Note: ', tel: 'Tel: ', tripLabel: 'Trip',
       thanks: 'Thanks for choosing Nice Wedding Car',
       footer: 'Wishing you a pleasant journey. This is a system-generated e-receipt.',
@@ -2014,7 +1989,7 @@
     'ja': {
       title: '領収書', no: '領収書番号', paymentDate: 'お支払日', customer: 'お客様名',
       paymentMethod: 'お支払方法', billingPeriod: 'ご請求期間', total: '合計金額',
-      companyName: '御請求先', companyAddr: '会社住所', recipient: 'ご担当者',
+      companyName: '御請求先',
       notePrefix: '備考：', tel: '電話｜', tripLabel: '行程',
       thanks: '好好禮車をご利用いただきありがとうございます',
       footer: '素敵なご旅行を。本領収書はシステムにより自動発行されています。',
@@ -2023,7 +1998,7 @@
     'ko': {
       title: '영수증', no: '영수증 번호', paymentDate: '결제일', customer: '고객명',
       paymentMethod: '결제 방법', billingPeriod: '청구 기간', total: '총 금액',
-      companyName: '청구 대상', companyAddr: '회사 주소', recipient: '수령인',
+      companyName: '청구 대상',
       notePrefix: '비고: ', tel: '전화｜', tripLabel: '이동',
       thanks: '好好禮車을 이용해 주셔서 감사합니다',
       footer: '즐거운 여행 되세요. 본 영수증은 시스템에서 자동 발행되었습니다.',
@@ -2167,8 +2142,6 @@
     if (els.rNoLabel) els.rNoLabel.textContent = L.no;
     if (els.rDateLabel) els.rDateLabel.textContent = L.paymentDate;
     if (els.rNameLabel) els.rNameLabel.textContent = (els.custIsCompany.checked && L.companyName) ? L.companyName : L.customer;
-    if (els.rCompanyAddrLabel) els.rCompanyAddrLabel.textContent = L.companyAddr;
-    if (els.rRecipientLabel) els.rRecipientLabel.textContent = L.recipient;
     if (els.rPeriodLabel) els.rPeriodLabel.textContent = L.billingPeriod;
     if (els.rPayLabel) els.rPayLabel.textContent = L.paymentMethod;
     if (els.rTotalLabel) els.rTotalLabel.textContent = L.total;
@@ -2183,20 +2156,6 @@
 
     var isCompany = els.custIsCompany.checked;
     els.rName.textContent = isCompany ? dash(els.custCompanyName.value) : dash(els.custName.value);
-    if (els.rCompanyAddrLine){
-      var companyAddr = els.custCompanyAddr.value.trim();
-      els.rCompanyAddrLine.hidden = !(isCompany && companyAddr);
-      if (isCompany && companyAddr) els.rCompanyAddr.textContent = companyAddr;
-    }
-    if (els.rRecipientLine){
-      var recipName = els.custRecipientName.value.trim();
-      var recipPhone = els.custRecipientPhone.value.trim();
-      var hasRecip = isCompany && (recipName || recipPhone);
-      els.rRecipientLine.hidden = !hasRecip;
-      if (hasRecip){
-        els.rRecipient.textContent = [recipName, recipPhone].filter(Boolean).join('　');
-      }
-    }
     els.rPay.textContent = payLabel(els.payMethod.value);
 
     var isMonthly = els.payMethod.value === '月結';
@@ -2278,9 +2237,6 @@
     if (els.custIsCompany) els.custIsCompany.checked = false;
     if (els.companyFields) els.companyFields.hidden = true;
     if (els.custCompanyName) els.custCompanyName.value = '';
-    if (els.custCompanyAddr) els.custCompanyAddr.value = '';
-    if (els.custRecipientName) els.custRecipientName.value = '';
-    if (els.custRecipientPhone) els.custRecipientPhone.value = '';
     els.payMethod.value = '現金';
     els.periodStart.value = '';
     els.periodEnd.value = '';
@@ -2361,7 +2317,7 @@
   }
 
   // ---------- bind live inputs ----------
-  ['custName','note','periodStart','periodEnd','custCompanyName','custCompanyAddr','custRecipientName','custRecipientPhone']
+  ['custName','note','periodStart','periodEnd','custCompanyName']
     .forEach(function(key){
       els[key].addEventListener('input', render);
       els[key].addEventListener('change', render);
@@ -2398,7 +2354,7 @@
   function buildFilenameBase(){
     var name = (els.custName.value || '客人').trim().replace(/[\\/:*?"<>|]/g, '');
     var no = (els.receiptNo.value || 'receipt').trim();
-    return '好好禮車收據_' + no + '_' + name;
+    return '收據_' + no + '_' + name;
   }
 
   window.addEventListener('afterprint', function(){
