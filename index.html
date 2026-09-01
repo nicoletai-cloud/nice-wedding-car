@@ -3702,11 +3702,21 @@
     var rawTotal = 0;
     legs.forEach(function(leg){
       rawTotal += leg.subtotal;
-      var timeStr = fmtTime24(leg.dep) || fmtTime24(leg.arr);
+      var timeStr = fmtTime24(leg.pickupTime) || fmtTime24(leg.dep) || fmtTime24(leg.arr);
       var lineParts = [fmtMD(leg.date)];
       if (timeStr) lineParts.push(timeStr);
       if (leg.flight) lineParts.push(leg.flight);
-      lineParts.push(L.svc[leg.svc] || leg.svc);
+      var svcLabel = L.svc[leg.svc] || leg.svc;
+      var areaLabel;
+      if (leg.svc === '接機'){
+        areaLabel = leg.dropoffArea ? (svcLabel + leg.dropoffArea) : svcLabel;
+      } else if (leg.svc === '送機'){
+        areaLabel = leg.pickupArea ? (leg.pickupArea + svcLabel) : svcLabel;
+      } else {
+        var legArea = leg.pickupArea || leg.dropoffArea;
+        areaLabel = legArea ? (legArea + svcLabel) : svcLabel;
+      }
+      lineParts.push(areaLabel);
       var priceStr = '$' + fmtNum(leg.base);
       var breakdown = '';
       if (leg.airChk) breakdown += '+' + fmtNum(leg.airAmt) + '(' + L.air + ')';
@@ -3791,7 +3801,7 @@
     lines.push('您好，已收到您的付款，行程已為您確認：');
     lines.push('');
     legs.forEach(function(leg){
-      var timeStr = fmtTime24(leg.dep) || fmtTime24(leg.arr) || fmtTime24(leg.pickupTime);
+      var timeStr = fmtTime24(leg.pickupTime) || fmtTime24(leg.dep) || fmtTime24(leg.arr);
       var route = [leg.pickupArea, leg.dropoffArea].filter(Boolean).join(' → ');
       var lineParts = [fmtMD(leg.date)];
       if (timeStr) lineParts.push(timeStr);
