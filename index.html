@@ -179,6 +179,7 @@
   .card + .card{ margin-top:16px; }
 
   .card h2{
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
     font-size:1rem;
     font-weight:600;
     margin:0 0 4px;
@@ -458,7 +459,7 @@
     word-break:break-word;
   }
   .doc-card .doc-title{
-    font-family:"Noto Serif TC",serif;
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
     font-size:1.05rem;
     font-weight:700;
     margin-bottom:10px;
@@ -802,6 +803,7 @@
     <button type="button" class="tab-btn active" id="tabBtnQuote" data-tab="quote">報價</button>
     <button type="button" class="tab-btn" id="tabBtnCharter" data-tab="charter">包車報價</button>
     <button type="button" class="tab-btn" id="tabBtnDispatch" data-tab="dispatch">訂單／派車</button>
+    <button type="button" class="tab-btn" id="tabBtnFindDriver" data-tab="findDriver">找司機</button>
     <button type="button" class="tab-btn" id="tabBtnReceipt" data-tab="receipt">收據</button>
   </div>
 
@@ -943,18 +945,26 @@
           </div>
 
           <div class="field">
-            <label for="dPickupAddr">上車地址</label>
+            <label for="dPickupAddr">上車地區（簡易地址，例如：台北市內湖區——找司機訊息會用這個）</label>
             <input type="text" id="dPickupAddr">
             <div class="quick-picks">
               <button type="button" class="chip" data-target="#dPickupAddr" data-fill="桃園國際機場">桃園國際機場</button>
             </div>
           </div>
           <div class="field">
-            <label for="dDropoffAddr">下車地址</label>
+            <label for="dDropoffAddr">下車地區（簡易地址，例如：台北市內湖區——找司機訊息會用這個）</label>
             <input type="text" id="dDropoffAddr">
             <div class="quick-picks">
               <button type="button" class="chip" data-target="#dDropoffAddr" data-fill="桃園國際機場">桃園國際機場</button>
             </div>
+          </div>
+          <div class="field">
+            <label for="dPickupFullAddr">完整上車地址（給司機單／乘客單使用，選填——沒填就會用上面的簡易地址代替）</label>
+            <input type="text" id="dPickupFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
+          </div>
+          <div class="field">
+            <label for="dDropoffFullAddr">完整下車地址（給司機單／乘客單使用，選填——沒填就會用上面的簡易地址代替）</label>
+            <input type="text" id="dDropoffFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
           </div>
 
           <div class="row2">
@@ -1059,27 +1069,6 @@
         </div>
 
         <div class="card">
-          <h2><span class="dot"></span>找司機訊息（發到司機群組）</h2>
-          <p class="hint">格式：日期／時間／航班／送機or接機＋地區／車款／金額，方便直接複製貼到司機群組找車</p>
-          <div class="field">
-            <label>車款（可不勾，未勾選則不備註車款）</label>
-            <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarSmall" value="進口小車"><label for="fdCarSmall" style="margin:0;">進口小車</label></div>
-            <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarMyMx" value="MY or MX"><label for="fdCarMyMx" style="margin:0;">MY or MX</label></div>
-            <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarLarge" value="大車"><label for="fdCarLarge" style="margin:0;">大車</label></div>
-          </div>
-          <div class="field" style="margin-bottom:0;">
-            <label for="fdAmount">派單金額</label>
-            <input type="number" id="fdAmount" min="0" placeholder="可點選常用金額，或手動輸入">
-            <div class="quick-picks">
-              <button type="button" class="chip fd-amt-chip" data-amt="1000">$1000</button>
-              <button type="button" class="chip fd-amt-chip" data-amt="1100">$1100</button>
-              <button type="button" class="chip fd-amt-chip" data-amt="1200">$1200</button>
-              <button type="button" class="chip fd-amt-chip" data-amt="1500">$1500</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
           <h2><span class="dot"></span>指派司機</h2>
           <p class="hint">依車型篩選後從司機資料庫選擇</p>
 
@@ -1140,12 +1129,50 @@
         <div class="doc-mode-row" role="group" aria-label="選擇要複製的內容">
           <button type="button" class="doc-mode-btn active" id="copyPassengerBtn" data-mode="passenger">👤 複製給客人</button>
           <button type="button" class="doc-mode-btn" id="copyDispatchBtn" data-mode="driver">🚗 複製給司機</button>
-          <button type="button" class="doc-mode-btn" id="copyFindDriverBtn" data-mode="findDriver">📢 找司機訊息</button>
-        </div>
-        <div class="actions">
-          <button type="button" class="primary" id="printDispatchDocBtn">下載目前預覽 PDF</button>
         </div>
         <div class="status" id="dispatchDocStatusMsg"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tabPanelFindDriver" class="tab-panel" hidden>
+    <div class="layout">
+      <!-- LEFT: FORM -->
+      <div class="form-col">
+        <div class="card">
+          <h2><span class="dot"></span>找司機訊息（發到司機群組）</h2>
+          <p class="hint">格式：日期／時間／航班／送機or接機＋地區／車款／金額，方便直接複製貼到司機群組找車。日期、時間、航班、服務類型、上下車地區請先在「訂單／派車」分頁填寫，這裡會自動帶入。</p>
+          <div class="field">
+            <label>車款（可不勾，未勾選則不備註車款）</label>
+            <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarSmall" value="進口小車"><label for="fdCarSmall" style="margin:0;">進口小車</label></div>
+            <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarMyMx" value="MY or MX"><label for="fdCarMyMx" style="margin:0;">MY or MX</label></div>
+            <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarLarge" value="大車"><label for="fdCarLarge" style="margin:0;">大車</label></div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label for="fdAmount">派單金額</label>
+            <input type="number" id="fdAmount" min="0" placeholder="可點選常用金額，或手動輸入">
+            <div class="quick-picks">
+              <button type="button" class="chip fd-amt-chip" data-amt="1000">$1000</button>
+              <button type="button" class="chip fd-amt-chip" data-amt="1100">$1100</button>
+              <button type="button" class="chip fd-amt-chip" data-amt="1200">$1200</button>
+              <button type="button" class="chip fd-amt-chip" data-amt="1500">$1500</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: PREVIEW -->
+      <div class="preview-col">
+        <div class="receipt-wrap" id="findDriverPreviewWrap">
+          <div class="doc-card" id="findDriverPreviewCard">
+            <div class="doc-title">📢 找司機訊息（發到司機群組）</div>
+            <div id="findDriverPreviewBody"></div>
+          </div>
+        </div>
+        <div class="doc-mode-row" role="group" aria-label="複製找司機訊息">
+          <button type="button" class="doc-mode-btn active" id="copyFindDriverBtn">📢 複製找司機訊息</button>
+        </div>
+        <div class="status" id="findDriverStatusMsg"></div>
       </div>
     </div>
   </section>
@@ -1724,6 +1751,7 @@
 
     // tab nav
     tabBtnDispatch: document.getElementById('tabBtnDispatch'),
+    tabBtnFindDriver: document.getElementById('tabBtnFindDriver'),
     tabBtnQuote: document.getElementById('tabBtnQuote'),
     tabBtnCharter: document.getElementById('tabBtnCharter'),
     tabBtnReceipt: document.getElementById('tabBtnReceipt'),
@@ -1731,6 +1759,7 @@
     syncNowBtn: document.getElementById('syncNowBtn'),
     syncStatusMsg: document.getElementById('syncStatusMsg'),
     tabPanelDispatch: document.getElementById('tabPanelDispatch'),
+    tabPanelFindDriver: document.getElementById('tabPanelFindDriver'),
     tabPanelQuote: document.getElementById('tabPanelQuote'),
     tabPanelCharter: document.getElementById('tabPanelCharter'),
     tabPanelReceipt: document.getElementById('tabPanelReceipt'),
@@ -1788,9 +1817,12 @@
     dispatchPreviewBody: document.getElementById('dispatchPreviewBody'),
     copyPassengerBtn: document.getElementById('copyPassengerBtn'),
     copyDispatchBtn: document.getElementById('copyDispatchBtn'),
+    findDriverPreviewBody: document.getElementById('findDriverPreviewBody'),
     copyFindDriverBtn: document.getElementById('copyFindDriverBtn'),
+    findDriverStatusMsg: document.getElementById('findDriverStatusMsg'),
     fdAmount: document.getElementById('fdAmount'),
-    printDispatchDocBtn: document.getElementById('printDispatchDocBtn'),
+    dPickupFullAddr: document.getElementById('dPickupFullAddr'),
+    dDropoffFullAddr: document.getElementById('dDropoffFullAddr'),
     dispatchDocStatusMsg: document.getElementById('dispatchDocStatusMsg'),
     dispatchStatusMsg: document.getElementById('dispatchStatusMsg'),
 
@@ -2551,15 +2583,16 @@
   // =====================================================================
   // TAB NAVIGATION
   // =====================================================================
-  var TAB_PANELS = { dispatch: els.tabPanelDispatch, quote: els.tabPanelQuote, charter: els.tabPanelCharter, receipt: els.tabPanelReceipt };
-  var TAB_BTNS = { dispatch: els.tabBtnDispatch, quote: els.tabBtnQuote, charter: els.tabBtnCharter, receipt: els.tabBtnReceipt };
+  var TAB_PANELS = { dispatch: els.tabPanelDispatch, findDriver: els.tabPanelFindDriver, quote: els.tabPanelQuote, charter: els.tabPanelCharter, receipt: els.tabPanelReceipt };
+  var TAB_BTNS = { dispatch: els.tabBtnDispatch, findDriver: els.tabBtnFindDriver, quote: els.tabBtnQuote, charter: els.tabBtnCharter, receipt: els.tabBtnReceipt };
   function switchTab(name){
     Object.keys(TAB_PANELS).forEach(function(key){
       if (TAB_PANELS[key]) TAB_PANELS[key].hidden = (key !== name);
       if (TAB_BTNS[key]) TAB_BTNS[key].classList.toggle('active', key === name);
     });
+    if (name === 'findDriver') renderFindDriverDoc();
   }
-  [els.tabBtnDispatch, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt].forEach(function(btn){
+  [els.tabBtnDispatch, els.tabBtnFindDriver, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt].forEach(function(btn){
     if (btn) btn.addEventListener('click', function(){ switchTab(btn.dataset.tab); });
   });
 
@@ -2863,8 +2896,8 @@
     lines.push('');
     lines.push(L.contact + (els.dContactName.value || '—'));
     lines.push(L.contactPhone + (els.dContactPhone.value || '—'));
-    lines.push(L.pickupAddr + (els.dPickupAddr.value || '—'));
-    lines.push(L.dropoffAddr + (els.dDropoffAddr.value || '—'));
+    lines.push(L.pickupAddr + ((els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '—'));
+    lines.push(L.dropoffAddr + ((els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—'));
     lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
     lines.push(L.luggageCount + (els.dLuggageCount.value || '0'));
@@ -2896,9 +2929,6 @@
     if (currentPreviewMode === 'driver'){
       if (els.dispatchPreviewTitle) els.dispatchPreviewTitle.textContent = '🚗 派車單（貼給司機）';
       els.dispatchPreviewBody.textContent = buildDispatchSheetText();
-    } else if (currentPreviewMode === 'findDriver'){
-      if (els.dispatchPreviewTitle) els.dispatchPreviewTitle.textContent = '📢 找司機訊息（發到司機群組）';
-      els.dispatchPreviewBody.textContent = buildFindDriverText();
     } else {
       if (els.dispatchPreviewTitle) els.dispatchPreviewTitle.textContent = '👤 乘客資訊（貼給客人）';
       els.dispatchPreviewBody.textContent = buildPassengerDocText();
@@ -2909,7 +2939,6 @@
     currentPreviewMode = mode;
     if (els.copyPassengerBtn) els.copyPassengerBtn.classList.toggle('active', mode === 'passenger');
     if (els.copyDispatchBtn) els.copyDispatchBtn.classList.toggle('active', mode === 'driver');
-    if (els.copyFindDriverBtn) els.copyFindDriverBtn.classList.toggle('active', mode === 'findDriver');
     renderActiveDoc();
   }
 
@@ -2930,8 +2959,8 @@
     lines.push('電話：' + (els.dContactPhone.value || '—'));
     lines.push('');
     lines.push('【行程資訊】');
-    lines.push('上車地址：' + (els.dPickupAddr.value || '—'));
-    lines.push('下車地址：' + (els.dDropoffAddr.value || '—'));
+    lines.push('上車地址：' + ((els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '—'));
+    lines.push('下車地址：' + ((els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—'));
     lines.push('上車時間：' + (fmtTime24(els.dPickupTime.value) || '—'));
     if (els.dFlightNo.value) lines.push('航班：' + els.dFlightNo.value + (els.dTerminal.value ? '（' + els.dTerminal.value + '）' : ''));
     (function(){
@@ -3019,7 +3048,8 @@
   }
 
   function renderFindDriverDoc(){
-    renderActiveDoc();
+    if (!els.findDriverPreviewBody) return;
+    els.findDriverPreviewBody.textContent = buildFindDriverText();
   }
 
   function setDispatchStatus(el, msg, kind){
@@ -3082,8 +3112,8 @@
     copyToClipboard(buildDispatchSheetText(), els.dispatchDocStatusMsg);
   });
   if (els.copyFindDriverBtn) els.copyFindDriverBtn.addEventListener('click', function(){
-    setPreviewMode('findDriver');
-    copyToClipboard(buildFindDriverText(), els.dispatchDocStatusMsg);
+    renderFindDriverDoc();
+    copyToClipboard(buildFindDriverText(), els.findDriverStatusMsg);
   });
   document.querySelectorAll('.fd-car-chk').forEach(function(chk){
     chk.addEventListener('change', function(){
@@ -3110,13 +3140,9 @@
     });
     renderFindDriverDoc();
   });
-  if (els.printDispatchDocBtn) els.printDispatchDocBtn.addEventListener('click', function(){
-    var isDriver = currentPreviewMode === 'driver';
-    printDoc(isDriver ? 'print-dispatch' : 'print-passenger', (isDriver ? '好好禮車_派車單_' : '好好禮車_乘客司機資訊_') + (els.dUseDate.value || todayStr()), els.dispatchDocStatusMsg);
-  });
 
   ['dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dContactName','dContactPhone',
-   'dPickupAddr','dDropoffAddr','dPax','dLuggageCount','dLuggageSize','dNote'].forEach(function(key){
+   'dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dPax','dLuggageCount','dLuggageSize','dNote'].forEach(function(key){
     if (els[key]){
       els[key].addEventListener('input', function(){ renderPassengerDoc(); renderDispatchSheet(); });
       els[key].addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); });
@@ -4505,6 +4531,8 @@
       contactPhone: els.dContactPhone.value.trim(),
       pickupAddr: els.dPickupAddr.value.trim(),
       dropoffAddr: els.dDropoffAddr.value.trim(),
+      pickupFullAddr: els.dPickupFullAddr ? els.dPickupFullAddr.value.trim() : '',
+      dropoffFullAddr: els.dDropoffFullAddr ? els.dDropoffFullAddr.value.trim() : '',
       pax: els.dPax.value,
       luggageCount: els.dLuggageCount.value,
       luggageSize: els.dLuggageSize.value,
@@ -4631,6 +4659,8 @@
     els.dContactPhone.value = o.contactPhone || '';
     els.dPickupAddr.value = o.pickupAddr || '';
     els.dDropoffAddr.value = o.dropoffAddr || '';
+    if (els.dPickupFullAddr) els.dPickupFullAddr.value = o.pickupFullAddr || '';
+    if (els.dDropoffFullAddr) els.dDropoffFullAddr.value = o.dropoffFullAddr || '';
     if (o.pax != null) els.dPax.value = o.pax;
     if (o.luggageCount != null) els.dLuggageCount.value = o.luggageCount;
     if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = !o.luggageSize || o.luggageSize === '待確認';
