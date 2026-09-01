@@ -2961,9 +2961,9 @@
     lines.push(L.pickupTime + (fmtTime24(els.dPickupTime.value) || '—'));
     if (els.dFlightNo.value || els.dTerminal.value || (els.dFlightDepTime && els.dFlightDepTime.value) || (els.dFlightArrTime && els.dFlightArrTime.value)){
       lines.push(L.flightInfo);
-      var flightLine = L.flightNo + (els.dFlightNo.value || '—');
-      if (els.dTerminal.value) flightLine += '（' + els.dTerminal.value + '）';
-      lines.push(flightLine);
+      // 航廈已經改成標在上／下車地址後面（桃園機場那一端），這裡班機航班號
+      // 不用再重複附註航廈了。
+      lines.push(L.flightNo + (els.dFlightNo.value || '—'));
       var depAirportLabel = svcVal === '接機' ? ((els.dOtherAirport && els.dOtherAirport.value) || '') : L.depAirport;
       var arrAirportLabel = svcVal === '接機' ? L.depAirport : ((els.dOtherAirport && els.dOtherAirport.value) || '');
       var depT = els.dFlightDepTime ? fmtTime24(els.dFlightDepTime.value) : '';
