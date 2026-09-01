@@ -3034,9 +3034,11 @@
 
   function buildDispatchSheetText(){
     var d = selectedDriver();
-    // 派車單上半段（行程資料）跟乘客資訊完全一樣，只是版面要緊湊、不留空行，
-    // 而且司機資訊標題用「｜司機資訊｜」（乘客版是［司機資訊］）
-    var lines = buildTripInfoLines(PLABELS['zh-TW'], 'zh-TW', { compact: true, driverInfoHeader: '｜司機資訊｜' });
+    // 派車單上半段（行程資料）跟乘客資訊欄位、順序完全一樣，段落間一樣留空行
+    // 分隔（緊湊、不留空行反而讓司機看不清楚段落），司機資訊標題用「｜司機
+    // 資訊｜」（乘客版是［司機資訊］）
+    var lines = buildTripInfoLines(PLABELS['zh-TW'], 'zh-TW', { compact: false, driverInfoHeader: '｜司機資訊｜' });
+    lines.push('');
     var payMethod = currentPaymentMethod();
     var amount = Number(els.dAmount && els.dAmount.value) || 0;
     if (payMethod === 'cash'){
@@ -3053,6 +3055,7 @@
     var driverNotice = els.dDriverNoticeBlock ? els.dDriverNoticeBlock.value.trim() : '';
     if (driverNotice){
       var driverName = (d && d.name) ? d.name : '司機';
+      lines.push('');
       lines.push(driverNotice.split('{{司機姓名}}').join(driverName));
     }
     return lines.join('\n');
