@@ -2887,7 +2887,7 @@
     'zh-TW': {
       svc: {'送機':'送機','接機':'接機','接送':'接送','包車':'包車','其他':'其他'},
       useDate:'用車日期：', pickupTime:'上車時間：', flightInfo:'航班資訊', flightNo:'　班機航班號：',
-      depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園國際機場', otherAirport:'　對方機場：',
+      depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園（TPE）', otherAirport:'　對方機場：',
       contact:'聯絡人：', contactPhone:'聯絡電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
       pax:'搭乘人數：', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
       note:'備註／其他需求：', driverInfo:'［司機資訊］', driver:'駕駛：', phone:'電話：', car:'車款：', plate:'車號：'
@@ -2895,7 +2895,7 @@
     en: {
       svc: {'送機':'Airport Drop-off','接機':'Airport Pick-up','接送':'Transfer','包車':'Charter','其他':'Other'},
       useDate:'Service Date: ', pickupTime:'Pickup Time: ', flightInfo:'Flight Information', flightNo:'  Flight No.: ',
-      depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan International Airport', otherAirport:'  Other Airport: ',
+      depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan (TPE)', otherAirport:'  Other Airport: ',
       contact:'Contact: ', contactPhone:'Contact Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
       pax:'Passengers: ', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
       note:'Notes: ', driverInfo:'[Driver Information]', driver:'Driver: ', phone:'Phone: ', car:'Vehicle: ', plate:'License Plate: '
@@ -2903,7 +2903,7 @@
     ja: {
       svc: {'送機':'送迎（出発）','接機':'送迎（到着）','接送':'送迎','包車':'チャーター','其他':'その他'},
       useDate:'ご利用日：', pickupTime:'お迎え時刻：', flightInfo:'フライト情報', flightNo:'　便名：',
-      depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'台湾桃園国際空港', otherAirport:'　到着地の空港：',
+      depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園（TPE）', otherAirport:'　到着地の空港：',
       contact:'ご担当者：', contactPhone:'電話番号：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
       pax:'人数：', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
@@ -2945,9 +2945,16 @@
     });
   }
 
-  function buildPassengerDocText(){
-    var L = pl();
-    var lang = currentPassengerLang;
+  // 乘客資訊（貼給客人）跟派車單（貼給司機）上半段的行程資料要完全一樣——
+  // 兩份文件共用同一段組字邏輯，只有後面接的內容不同（客人版接候車須知，
+  // 司機版接收款方式／司機注意事項），這樣以後改欄位也只需要改一個地方。
+  // opts.compact：派車單（給司機）版面要緊湊、不留空行；乘客資訊版面則維持
+  // 原本段落間的空行分隔。opts.driverInfoHeader：司機資訊那段的標題文字兩邊
+  // 版面用的符號不一樣（乘客版是［司機資訊］，司機版是｜司機資訊｜），可個別指定。
+  function buildTripInfoLines(L, lang, opts){
+    opts = opts || {};
+    var compact = !!opts.compact;
+    var driverInfoHeader = opts.driverInfoHeader || L.driverInfo;
     var lines = [];
     var svcVal = currentSvcType();
     lines.push('☑️ ' + (L.svc[svcVal] || svcVal));
@@ -2965,25 +2972,32 @@
       if (depT) lines.push(L.depTime + depT + (depAirportLabel ? '（' + depAirportLabel + '）' : ''));
       if (arrT) lines.push(L.arrTime + arrT + (arrAirportLabel ? '（' + arrAirportLabel + '）' : ''));
     }
-    lines.push('');
+    if (!compact) lines.push('');
     lines.push(L.contact + (els.dContactName.value || '—'));
     lines.push(L.contactPhone + (els.dContactPhone.value || '—'));
     lines.push(L.pickupAddr + ((els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '—'));
     lines.push(L.dropoffAddr + ((els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—'));
-    lines.push('');
+    if (!compact) lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
     lines.push(L.luggageCount + (els.dLuggageCount.value || '0'));
     lines.push(L.luggageSize + (els.dLuggageSize.value || L.tbd));
     if (els.dNote.value.trim()) lines.push(L.note + els.dNote.value.trim());
     var d = selectedDriver();
     if (d){
-      lines.push('');
-      lines.push(L.driverInfo);
+      if (!compact) lines.push('');
+      lines.push(driverInfoHeader);
       lines.push(L.driver + d.name);
       lines.push(L.phone + d.phone);
       lines.push(L.car + d.car);
       lines.push(L.plate + d.plate);
     }
+    return lines;
+  }
+
+  function buildPassengerDocText(){
+    var L = pl();
+    var lang = currentPassengerLang;
+    var lines = buildTripInfoLines(L, lang);
     var waitNotice = (lang === 'zh-TW')
       ? (els.dWaitNoticeBlock ? els.dWaitNoticeBlock.value.trim() : '')
       : (WAIT_NOTICE_I18N[lang] || '');
@@ -3020,66 +3034,27 @@
 
   function buildDispatchSheetText(){
     var d = selectedDriver();
-    var lines = [];
-    lines.push('好好禮車　派車單');
-    lines.push('');
-    lines.push('日期：' + fmtDateWeekday(els.dUseDate.value));
-    lines.push('服務類型：' + currentSvcType());
-    lines.push('');
-    lines.push('【承租人資訊】');
-    lines.push('姓名：' + (els.dContactName.value || '—'));
-    lines.push('電話：' + (els.dContactPhone.value || '—'));
-    lines.push('');
-    lines.push('【行程資訊】');
-    lines.push('上車地址：' + ((els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '—'));
-    lines.push('下車地址：' + ((els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—'));
-    lines.push('上車時間：' + (fmtTime24(els.dPickupTime.value) || '—'));
-    if (els.dFlightNo.value) lines.push('航班：' + els.dFlightNo.value + (els.dTerminal.value ? '（' + els.dTerminal.value + '）' : ''));
-    (function(){
-      var svcVal2 = currentSvcType();
-      var otherAirport2 = (els.dOtherAirport && els.dOtherAirport.value) || '';
-      var depAirport2 = svcVal2 === '接機' ? otherAirport2 : '桃園國際機場';
-      var arrAirport2 = svcVal2 === '接機' ? '桃園國際機場' : otherAirport2;
-      var depT2 = els.dFlightDepTime ? fmtTime24(els.dFlightDepTime.value) : '';
-      var arrT2 = els.dFlightArrTime ? fmtTime24(els.dFlightArrTime.value) : '';
-      if (depT2) lines.push('起飛時間：' + depT2 + (depAirport2 ? '（' + depAirport2 + '）' : ''));
-      if (arrT2) lines.push('抵達時間：' + arrT2 + (arrAirport2 ? '（' + arrAirport2 + '）' : ''));
-    })();
-    lines.push('搭乘人數：' + (els.dPax.value || '0') + '　行李箱數量：' + (els.dLuggageCount.value || '0') + '　行李尺寸：' + (els.dLuggageSize.value || '待確認'));
-    if (els.dNote.value.trim()) lines.push('備註：' + els.dNote.value.trim());
-    lines.push('');
-    lines.push('【駕駛與車輛資訊】');
-    lines.push('駕駛：' + (d ? d.name : '—'));
-    lines.push('電話：' + (d ? d.phone : '—'));
-    lines.push('車款：' + (d ? d.car : '—'));
-    lines.push('車號：' + (d ? d.plate : '—'));
-    lines.push('');
-    lines.push('【收款方式】');
+    // 派車單上半段（行程資料）跟乘客資訊完全一樣，只是版面要緊湊、不留空行，
+    // 而且司機資訊標題用「｜司機資訊｜」（乘客版是［司機資訊］）
+    var lines = buildTripInfoLines(PLABELS['zh-TW'], 'zh-TW', { compact: true, driverInfoHeader: '｜司機資訊｜' });
     var payMethod = currentPaymentMethod();
     var amount = Number(els.dAmount && els.dAmount.value) || 0;
     if (payMethod === 'cash'){
       var fee = Number(els.dDriverFee && els.dDriverFee.value) || 0;
       var refund = amount - fee;
-      lines.push('收現金 $' + fmtNum(amount) + '／回金 $' + fmtNum(refund));
-      lines.push('');
+      lines.push('收款方式｜收現金 $' + fmtNum(amount) + '／回金 $' + fmtNum(refund));
       lines.push('回金帳號：');
       var jindachunBlock = (els.qBankBlockJindachun && els.qBankBlockJindachun.value) || safeGet('hhlc_bank_block_jindachun') || DEFAULT_BANK_BLOCK_JINDACHUN;
       lines.push(jindachunBlock.split('\n\n')[0]);
-      lines.push('');
       lines.push('請司機匯款完成後，提供匯款資訊截圖');
     } else {
-      lines.push('不簽不收，客下匯款');
+      lines.push('收款方式｜不簽不收，客下匯款');
     }
-    lines.push('');
-    lines.push('出租人簽名：＿＿＿＿＿＿＿＿　　承租人簽名：＿＿＿＿＿＿＿＿');
     var driverNotice = els.dDriverNoticeBlock ? els.dDriverNoticeBlock.value.trim() : '';
     if (driverNotice){
       var driverName = (d && d.name) ? d.name : '司機';
-      lines.push('');
       lines.push(driverNotice.split('{{司機姓名}}').join(driverName));
     }
-    lines.push('');
-    lines.push('本單為好好禮車系統產生之派車紀錄');
     return lines.join('\n');
   }
 
@@ -3583,10 +3558,16 @@
     if (s === '2' || upper === 'II' || upper === 'T2') return '第二航廈';
     return s;
   }
+  // 顯示給客人／司機看的起降地機場，要簡潔的「城市（機場縮寫）」，不要落落長
+  // 的機場全名（例如原始資料回傳的 "Busan-si Gimhae"）——城市優先用
+  // municipalityName（查不到才退回機場全名），縮寫用 IATA 三碼（查不到才用 ICAO）。
   function extractAirportName(airportLeg){
     if (!airportLeg || !airportLeg.airport) return '';
     var a = airportLeg.airport;
-    return a.name || a.municipalityName || a.iata || a.icao || '';
+    var city = a.municipalityName || a.name || '';
+    var code = a.iata || a.icao || '';
+    if (city && code) return city + '（' + code + '）';
+    return city || code || '';
   }
   function lookupFlightTimes(flightNo, dateIso){
     var key = getAeroApiKey();
