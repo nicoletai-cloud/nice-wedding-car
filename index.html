@@ -3506,7 +3506,11 @@
           if (times.arr) row.querySelector('.q-arr').value = times.arr;
           var svcInput = row.querySelector('.q-svc:checked');
           var svc = svcInput ? svcInput.value : '送機';
-          var terminal = svc === '接機' ? (times.arrTerminal || times.depTerminal) : (times.depTerminal || times.arrTerminal);
+          // 接機時桃園機場那一端是抵達（arr）；送機時桃園機場那一端是起飛（dep）——
+          // 只有桃園那一端要轉成「第一航廈」／「第二航廈」，另一端（國外機場）當備援時保留原始格式
+          var terminal = svc === '接機'
+            ? (times.arrTerminal ? formatTaoyuanTerminal(times.arrTerminal) : times.depTerminal)
+            : (times.depTerminal ? formatTaoyuanTerminal(times.depTerminal) : times.arrTerminal);
           if (terminal) row.querySelector('.q-terminal').value = terminal;
           autoNight(row);
           autoPickupTime(row);
@@ -3539,6 +3543,17 @@
     var t = airportLeg.terminal;
     if (t == null || t === '') return '';
     return String(t);
+  }
+  // 只有桃園機場那一端要寫成「第一航廈」／「第二航廈」（司機單／乘客單看得懂）；
+  // 國外機場的航廈格式五花八門（字母、數字、名稱都有），不要硬套桃園的講法，
+  // 保留原始查到的值就好。呼叫端已經知道哪一段航班是桃園那端。
+  function formatTaoyuanTerminal(rawTerminal){
+    var s = String(rawTerminal || '').trim();
+    if (!s) return '';
+    var upper = s.toUpperCase();
+    if (s === '1' || upper === 'I' || upper === 'T1') return '第一航廈';
+    if (s === '2' || upper === 'II' || upper === 'T2') return '第二航廈';
+    return s;
   }
   function extractAirportName(airportLeg){
     if (!airportLeg || !airportLeg.airport) return '';
@@ -3648,7 +3663,8 @@
       /terminal\s*([12])/i.exec(text);
     if (terminalMatch){
       var tVal = terminalMatch[1];
-      result.terminal = (tVal === '一') ? '1' : (tVal === '二') ? '2' : tVal;
+      // 智慧貼上的航廈都是指桃園機場（客人描述在哪裡碰面），直接寫成完整說法
+      result.terminal = (tVal === '一' || tVal === '1') ? '第一航廈' : (tVal === '二' || tVal === '2') ? '第二航廈' : tVal;
     }
     // labeled "搭乘人數 ：2" / "行李件數 ：2" style (label before the number) takes
     // priority; casual "2 ppl, 3 bags" style (number before the word) is the fallback
@@ -4112,7 +4128,11 @@
         els.dPickupTime.value = t;
         els.dPickupTime.dispatchEvent(new Event('input'));
       }
-      var terminal = svc === '接機' ? (times.arrTerminal || times.depTerminal) : (times.depTerminal || times.arrTerminal);
+      // 接機時桃園機場那一端是抵達（arr）；送機時桃園機場那一端是起飛（dep）——
+      // 只有桃園那一端要轉成「第一航廈」／「第二航廈」，另一端（國外機場）當備援時保留原始格式
+      var terminal = svc === '接機'
+        ? (times.arrTerminal ? formatTaoyuanTerminal(times.arrTerminal) : times.depTerminal)
+        : (times.depTerminal ? formatTaoyuanTerminal(times.depTerminal) : times.arrTerminal);
       if (terminal){
         els.dTerminal.value = terminal;
         els.dTerminal.dispatchEvent(new Event('input'));
@@ -4808,9 +4828,20 @@
       if (els.dAmount && typeof leg.subtotal === 'number') els.dAmount.value = leg.subtotal;
       updatePaymentUI();
     }
+    // 報價單本身沒有存完整地址（報價階段只需要簡易地區），但如果這位客人已經
+    // 是熟客、有存常用地址，匯入報價時就自動比對出來，讓完整地址欄位下方直接
+    // 出現可點選的按鈕，不用再另外去「選擇熟客」那邊按一次
+    var matchedCustomer = findKnownCustomerByContact(els.dContactName.value, els.dContactPhone.value);
+    if (matchedCustomer){
+      if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
+      applyKnownCustomerAddressChips(matchedCustomer);
+    }
     renderPassengerDoc();
     renderDispatchSheet();
-    setDispatchStatus(els.dispatchStatusMsg, '已帶入報價單資料，地址請補上完整門牌', 'ok');
+    var importMsg = (matchedCustomer && matchedCustomer.addresses && matchedCustomer.addresses.length)
+      ? '已帶入報價單資料，完整地址欄位下方可直接點選常用地址帶入完整地址'
+      : '已帶入報價單資料，地址請補上完整門牌';
+    setDispatchStatus(els.dispatchStatusMsg, importMsg, 'ok');
   });
 
   // =====================================================================
@@ -4861,6 +4892,18 @@
   function saveKnownCustomersList(){ safeSet(KNOWN_CUSTOMERS_KEY, JSON.stringify(knownCustomers)); }
   function findKnownCustomer(id){
     return knownCustomers.find(function(c){ return c.id === id; });
+  }
+  // 依電話（優先）或姓名比對熟客名單，用在匯入報價／訂單時自動辨認是不是熟客，
+  // 這樣不用每次都手動再選一次「選擇熟客」才能帶出常用地址
+  function findKnownCustomerByContact(name, phone){
+    var p = (phone || '').trim();
+    var n = (name || '').trim();
+    if (!p && !n) return null;
+    return knownCustomers.find(function(c){
+      if (p && c.phone && c.phone === p) return true;
+      if (!p && n && (c.sourceName || c.name) === n) return true;
+      return false;
+    }) || null;
   }
   // called when a quote/order is saved with "設為熟客" checked — finds the
   // same person by phone (or by name when there's no phone) and updates
@@ -4935,6 +4978,16 @@
       wrap.appendChild(btn);
     });
   }
+  // 派車單／訂單裡，只要辨認出是熟客，簡易地區跟完整地址欄位下方都要能直接
+  // 點選常用地址——完整地址那兩欄尤其重要，司機單／乘客單就是靠它，沒填就會
+  // 退回顯示簡易地區
+  function applyKnownCustomerAddressChips(c){
+    if (!c) return;
+    injectAddressChips('dPickupAddr', c.addresses);
+    injectAddressChips('dDropoffAddr', c.addresses);
+    injectAddressChips('dPickupFullAddr', c.addresses);
+    injectAddressChips('dDropoffFullAddr', c.addresses);
+  }
 
   if (els.qCustPickBtn) els.qCustPickBtn.addEventListener('click', function(){
     if (!els.qCustPick.value){ setDispatchStatus(els.quoteStatusMsg, '請先選擇熟客', 'err'); return; }
@@ -4959,12 +5012,7 @@
     els.dContactName.value = c.name || '';
     els.dContactPhone.value = c.phone || '';
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
-    injectAddressChips('dPickupAddr', c.addresses);
-    injectAddressChips('dDropoffAddr', c.addresses);
-    // 派單給司機／客人時要用完整地址，不能只靠簡易地區——所以完整地址欄位
-    // 下方也要能直接點選熟客的常用地址，點了就直接帶入完整地址本身。
-    injectAddressChips('dPickupFullAddr', c.addresses);
-    injectAddressChips('dDropoffFullAddr', c.addresses);
+    applyKnownCustomerAddressChips(c);
     renderPassengerDoc();
     renderDispatchSheet();
     setDispatchStatus(els.dispatchStatusMsg, (c.addresses && c.addresses.length) ? '已帶入熟客資料，完整地址欄位下方可直接點選常用地址帶入完整地址' : '已帶入熟客資料', 'ok');
