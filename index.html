@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>好好禮車派車工具</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -789,7 +789,6 @@
 </style>
 </head>
 <body>
-
 
 <div class="app">
   <header class="masthead">
@@ -2975,8 +2974,15 @@
     if (!compact) lines.push('');
     lines.push(L.contact + (els.dContactName.value || '—'));
     lines.push(L.contactPhone + (els.dContactPhone.value || '—'));
-    lines.push(L.pickupAddr + ((els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '—'));
-    lines.push(L.dropoffAddr + ((els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—'));
+    // 上／下車地址如果是桃園國際機場，後面加註航廈（第一／第二航廈），方便司機
+    // 跟乘客直接知道要去哪個航廈，不用再對照上面的航班資訊。
+    var terminalNote = els.dTerminal.value ? formatTaoyuanTerminal(els.dTerminal.value) : '';
+    var pickupAddrVal = (els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '—';
+    var dropoffAddrVal = (els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—';
+    if (terminalNote && isTaoyuanAirportAddress(pickupAddrVal)) pickupAddrVal += '（' + terminalNote + '）';
+    if (terminalNote && isTaoyuanAirportAddress(dropoffAddrVal)) dropoffAddrVal += '（' + terminalNote + '）';
+    lines.push(L.pickupAddr + pickupAddrVal);
+    lines.push(L.dropoffAddr + dropoffAddrVal);
     if (!compact) lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
     lines.push(L.luggageCount + (els.dLuggageCount.value || '0'));
@@ -3560,6 +3566,13 @@
     if (s === '1' || upper === 'I' || upper === 'T1') return '第一航廈';
     if (s === '2' || upper === 'II' || upper === 'T2') return '第二航廈';
     return s;
+  }
+  // 判斷地址是不是桃園國際機場——上下車地址只要是桃園機場，文件上就要在地址
+  // 後面加註「（第幾航廈）」，方便司機直接知道要去哪個航廈接送。
+  function isTaoyuanAirportAddress(addr){
+    var s = String(addr || '').trim();
+    if (!s) return false;
+    return /桃園.{0,4}機場/.test(s) || /\bTPE\b/i.test(s);
   }
   // 常見航線城市的中文名稱（查詢 API 只給英文城市名，例如 "Busan-si"）——
   // 依機場 IATA 代碼對照，涵蓋好好禮車常見的亞洲航線；查不到的機場就直接
