@@ -2887,7 +2887,7 @@
     'zh-TW': {
       svc: {'送機':'送機','接機':'接機','接送':'接送','包車':'包車','其他':'其他'},
       useDate:'用車日期：', pickupTime:'上車時間：', flightInfo:'航班資訊', flightNo:'　班機航班號：',
-      depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園（TPE）', otherAirport:'　對方機場：',
+      depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園 TPE', otherAirport:'　對方機場：',
       contact:'聯絡人：', contactPhone:'聯絡電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
       pax:'搭乘人數：', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
       note:'備註／其他需求：', driverInfo:'［司機資訊］', driver:'駕駛：', phone:'電話：', car:'車款：', plate:'車號：'
@@ -2895,7 +2895,7 @@
     en: {
       svc: {'送機':'Airport Drop-off','接機':'Airport Pick-up','接送':'Transfer','包車':'Charter','其他':'Other'},
       useDate:'Service Date: ', pickupTime:'Pickup Time: ', flightInfo:'Flight Information', flightNo:'  Flight No.: ',
-      depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan (TPE)', otherAirport:'  Other Airport: ',
+      depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan TPE', otherAirport:'  Other Airport: ',
       contact:'Contact: ', contactPhone:'Contact Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
       pax:'Passengers: ', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
       note:'Notes: ', driverInfo:'[Driver Information]', driver:'Driver: ', phone:'Phone: ', car:'Vehicle: ', plate:'License Plate: '
@@ -2903,7 +2903,7 @@
     ja: {
       svc: {'送機':'送迎（出発）','接機':'送迎（到着）','接送':'送迎','包車':'チャーター','其他':'その他'},
       useDate:'ご利用日：', pickupTime:'お迎え時刻：', flightInfo:'フライト情報', flightNo:'　便名：',
-      depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園（TPE）', otherAirport:'　到着地の空港：',
+      depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園 TPE', otherAirport:'　到着地の空港：',
       contact:'ご担当者：', contactPhone:'電話番号：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
       pax:'人数：', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
@@ -3558,15 +3558,31 @@
     if (s === '2' || upper === 'II' || upper === 'T2') return '第二航廈';
     return s;
   }
-  // 顯示給客人／司機看的起降地機場，要簡潔的「城市（機場縮寫）」，不要落落長
-  // 的機場全名（例如原始資料回傳的 "Busan-si Gimhae"）——城市優先用
-  // municipalityName（查不到才退回機場全名），縮寫用 IATA 三碼（查不到才用 ICAO）。
+  // 常見航線城市的中文名稱（查詢 API 只給英文城市名，例如 "Busan-si"）——
+  // 依機場 IATA 代碼對照，涵蓋好好禮車常見的亞洲航線；查不到的機場就直接
+  // 退回 API 給的英文城市名，不會顯示空白。
+  var AIRPORT_CITY_ZH = {
+    TPE: '桃園', TSA: '台北', KHH: '高雄', RMQ: '台中',
+    HKG: '香港', MFM: '澳門',
+    NRT: '東京', HND: '東京', KIX: '大阪', ITM: '大阪', NGO: '名古屋',
+    FUK: '福岡', CTS: '札幌', OKA: '沖繩',
+    ICN: '首爾', GMP: '首爾', PUS: '釜山', CJU: '濟州',
+    PVG: '上海', SHA: '上海', PEK: '北京', PKX: '北京',
+    CAN: '廣州', SZX: '深圳', XMN: '廈門',
+    BKK: '曼谷', DMK: '曼谷', SIN: '新加坡', KUL: '吉隆坡',
+    MNL: '馬尼拉', CEB: '宿霧', SGN: '胡志明市', HAN: '河內',
+    DPS: '峇里島', HKT: '普吉島'
+  };
+  // 顯示給客人／司機看的起降地機場，要簡潔的「城市 縮寫」，不要落落長的機場
+  // 全名（例如原始資料回傳的 "Busan-si Gimhae"）——城市優先用中文對照表，
+  // 查不到才用 API 回傳的英文城市名／機場全名；縮寫用 IATA 三碼（查不到才用
+  // ICAO）。呼叫端已經會用「（」「）」把整段包起來，這裡本身不要再加括號。
   function extractAirportName(airportLeg){
     if (!airportLeg || !airportLeg.airport) return '';
     var a = airportLeg.airport;
-    var city = a.municipalityName || a.name || '';
     var code = a.iata || a.icao || '';
-    if (city && code) return city + '（' + code + '）';
+    var city = (code && AIRPORT_CITY_ZH[code.toUpperCase()]) || a.municipalityName || a.name || '';
+    if (city && code) return city + ' ' + code;
     return city || code || '';
   }
   function lookupFlightTimes(flightNo, dateIso){
