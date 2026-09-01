@@ -4611,20 +4611,25 @@
 
   function saveCurrentOrder(){
     var o = serializeCurrentOrder();
-    if (!o.contactName && !o.pickupAddr && !o.dropoffAddr){
+    if (!o.contactName && !o.pickupAddr && !o.dropoffAddr && !o.pickupFullAddr && !o.dropoffFullAddr){
       setDispatchStatus(els.dispatchStatusMsg, '請先填寫訂單資訊', 'err');
       return;
     }
     recentOrders.unshift(o);
     if (recentOrders.length > 50) recentOrders = recentOrders.slice(0, 50);
     saveRecentOrdersList();
+    var learnedAddress = false;
     if (o.isKnownCustomer){
-      upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone });
+      var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone });
+      var learnedPickup = learnKnownCustomerAddress(kc, o.pickupFullAddr, o.pickupAddr);
+      var learnedDropoff = learnKnownCustomerAddress(kc, o.dropoffFullAddr, o.dropoffAddr);
+      learnedAddress = learnedPickup || learnedDropoff;
+      if (learnedAddress) saveKnownCustomersList();
     }
     renderRecentOrdersList();
     renderReceiptOrderSelect();
     renderCustPickSelects();
-    setDispatchStatus(els.dispatchStatusMsg, '已儲存這筆訂單', 'ok');
+    setDispatchStatus(els.dispatchStatusMsg, learnedAddress ? '已儲存這筆訂單，並記住這位熟客的完整地址' : '已儲存這筆訂單', 'ok');
     doFullSync(true);
   }
 
@@ -4934,6 +4939,24 @@
     knownCustomers.push(created);
     saveKnownCustomersList();
     return created;
+  }
+  // 訂單存檔時，如果這位客人是熟客、而且這筆訂單有填完整地址，就直接記進這位
+  // 熟客的常用地址清單——簡易地址只有「找司機」訊息會用到，訂單／派車只要有
+  // 完整地址即可；這樣她只要打過一次完整地址，下次同一位客人就會自動出現
+  // 常用地址按鈕，不用再跑去「熟客常用地址管理」手動重複輸入一次。
+  function learnKnownCustomerAddress(customer, fullAddress, shortAreaHint){
+    var addr = (fullAddress || '').trim();
+    if (!customer || !addr) return false;
+    if (!customer.addresses) customer.addresses = [];
+    var already = customer.addresses.some(function(a){ return a.address === addr; });
+    if (already) return false;
+    var label = (shortAreaHint || '').trim() || ('常用地址' + (customer.addresses.length + 1));
+    customer.addresses.push({
+      id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      label: label,
+      address: addr
+    });
+    return true;
   }
 
   function custPickLabel(c){
