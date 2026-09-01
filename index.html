@@ -961,10 +961,12 @@
           <div class="field">
             <label for="dPickupFullAddr">完整上車地址（給司機單／乘客單使用，選填——沒填就會用上面的簡易地址代替）</label>
             <input type="text" id="dPickupFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
+            <div class="quick-picks"></div>
           </div>
           <div class="field">
             <label for="dDropoffFullAddr">完整下車地址（給司機單／乘客單使用，選填——沒填就會用上面的簡易地址代替）</label>
             <input type="text" id="dDropoffFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
+            <div class="quick-picks"></div>
           </div>
 
           <div class="row2">
@@ -1606,14 +1608,20 @@
 
       <div class="actions">
         <button type="button" class="primary" id="shareReceiptBtn">📤 分享收據 PDF 給客人</button>
+        <button type="button" class="secondary" id="driveUploadBtn">☁️ 存到雲端硬碟</button>
         <button type="button" class="secondary" id="resetBtn">開立新收據（清空表單）</button>
       </div>
       <div class="status" id="statusMsg"></div>
-      <div class="helper-note">「分享收據 PDF」會直接開啟手機原生分享選單，可傳送給 LINE／訊息或儲存到檔案；電腦瀏覽器則會在新分頁開啟 PDF，可從分頁上的下載／分享圖示傳送給客人。點擊即視為開立一張收據，編號會往前推進一號</div>
+      <div class="helper-note">「分享收據 PDF」會直接開啟手機原生分享選單，可傳送給 LINE／訊息或儲存到檔案；電腦瀏覽器則會在新分頁開啟 PDF，可從分頁上的下載／分享圖示傳送給客人。「存到雲端硬碟」會把收據 PDF 直接存進指定的 Google 雲端硬碟資料夾（第一次使用需要登入並同意授權）。點擊即視為開立一張收據，編號會往前推進一號</div>
     </div>
   </div>
   </section>
 </div>
+
+<!-- Google Identity Services — used only by the 收據 tab's "存到雲端硬碟"
+     button to get a Drive-upload access token. Loaded async/defer so it never
+     blocks or slows down the far more common dispatch/quote visits. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <script type="module">
   // ---------- 雲端同步（Firebase Firestore） ----------
@@ -1698,6 +1706,7 @@
     mastLogo: document.getElementById('mastLogo'),
     receiptLogo: document.getElementById('receiptLogo'),
     shareReceiptBtn: document.getElementById('shareReceiptBtn'),
+    driveUploadBtn: document.getElementById('driveUploadBtn'),
     resetBtn: document.getElementById('resetBtn'),
     statusMsg: document.getElementById('statusMsg'),
     rPhone: document.getElementById('rPhone'),
@@ -2107,12 +2116,15 @@
     return out;
   }
 
-  function updatePeriodVisibility(){
-    var isMonthly = els.payMethod.value === '月結';
-    els.periodField.hidden = !isMonthly;
+  // 月結期間、公司名稱這兩個欄位只在「企業客戶」+「付款方式：月結」同時成立時
+  // 才需要填寫（一次性的企業客戶行程、或非月結的個人客戶都不需要這兩欄）
+  function updateCompanyAndPeriodVisibility(){
+    var isCompanyMonthly = !!(els.custIsCompany && els.custIsCompany.checked) && els.payMethod.value === '月結';
+    els.periodField.hidden = !isCompanyMonthly;
+    if (els.companyFields) els.companyFields.hidden = !isCompanyMonthly;
   }
   els.payMethod.addEventListener('change', function(){
-    updatePeriodVisibility();
+    updateCompanyAndPeriodVisibility();
     render();
   });
 
@@ -2198,7 +2210,7 @@
     applyLogo(loadLogo());
     els.companyPhone.value = loadPhone();
     addTripRow({});
-    updatePeriodVisibility();
+    updateCompanyAndPeriodVisibility();
   }
 
   // ---------- shareable e-receipt link (#r=...) ----------
@@ -2219,7 +2231,7 @@
     els.custName.value = data.n || '';
     var hasPayOption = Array.prototype.some.call(els.payMethod.options, function(o){ return o.value === data.m; });
     els.payMethod.value = hasPayOption ? data.m : '信用卡';
-    updatePeriodVisibility();
+    updateCompanyAndPeriodVisibility();
     els.issueDate.value = data.d || todayStr();
     receiptNoTouched = true;
     els.receiptNo.value = data.no || '';
@@ -2246,7 +2258,7 @@
     els.issueDate.value = '';
     receiptNoTouched = false;
     els.receiptNo.value = '';
-    updatePeriodVisibility();
+    updateCompanyAndPeriodVisibility();
     render();
     setStatus('', '');
     els.issueDate.focus();
@@ -2324,7 +2336,7 @@
     });
   if (els.custIsCompany){
     els.custIsCompany.addEventListener('change', function(){
-      if (els.companyFields) els.companyFields.hidden = !els.custIsCompany.checked;
+      updateCompanyAndPeriodVisibility();
       render();
     });
   }
@@ -2439,6 +2451,107 @@
       });
     });
   }
+
+  // ---------- upload a copy straight to a Google Drive folder ----------
+  // Uses Google Identity Services' browser token client — no client secret
+  // involved (a secret has no business shipping in public front-end code
+  // anyway). Scope is the narrowest Drive scope, drive.file: this app can
+  // only ever see/touch files it created itself, nothing else already in
+  // the connected Drive account.
+  var GOOGLE_DRIVE_CLIENT_ID = '876158956310-1j0is9iam8indtqh8ps3qnau3oetmemg.apps.googleusercontent.com';
+  var GOOGLE_DRIVE_FOLDER_ID = '1tX4YOYrnEZShuQth3mI2WmQbUj2fGR-7';
+  var GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  var driveTokenClient = null;
+  var driveAccessToken = null;
+  var driveAccessTokenExpiresAt = 0;
+
+  function getDriveTokenClient(){
+    if (driveTokenClient) return driveTokenClient;
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) return null;
+    driveTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_DRIVE_CLIENT_ID,
+      scope: GOOGLE_DRIVE_SCOPE,
+      callback: '' // set per-request in requestDriveAccessToken()
+    });
+    return driveTokenClient;
+  }
+
+  function requestDriveAccessToken(){
+    return new Promise(function(resolve, reject){
+      if (driveAccessToken && Date.now() < driveAccessTokenExpiresAt){
+        resolve(driveAccessToken);
+        return;
+      }
+      var client = getDriveTokenClient();
+      if (!client){
+        reject(new Error('google-identity-not-loaded'));
+        return;
+      }
+      client.callback = function(resp){
+        if (resp && resp.error){
+          reject(new Error(resp.error));
+          return;
+        }
+        driveAccessToken = resp.access_token;
+        // 60s safety margin before the token's real expiry
+        driveAccessTokenExpiresAt = Date.now() + ((resp.expires_in || 3300) * 1000) - 60000;
+        resolve(driveAccessToken);
+      };
+      client.error_callback = function(err){
+        reject(new Error((err && err.type) || 'popup_closed'));
+      };
+      // once we already hold a token, request silently (prompt:'') so a
+      // second click in the same session doesn't re-show the Google popup
+      client.requestAccessToken({ prompt: driveAccessToken ? '' : 'consent' });
+    });
+  }
+
+  function uploadFileToDriveFolder(file){
+    return requestDriveAccessToken().then(function(token){
+      var metadata = { name: file.name, parents: [GOOGLE_DRIVE_FOLDER_ID] };
+      var form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', file);
+      return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: form
+      }).then(function(res){
+        if (!res.ok){
+          return res.text().then(function(bodyText){
+            // an expired/invalid cached token surfaces as 401 — drop it so the
+            // next click re-authenticates instead of retrying the same token
+            if (res.status === 401){ driveAccessToken = null; driveAccessTokenExpiresAt = 0; }
+            throw new Error('drive-upload-failed: ' + res.status + ' ' + bodyText);
+          });
+        }
+        return res.json();
+      });
+    });
+  }
+
+  if (els.driveUploadBtn) els.driveUploadBtn.addEventListener('click', function(){
+    if (!ensureReceiptReadyForExport()) return;
+    var issueDateAtClick = els.issueDate.value;
+    setStatus('正在產生 PDF，請稍候…', 'ok');
+    buildReceiptPdfFile().then(function(file){
+      setStatus('正在存到雲端硬碟，請稍候（第一次使用會跳出 Google 登入/授權視窗）…', 'ok');
+      return uploadFileToDriveFolder(file);
+    }).then(function(result){
+      commitCounter(issueDateAtClick);
+      els.statusMsg.className = 'status ok';
+      els.statusMsg.innerHTML = '已存到雲端硬碟資料夾' + (result && result.webViewLink ? '　<a href="' + result.webViewLink + '" target="_blank" rel="noopener">開啟檔案</a>' : '');
+    }).catch(function(err){
+      var msg = (err && err.message) || '';
+      if (msg.indexOf('google-identity-not-loaded') !== -1){
+        setStatus('Google 登入元件尚未載入，請確認網路連線後再試一次', 'err');
+      } else if (msg.indexOf('popup_closed') !== -1 || msg.indexOf('access_denied') !== -1){
+        setStatus('已取消 Google 授權，未上傳，收據編號未使用', 'ok');
+      } else {
+        setStatus('上傳到雲端硬碟失敗，請確認網路連線後再試一次', 'err');
+      }
+    });
+  });
 
   els.shareReceiptBtn.addEventListener('click', function(){
     if (!ensureReceiptReadyForExport()) return;
@@ -4848,9 +4961,13 @@
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
     injectAddressChips('dPickupAddr', c.addresses);
     injectAddressChips('dDropoffAddr', c.addresses);
+    // 派單給司機／客人時要用完整地址，不能只靠簡易地區——所以完整地址欄位
+    // 下方也要能直接點選熟客的常用地址，點了就直接帶入完整地址本身。
+    injectAddressChips('dPickupFullAddr', c.addresses);
+    injectAddressChips('dDropoffFullAddr', c.addresses);
     renderPassengerDoc();
     renderDispatchSheet();
-    setDispatchStatus(els.dispatchStatusMsg, (c.addresses && c.addresses.length) ? '已帶入熟客資料，地址欄位下方可直接點選常用地址' : '已帶入熟客資料', 'ok');
+    setDispatchStatus(els.dispatchStatusMsg, (c.addresses && c.addresses.length) ? '已帶入熟客資料，完整地址欄位下方可直接點選常用地址帶入完整地址' : '已帶入熟客資料', 'ok');
   });
 
   // ---------- 熟客常用地址管理 ----------
