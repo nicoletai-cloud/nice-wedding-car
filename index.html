@@ -1113,6 +1113,7 @@
                 <label for="driverFormal" style="margin:0;">此司機需要正式派車單（如租賃車行契約車輛）</label>
               </div>
               <button type="button" class="add-btn" id="addDriverBtn">＋ 新增司機</button>
+              <div class="status" id="driverAddStatusMsg"></div>
               <p class="hint" style="margin-top:14px; margin-bottom:6px;">目前司機名單</p>
               <div id="driverList"></div>
             </div>
@@ -1793,6 +1794,7 @@
     driverPaste: document.getElementById('driverPaste'),
     driverFormal: document.getElementById('driverFormal'),
     addDriverBtn: document.getElementById('addDriverBtn'),
+    driverAddStatusMsg: document.getElementById('driverAddStatusMsg'),
     driverList: document.getElementById('driverList'),
     dispatchPreviewWrap: document.getElementById('dispatchPreviewWrap'),
     dispatchPreviewTitle: document.getElementById('dispatchPreviewTitle'),
@@ -2670,12 +2672,33 @@
   }
 
   function parseDriverPaste(text){
-    var parsed = parseLabeledBlock(text, ['駕駛','電話','車款','車號']);
+    // 不同租賃車行傳來的司機資訊格式常常不太一樣（有些用「姓名」不用「駕駛」、
+    // 有些會多一行「車色」）——把所有可能出現的標籤都當作邊界一起辨識，這樣就
+    // 算貼上的格式帶了本來沒處理的欄位（例如車色），也不會把下一欄的內容吃掉。
+    var labelGroups = {
+      name: ['駕駛', '姓名', '司機姓名', '司機'],
+      phone: ['電話', '聯絡電話', '手機'],
+      car: ['車款'],
+      plate: ['車號', '車牌', '牌照'],
+      color: ['車色', '顏色']
+    };
+    var allLabels = Object.keys(labelGroups).reduce(function(acc, key){
+      return acc.concat(labelGroups[key]);
+    }, []);
+    var parsed = parseLabeledBlock(text, allLabels);
+    function pick(keys){
+      for (var i = 0; i < keys.length; i++){
+        if (parsed[keys[i]]) return parsed[keys[i]];
+      }
+      return '';
+    }
+    var car = pick(labelGroups.car);
+    var color = pick(labelGroups.color);
     return {
-      name: parsed['駕駛'] || '',
-      phone: parsed['電話'] || '',
-      car: parsed['車款'] || '',
-      plate: parsed['車號'] || ''
+      name: pick(labelGroups.name),
+      phone: pick(labelGroups.phone),
+      car: (car && color) ? (car + ' ' + color) : (car || color),
+      plate: pick(labelGroups.plate)
     };
   }
 
@@ -2744,10 +2767,14 @@
 
   if (els.addDriverBtn){
     els.addDriverBtn.addEventListener('click', function(){
+      // 這個按鈕在「司機資料庫」這張卡片裡，跟表單最上面的 dispatchStatusMsg
+      // 距離很遠——之前錯誤訊息都寫去那邊，按下去卻沒有反應，其實是有錯誤訊息
+      // 只是顯示在畫面外看不到。改成在按鈕正下方顯示，才看得到發生了什麼事。
+      var statusEl = els.driverAddStatusMsg || els.dispatchStatusMsg;
       var text = els.driverPaste.value.trim();
-      if (!text){ setDispatchStatus(els.dispatchStatusMsg, '請先貼上司機資訊', 'err'); return; }
+      if (!text){ setDispatchStatus(statusEl, '請先貼上司機資訊', 'err'); return; }
       var parsed = parseDriverPaste(text);
-      if (!parsed.name){ setDispatchStatus(els.dispatchStatusMsg, '無法辨識司機姓名，請確認格式包含「駕駛：」', 'err'); return; }
+      if (!parsed.name){ setDispatchStatus(statusEl, '無法辨識司機姓名，請確認格式包含「駕駛：」或「姓名：」', 'err'); return; }
       var sizeEl = document.querySelector('input[name="driverSize"]:checked');
       var d = {
         id: 'drv_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
@@ -2760,6 +2787,7 @@
       renderDriverList();
       els.driverPaste.value = '';
       if (els.driverFormal) els.driverFormal.checked = false;
+      setDispatchStatus(statusEl, '已新增司機：' + d.name, 'ok');
     });
   }
 
@@ -2922,7 +2950,7 @@
     var lang = currentPassengerLang;
     var lines = [];
     var svcVal = currentSvcType();
-    lines.push(L.svc[svcVal] || svcVal);
+    lines.push('☑️ ' + (L.svc[svcVal] || svcVal));
     lines.push(L.useDate + fmtDateWeekday(els.dUseDate.value, lang));
     lines.push(L.pickupTime + (fmtTime24(els.dPickupTime.value) || '—'));
     if (els.dFlightNo.value || els.dTerminal.value || (els.dFlightDepTime && els.dFlightDepTime.value) || (els.dFlightArrTime && els.dFlightArrTime.value)){
