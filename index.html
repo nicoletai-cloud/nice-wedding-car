@@ -967,6 +967,10 @@
             <input type="text" id="dDropoffFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
             <div class="quick-picks"></div>
           </div>
+          <div class="field">
+            <div class="check-row"><input type="checkbox" id="dExtraStopChk"><label for="dExtraStopChk" style="margin:0;">增加地點（客人途中還要多上／下車一個地方）</label></div>
+            <textarea id="dExtraStopAddr" rows="2" placeholder="貼上加點地址，多個地點請分行" style="display:none; margin-top:6px;"></textarea>
+          </div>
 
           <div class="row2">
             <div class="field">
@@ -1810,6 +1814,8 @@
     findDriverStatusMsg: document.getElementById('findDriverStatusMsg'),
     fdAmount: document.getElementById('fdAmount'),
     dPickupFullAddr: document.getElementById('dPickupFullAddr'),
+    dExtraStopChk: document.getElementById('dExtraStopChk'),
+    dExtraStopAddr: document.getElementById('dExtraStopAddr'),
     dDropoffFullAddr: document.getElementById('dDropoffFullAddr'),
     dispatchDocStatusMsg: document.getElementById('dispatchDocStatusMsg'),
     dispatchStatusMsg: document.getElementById('dispatchStatusMsg'),
@@ -2895,6 +2901,7 @@
       useDate:'用車日期：', pickupTime:'上車時間：', flightInfo:'航班資訊', flightNo:'　班機航班號：',
       depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園 TPE', otherAirport:'　對方機場：',
       contact:'聯絡人：', contactPhone:'聯絡電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
+      extraStop:'加點地址：',
       pax:'搭乘人數：', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
       note:'備註／其他需求：', driverInfo:'［司機資訊］', driver:'駕駛：', phone:'電話：', car:'車款：', plate:'車號：'
     },
@@ -2903,6 +2910,7 @@
       useDate:'Service Date: ', pickupTime:'Pickup Time: ', flightInfo:'Flight Information', flightNo:'  Flight No.: ',
       depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan TPE', otherAirport:'  Other Airport: ',
       contact:'Contact: ', contactPhone:'Contact Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
+      extraStop:'Extra Stop: ',
       pax:'Passengers: ', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
       note:'Notes: ', driverInfo:'[Driver Information]', driver:'Driver: ', phone:'Phone: ', car:'Vehicle: ', plate:'License Plate: '
     },
@@ -2911,6 +2919,7 @@
       useDate:'ご利用日：', pickupTime:'お迎え時刻：', flightInfo:'フライト情報', flightNo:'　便名：',
       depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園 TPE', otherAirport:'　到着地の空港：',
       contact:'ご担当者：', contactPhone:'電話番号：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
+      extraStop:'追加立寄り先：',
       pax:'人数：', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
     }
@@ -2990,6 +2999,13 @@
     if (terminalNote && isTaoyuanAirportAddress(dropoffAddrVal)) dropoffAddrVal += '（' + terminalNote + '）';
     lines.push(L.pickupAddr + pickupAddrVal);
     lines.push(L.dropoffAddr + dropoffAddrVal);
+    // 客人途中還要多上／下車一個地方（增加地點）——勾選了才算數，貼的地址可以
+    // 多行、一行一個加點地址，逐行列出來。
+    if (els.dExtraStopChk && els.dExtraStopChk.checked && els.dExtraStopAddr && els.dExtraStopAddr.value.trim()){
+      els.dExtraStopAddr.value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(addr){
+        lines.push(L.extraStop + addr);
+      });
+    }
     if (!compact) lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
     lines.push(L.luggageCount + (els.dLuggageCount.value || '0'));
@@ -3205,12 +3221,22 @@
   });
 
   ['dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dContactName','dContactPhone',
-   'dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dPax','dLuggageCount','dLuggageSize','dNote'].forEach(function(key){
+   'dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dExtraStopAddr','dPax','dLuggageCount','dLuggageSize','dNote'].forEach(function(key){
     if (els[key]){
       els[key].addEventListener('input', function(){ renderPassengerDoc(); renderDispatchSheet(); });
       els[key].addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); });
     }
   });
+  // 「增加地點」勾選才顯示貼地址的欄位；沒勾選就不算有加點，就算欄位裡還留著
+  // 舊文字也不會出現在文件上（避免使用者取消勾選後忘記清空內容，結果加點地址
+  // 還是跑出來）。
+  if (els.dExtraStopChk){
+    els.dExtraStopChk.addEventListener('change', function(){
+      if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = els.dExtraStopChk.checked ? '' : 'none';
+      renderPassengerDoc();
+      renderDispatchSheet();
+    });
+  }
 
   // 行李尺寸「待確認」勾選：預設勾選＝尚未問到行李尺寸；取消勾選才能手動輸入尺寸
   function syncLuggageSizeTBD(){
@@ -3364,6 +3390,10 @@
       '<div class="quick-picks"><button type="button" class="chip" data-target=".q-dropoff-area" data-fill="桃園國際機場">桃園國際機場</button></div></div>' +
       '</div>' +
       '<p class="hint" style="margin-top:-6px;">報價給客人只需縣市／區域即可，完整地址留到「訂單／派車」再填寫</p>' +
+      '<div class="field">' +
+      '<div class="check-row"><input type="checkbox" class="q-extra-stop-chk"><label style="margin:0;">增加地點（客人途中還要多上／下車一個地方）</label></div>' +
+      '<textarea class="q-extra-stop-addr" rows="2" placeholder="貼上加點地址，多個地點請分行" style="display:none; margin-top:6px;"></textarea>' +
+      '</div>' +
       '<div class="row2"><div class="field"><label>搭乘人數</label><input type="number" class="q-pax" min="0" placeholder="選填"></div>' +
       '<div class="field"><label>行李件數</label><input type="number" class="q-luggage" min="0" placeholder="選填"></div></div>' +
       '<div class="field"><label>車型</label><select class="q-model"></select></div>' +
@@ -3415,6 +3445,11 @@
     if (prefill.seatAmt != null) row.querySelector('.q-seat-amt').value = prefill.seatAmt;
     if (prefill.extraChk) row.querySelector('.q-extra-chk').checked = true;
     if (prefill.extraAmt != null) row.querySelector('.q-extra-amt').value = prefill.extraAmt;
+    if (prefill.extraStopChk){
+      row.querySelector('.q-extra-stop-chk').checked = true;
+      row.querySelector('.q-extra-stop-addr').style.display = '';
+    }
+    if (prefill.extraStopAddr) row.querySelector('.q-extra-stop-addr').value = prefill.extraStopAddr;
     relabelQuoteLegs();
     if (prefill.base != null){
       row.querySelector('.q-base').value = prefill.base;
@@ -3505,6 +3540,16 @@
     ['.q-air-chk','.q-night-chk','.q-sign-chk','.q-seat-chk','.q-extra-chk'].forEach(function(sel){
       row.querySelector(sel).addEventListener('change', renderQuoteDoc);
     });
+    // 「增加地點」勾選才顯示貼地址的欄位，沒勾選就不算有加點
+    var extraStopChkEl = row.querySelector('.q-extra-stop-chk');
+    var extraStopAddrEl = row.querySelector('.q-extra-stop-addr');
+    if (extraStopChkEl && extraStopAddrEl){
+      extraStopChkEl.addEventListener('change', function(){
+        extraStopAddrEl.style.display = extraStopChkEl.checked ? '' : 'none';
+        renderQuoteDoc();
+      });
+      extraStopAddrEl.addEventListener('input', renderQuoteDoc);
+    }
     row.querySelectorAll('.chip:not(.q-pickup-auto-btn)').forEach(function(btn){
       btn.addEventListener('click', function(){
         var input = row.querySelector(btn.dataset.target);
@@ -3813,6 +3858,8 @@
         terminal: row.querySelector('.q-terminal').value.trim(),
         pickupArea: row.querySelector('.q-pickup-area').value.trim(),
         dropoffArea: row.querySelector('.q-dropoff-area').value.trim(),
+        extraStopChk: row.querySelector('.q-extra-stop-chk') ? row.querySelector('.q-extra-stop-chk').checked : false,
+        extraStopAddr: row.querySelector('.q-extra-stop-addr') ? row.querySelector('.q-extra-stop-addr').value.trim() : '',
         pax: row.querySelector('.q-pax').value,
         luggageCount: row.querySelector('.q-luggage').value,
         modelId: modelSel.value,
@@ -3831,9 +3878,9 @@
 
   var currentQuoteLang = safeGet('hhlc_quote_lang') || 'zh-TW';
   var QLABELS = {
-    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
-    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
-    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
+    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', extraStopLabel:'　加點：', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
+    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', extraStopLabel:'  Extra Stop: ', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
+    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', extraStopLabel:'　追加立寄り先：', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
@@ -3874,6 +3921,13 @@
       if (leg.extraChk) breakdown += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
       if (breakdown) priceStr = '$' + fmtNum(leg.base) + breakdown + '=$' + fmtNum(leg.subtotal);
       lines.push(lineParts.join(' ') + ' ' + priceStr);
+      // 客人途中還要多上／下車一個地方（增加地點）——勾選了才算數，貼的地址可以
+      // 多行、一行一個加點地址，跟在這筆行程主要那一行下面列出來。
+      if (leg.extraStopChk && leg.extraStopAddr){
+        leg.extraStopAddr.split('\n').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(addr){
+          lines.push(L.extraStopLabel + addr);
+        });
+      }
     });
     lines.push('');
 
@@ -4032,6 +4086,10 @@
       prefill.seatAmt = last.querySelector('.q-seat-amt').value;
       prefill.extraChk = last.querySelector('.q-extra-chk').checked;
       prefill.extraAmt = last.querySelector('.q-extra-amt').value;
+      var lastExtraStopChk = last.querySelector('.q-extra-stop-chk');
+      var lastExtraStopAddr = last.querySelector('.q-extra-stop-addr');
+      prefill.extraStopChk = lastExtraStopChk ? lastExtraStopChk.checked : false;
+      prefill.extraStopAddr = lastExtraStopAddr ? lastExtraStopAddr.value : '';
     }
     addQuoteLegRow(prefill);
   });
@@ -4620,7 +4678,8 @@
         nightChk: leg.nightChk, nightAmt: leg.nightAmt,
         signChk: leg.signChk, signAmt: leg.signAmt,
         seatChk: leg.seatChk, seatAmt: leg.seatAmt,
-        extraChk: leg.extraChk, extraAmt: leg.extraAmt
+        extraChk: leg.extraChk, extraAmt: leg.extraAmt,
+        extraStopChk: leg.extraStopChk, extraStopAddr: leg.extraStopAddr
       });
     });
     if (!q.legs || !q.legs.length) addQuoteLegRow({ date: todayStr() });
@@ -4723,6 +4782,8 @@
       dropoffAddr: els.dDropoffAddr.value.trim(),
       pickupFullAddr: els.dPickupFullAddr ? els.dPickupFullAddr.value.trim() : '',
       dropoffFullAddr: els.dDropoffFullAddr ? els.dDropoffFullAddr.value.trim() : '',
+      extraStopChk: !!(els.dExtraStopChk && els.dExtraStopChk.checked),
+      extraStopAddr: els.dExtraStopAddr ? els.dExtraStopAddr.value.trim() : '',
       pax: els.dPax.value,
       luggageCount: els.dLuggageCount.value,
       luggageSize: els.dLuggageSize.value,
@@ -4856,6 +4917,11 @@
     els.dDropoffAddr.value = o.dropoffAddr || '';
     if (els.dPickupFullAddr) els.dPickupFullAddr.value = o.pickupFullAddr || '';
     if (els.dDropoffFullAddr) els.dDropoffFullAddr.value = o.dropoffFullAddr || '';
+    if (els.dExtraStopChk){
+      els.dExtraStopChk.checked = !!o.extraStopChk;
+      if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = els.dExtraStopChk.checked ? '' : 'none';
+    }
+    if (els.dExtraStopAddr) els.dExtraStopAddr.value = o.extraStopAddr || '';
     if (o.pax != null) els.dPax.value = o.pax;
     if (o.luggageCount != null) els.dLuggageCount.value = o.luggageCount;
     if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = !o.luggageSize || o.luggageSize === '待確認';
