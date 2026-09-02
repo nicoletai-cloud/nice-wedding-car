@@ -1312,11 +1312,16 @@
         <div class="card">
           <h2><span class="dot"></span>收款帳號</h2>
           <p class="hint">選擇這筆報價要用哪個帳號，預設將來銀行</p>
-          <div class="field" style="margin-bottom:0;">
+          <div class="field" style="margin-bottom:14px;">
             <div class="radio-row">
               <label><input type="radio" name="qBankChoice" value="future" checked> 將來銀行</label>
               <label><input type="radio" name="qBankChoice" value="jindachun"> 金大春</label>
             </div>
+          </div>
+          <p class="hint">這筆報價要附上哪些付款方式——刷卡連結有手續費，客人習慣匯款的話可以取消勾選</p>
+          <div class="field" style="margin-bottom:0;">
+            <div class="check-row"><input type="checkbox" id="qShowBankInfo" checked><label for="qShowBankInfo" style="margin:0;">附上匯款資訊</label></div>
+            <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qShowCardLink" checked><label for="qShowCardLink" style="margin:0;">附上刷卡付款連結（有手續費）</label></div>
           </div>
         </div>
 
@@ -1842,6 +1847,8 @@
     qManager: document.getElementById('qManager'),
     qInvoice: document.getElementById('qInvoice'),
     qPayLink: document.getElementById('qPayLink'),
+    qShowBankInfo: document.getElementById('qShowBankInfo'),
+    qShowCardLink: document.getElementById('qShowCardLink'),
     priceModelInput: document.getElementById('priceModelInput'),
     priceAmountInput: document.getElementById('priceAmountInput'),
     addPriceBtn: document.getElementById('addPriceBtn'),
@@ -3664,6 +3671,20 @@
     return (text || '').split(/\n\s*\n+/).map(function(b){ return b.trim(); }).filter(Boolean);
   }
 
+  // 報價只需要簡易地區（例如「台北中山」），不用完整地址——完整地址留到
+  // 「訂單／派車」階段再補。客人貼過來的訊息裡常常直接寫完整地址（含路名／
+  // 門牌），所以智慧貼上抓到地址後，先簡化成「城市＋鄉鎮市區」（去掉
+  // 市／縣／區／鄉／鎮這些字），例如「台北市中山區○○路5號」->「台北中山」。
+  // 如果不是看得出來的標準地址格式（例如本來就是「桃園國際機場」這種地名），
+  // 就原樣保留，不做處理。
+  function simplifyAddressArea(addr){
+    var s = String(addr || '').trim();
+    if (!s) return s;
+    var m = /^(?:\d{3,6}\s*)?([一-鿿]{1,3}?)[市縣]([一-鿿]{1,3}?)[市區鄉鎮]/.exec(s);
+    if (!m) return s;
+    return m[1] + m[2];
+  }
+
   function parseFlightPasteText(text){
     text = (text || '').trim();
     var result = {};
@@ -3721,9 +3742,9 @@
     // depending on which direction this leg is (送機 default when svc isn't stated)
     var pickupAddrMatch = /(?:上車地址|上車地點|接送地址|接送地點)\s*[：:]\s*([^\n]+)/.exec(text);
     var dropoffAddrMatch = /(?:下車地址|下車地點)\s*[：:]\s*([^\n]+)/.exec(text);
-    if (dropoffAddrMatch) result.dropoffArea = dropoffAddrMatch[1].trim();
+    if (dropoffAddrMatch) result.dropoffArea = simplifyAddressArea(dropoffAddrMatch[1].trim());
     if (pickupAddrMatch){
-      var addrVal = pickupAddrMatch[1].trim();
+      var addrVal = simplifyAddressArea(pickupAddrMatch[1].trim());
       if (result.svc === '接機') result.dropoffArea = result.dropoffArea || addrVal;
       else result.pickupArea = addrVal;
     }
@@ -3872,9 +3893,14 @@
       lines.push(L.total + fmtNum(rawTotal));
     }
     lines.push('');
-    var bankText = selectedBankBlockText();
-    if (bankText) lines.push(bankText);
-    if (els.qPayLink.value.trim()){
+    // 匯款資訊、刷卡連結是否附上，看這筆報價自己勾選的「附上匯款資訊」／
+    // 「附上刷卡付款連結」——刷卡有手續費，客人習慣匯款的話可以只附匯款資訊，
+    // 不用把刷卡連結也貼給客人。
+    if (shouldShowBankInfo()){
+      var bankText = selectedBankBlockText();
+      if (bankText) lines.push(bankText);
+    }
+    if (shouldShowCardLink() && els.qPayLink.value.trim()){
       lines.push('');
       lines.push(L.creditCard + els.qPayLink.value.trim());
       lines.push(L.creditCardNote);
@@ -3884,6 +3910,16 @@
       lines.push(els.qNoticeBlock.value.trim());
     }
     return lines.join('\n');
+  }
+
+  // 報價／包車文件共用：是否附上匯款資訊、是否附上刷卡付款連結——checkbox
+  // 元素預設都是勾選（維持原本一律附上的行為），只有使用者自己取消勾選才會
+  // 不附上。
+  function shouldShowBankInfo(){
+    return !els.qShowBankInfo || els.qShowBankInfo.checked;
+  }
+  function shouldShowCardLink(){
+    return !els.qShowCardLink || els.qShowCardLink.checked;
   }
 
   function selectedBankBlockText(){
@@ -4204,7 +4240,18 @@
     r.addEventListener('change', function(){
       safeSet('hhlc_bank_choice', document.querySelector('input[name="qBankChoice"]:checked').value);
       renderQuoteDoc();
+      renderCharterQuoteDoc();
     });
+  });
+  if (els.qShowBankInfo) els.qShowBankInfo.addEventListener('change', function(){
+    safeSet('hhlc_show_bank_info', els.qShowBankInfo.checked ? '1' : '0');
+    renderQuoteDoc();
+    renderCharterQuoteDoc();
+  });
+  if (els.qShowCardLink) els.qShowCardLink.addEventListener('change', function(){
+    safeSet('hhlc_show_card_link', els.qShowCardLink.checked ? '1' : '0');
+    renderQuoteDoc();
+    renderCharterQuoteDoc();
   });
   if (els.qPayLink) els.qPayLink.addEventListener('input', function(){
     safeSet('hhlc_paylink', els.qPayLink.value); renderQuoteDoc();
@@ -4436,6 +4483,16 @@
       var r = document.querySelector('input[name="qBankChoice"][value="' + savedBankChoice + '"]');
       if (r) r.checked = true;
     }
+    // 附上匯款資訊／刷卡連結的勾選，記住上次的選擇（沒存過就維持預設全部勾選，
+    // 跟改版前「一律附上」的行為一樣）
+    if (els.qShowBankInfo){
+      var savedShowBankInfo = safeGet('hhlc_show_bank_info');
+      if (savedShowBankInfo !== null) els.qShowBankInfo.checked = savedShowBankInfo !== '0';
+    }
+    if (els.qShowCardLink){
+      var savedShowCardLink = safeGet('hhlc_show_card_link');
+      if (savedShowCardLink !== null) els.qShowCardLink.checked = savedShowCardLink !== '0';
+    }
     renderPassengerDoc();
     renderDispatchSheet();
     addQuoteLegRow({ date: todayStr() });
@@ -4514,6 +4571,8 @@
         invoice: els.qInvoice.checked
       },
       bankChoice: bankChoiceEl ? bankChoiceEl.value : 'future',
+      showBankInfo: shouldShowBankInfo(),
+      showCardLink: shouldShowCardLink(),
       rawTotal: rawTotal,
       finalTotal: finalTotal,
       isKnownCustomer: !!(els.qIsKnownCustomer && els.qIsKnownCustomer.checked),
@@ -4576,6 +4635,9 @@
       var r = document.querySelector('input[name="qBankChoice"][value="' + q.bankChoice + '"]');
       if (r) r.checked = true;
     }
+    // 舊資料沒存過這兩個欄位時，維持「一律附上」的舊行為（跟改版前一樣）
+    if (els.qShowBankInfo) els.qShowBankInfo.checked = q.showBankInfo !== false;
+    if (els.qShowCardLink) els.qShowCardLink.checked = q.showCardLink !== false;
     currentPaymentReceiptNo = q.paymentReceiptNo || '';
     currentPaymentConfirmedAt = q.paymentConfirmedAt || '';
     if (els.qPaymentConfirmed) els.qPaymentConfirmed.checked = !!q.paymentConfirmed;
@@ -5329,9 +5391,11 @@
       lines.push('合計 = $' + fmtNum(rawTotal));
     }
     lines.push('');
-    var bankText = selectedBankBlockText();
-    if (bankText) lines.push(bankText);
-    if (els.qPayLink.value.trim()){
+    if (shouldShowBankInfo()){
+      var bankText = selectedBankBlockText();
+      if (bankText) lines.push(bankText);
+    }
+    if (shouldShowCardLink() && els.qPayLink.value.trim()){
       lines.push('');
       lines.push('刷卡 ' + els.qPayLink.value.trim());
       lines.push('（刷卡成功後請截圖回傳）');
