@@ -3716,16 +3716,17 @@
     return (text || '').split(/\n\s*\n+/).map(function(b){ return b.trim(); }).filter(Boolean);
   }
 
-  // 報價只需要簡易地區（例如「台北中山」），不用完整地址——完整地址留到
-  // 「訂單／派車」階段再補。客人貼過來的訊息裡常常直接寫完整地址（含路名／
-  // 門牌），所以智慧貼上抓到地址後，先簡化成「城市＋鄉鎮市區」（去掉
-  // 市／縣／區／鄉／鎮這些字），例如「台北市中山區○○路5號」->「台北中山」。
-  // 如果不是看得出來的標準地址格式（例如本來就是「桃園國際機場」這種地名），
-  // 就原樣保留，不做處理。
+  // 報價只需要簡易地區（例如「新竹北區」「新竹香山區」），不用完整地址——完整
+  // 地址留到「訂單／派車」階段再補。客人貼過來的訊息裡常常直接寫完整地址（含
+  // 路名／門牌），所以智慧貼上抓到地址、以及報價文件組字時，都先簡化成
+  // 「城市＋鄉鎮市區」（去掉市／縣，但保留區／市／鄉／鎮，因為像「北區」「香山
+  // 區」這種地名，拿掉「區」字反而讓人看不出來是哪裡），例如「新竹市北區英明
+  // 街5號」->「新竹北區」。如果不是看得出來的標準地址格式（例如本來就是「桃園
+  // 國際機場」這種地名），就原樣保留，不做處理。
   function simplifyAddressArea(addr){
     var s = String(addr || '').trim();
     if (!s) return s;
-    var m = /^(?:\d{3,6}\s*)?([一-鿿]{1,3}?)[市縣]([一-鿿]{1,3}?)[市區鄉鎮]/.exec(s);
+    var m = /^(?:\d{3,6}\s*)?([一-鿿]{1,3}?)[市縣]([一-鿿]{1,3}[市區鄉鎮])/.exec(s);
     if (!m) return s;
     return m[1] + m[2];
   }
@@ -3878,9 +3879,9 @@
 
   var currentQuoteLang = safeGet('hhlc_quote_lang') || 'zh-TW';
   var QLABELS = {
-    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', extraStopLabel:'　加點：', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
-    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', extraStopLabel:'  Extra Stop: ', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
-    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', extraStopLabel:'　追加立寄り先：', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
+    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
+    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
+    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
@@ -3902,14 +3903,26 @@
       if (timeStr) lineParts.push(timeStr);
       if (leg.flight) lineParts.push(leg.flight);
       var svcLabel = L.svc[leg.svc] || leg.svc;
+      // 報價只需要簡易地區，不管上車／下車地區欄位裡貼的是簡易地區還是完整地址，
+      // 顯示在報價文字上一律先簡化（例如「新竹市北區英明街5號」->「新竹北區」）。
+      // 客人途中還要多上／下車一個地方（增加地點，勾選了才算數）時，把加點地區
+      // 也簡化後用「+」接在後面（例如「新竹北區+新竹香山區」），不再另外列一行、
+      // 也不顯示完整地址。
+      var extraAreas = (leg.extraStopChk && leg.extraStopAddr)
+        ? leg.extraStopAddr.split('\n').map(simplifyAddressArea).map(function(s){ return s.trim(); }).filter(Boolean)
+        : [];
+      var pickupAreaShort = simplifyAddressArea(leg.pickupArea);
+      var dropoffAreaShort = simplifyAddressArea(leg.dropoffArea);
       var areaLabel;
       if (leg.svc === '接機'){
-        areaLabel = leg.dropoffArea ? (svcLabel + leg.dropoffArea) : svcLabel;
+        var arrAreas = [dropoffAreaShort].concat(extraAreas).filter(Boolean);
+        areaLabel = arrAreas.length ? (svcLabel + arrAreas.join('+')) : svcLabel;
       } else if (leg.svc === '送機'){
-        areaLabel = leg.pickupArea ? (leg.pickupArea + svcLabel) : svcLabel;
+        var depAreas = [pickupAreaShort].concat(extraAreas).filter(Boolean);
+        areaLabel = depAreas.length ? (depAreas.join('+') + svcLabel) : svcLabel;
       } else {
-        var legArea = leg.pickupArea || leg.dropoffArea;
-        areaLabel = legArea ? (legArea + svcLabel) : svcLabel;
+        var legAreas = [pickupAreaShort || dropoffAreaShort].concat(extraAreas).filter(Boolean);
+        areaLabel = legAreas.length ? (legAreas.join('+') + svcLabel) : svcLabel;
       }
       lineParts.push(areaLabel);
       var priceStr = '$' + fmtNum(leg.base);
@@ -3921,13 +3934,6 @@
       if (leg.extraChk) breakdown += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
       if (breakdown) priceStr = '$' + fmtNum(leg.base) + breakdown + '=$' + fmtNum(leg.subtotal);
       lines.push(lineParts.join(' ') + ' ' + priceStr);
-      // 客人途中還要多上／下車一個地方（增加地點）——勾選了才算數，貼的地址可以
-      // 多行、一行一個加點地址，跟在這筆行程主要那一行下面列出來。
-      if (leg.extraStopChk && leg.extraStopAddr){
-        leg.extraStopAddr.split('\n').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(addr){
-          lines.push(L.extraStopLabel + addr);
-        });
-      }
     });
     lines.push('');
 
