@@ -1146,8 +1146,27 @@
       <!-- LEFT: FORM -->
       <div class="form-col">
         <div class="card">
+          <h2><span class="dot"></span>載入訂單</h2>
+          <p class="hint">勾選要找「接機」司機、「送機」司機，或兩個都勾選（一起找，發同一則訊息）；來回通常是分開儲存的兩筆訂單，接機／送機請分別選擇對應的那一筆</p>
+          <div class="field">
+            <div class="check-row"><input type="checkbox" id="fdSvcArrival"><label for="fdSvcArrival" style="margin:0;">接機</label></div>
+            <div class="field" id="fdArrivalOrderField" style="display:none; margin-top:6px; margin-bottom:0;">
+              <label for="fdArrivalOrderSelect">接機訂單</label>
+              <select id="fdArrivalOrderSelect"><option value="">－選擇訂單－</option></select>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <div class="check-row"><input type="checkbox" id="fdSvcDeparture" checked><label for="fdSvcDeparture" style="margin:0;">送機</label></div>
+            <div class="field" id="fdDepartureOrderField" style="margin-top:6px; margin-bottom:0;">
+              <label for="fdDepartureOrderSelect">送機訂單</label>
+              <select id="fdDepartureOrderSelect"><option value="">－選擇訂單－</option></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
           <h2><span class="dot"></span>找司機訊息（發到司機群組）</h2>
-          <p class="hint">格式：日期／時間／航班／送機or接機＋地區／車款／金額，方便直接複製貼到司機群組找車。日期、時間、航班、服務類型、上下車地區請先在「訂單／派車」分頁填寫，這裡會自動帶入。</p>
+          <p class="hint">格式：日期／時間／航班／送機or接機＋地區／車款／金額，方便直接複製貼到司機群組找車；上方載入訂單後日期、時間、航班、地區會自動帶入。</p>
           <div class="field">
             <label>車款（可不勾，未勾選則不備註車款）</label>
             <div class="check-row"><input type="checkbox" class="fd-car-chk" id="fdCarSmall" value="進口小車"><label for="fdCarSmall" style="margin:0;">進口小車</label></div>
@@ -1812,6 +1831,12 @@
     findDriverPreviewBody: document.getElementById('findDriverPreviewBody'),
     copyFindDriverBtn: document.getElementById('copyFindDriverBtn'),
     findDriverStatusMsg: document.getElementById('findDriverStatusMsg'),
+    fdSvcArrival: document.getElementById('fdSvcArrival'),
+    fdSvcDeparture: document.getElementById('fdSvcDeparture'),
+    fdArrivalOrderField: document.getElementById('fdArrivalOrderField'),
+    fdArrivalOrderSelect: document.getElementById('fdArrivalOrderSelect'),
+    fdDepartureOrderField: document.getElementById('fdDepartureOrderField'),
+    fdDepartureOrderSelect: document.getElementById('fdDepartureOrderSelect'),
     fdAmount: document.getElementById('fdAmount'),
     dPickupFullAddr: document.getElementById('dPickupFullAddr'),
     dExtraStopChk: document.getElementById('dExtraStopChk'),
@@ -3095,27 +3120,27 @@
   }
 
   // ---------- 找司機訊息（發到司機群組，方便招車） ----------
-  function buildFindDriverText(){
-    var svc = currentSvcType();
-    var dateStr = fmtMD(els.dUseDate.value);
-    var timeStr = fmtTime24(els.dPickupTime.value);
-    var flight = (els.dFlightNo.value || '').trim();
-    var pickupArea = (els.dPickupAddr.value || '').trim();
-    var dropoffArea = (els.dDropoffAddr.value || '').trim();
-    var svcArea;
-    if (svc === '接機'){
-      svcArea = dropoffArea ? ('接機' + dropoffArea) : '接機';
-    } else if (svc === '送機'){
-      svcArea = pickupArea ? (pickupArea + '送機') : '送機';
-    } else {
-      var area = pickupArea || dropoffArea;
-      svcArea = area ? (area + svc) : svc;
-    }
-    var carModels = [];
-    document.querySelectorAll('.fd-car-chk:checked').forEach(function(chk){ carModels.push(chk.value); });
-    var carStr = carModels.join('／');
-    var amountVal = (els.fdAmount && els.fdAmount.value !== '') ? Number(els.fdAmount.value) : null;
+  // 「接機」「送機」各自獨立勾選、各自選一筆訂單——來回通常是分開儲存的兩筆
+  // 訂單（去程一筆、回程一筆），所以不能只從同一筆訂單的上下車地址湊出兩行，
+  // 要讓使用者各自指定要用哪一筆訂單，兩個都勾就兩行一起貼給司機群組。
+  function findOrderById(id){
+    if (!id) return null;
+    return recentOrders.find(function(x){ return x.id === id; }) || null;
+  }
 
+  function buildFindDriverLegLine(order, direction, carStr, amountVal){
+    var o = order || {};
+    var dateStr = fmtMD(o.date || '');
+    var timeStr = fmtTime24(o.pickupTime || '');
+    var flight = (o.flightNo || '').trim();
+    var pickupArea = (o.pickupAddr || '').trim();
+    var dropoffArea = (o.dropoffAddr || '').trim();
+    var svcArea;
+    if (direction === '接機'){
+      svcArea = dropoffArea ? ('接機' + dropoffArea) : '接機';
+    } else {
+      svcArea = pickupArea ? (pickupArea + '送機') : '送機';
+    }
     var parts = [];
     if (dateStr && dateStr !== '—') parts.push(dateStr);
     if (timeStr) parts.push(timeStr);
@@ -3124,6 +3149,53 @@
     if (carStr) parts.push(carStr);
     if (amountVal != null) parts.push('$' + fmtNum(amountVal));
     return parts.join(' ');
+  }
+
+  function buildFindDriverText(){
+    var wantArrival = !!(els.fdSvcArrival && els.fdSvcArrival.checked);
+    var wantDeparture = !!(els.fdSvcDeparture && els.fdSvcDeparture.checked);
+    var carModels = [];
+    document.querySelectorAll('.fd-car-chk:checked').forEach(function(chk){ carModels.push(chk.value); });
+    var carStr = carModels.join('／');
+    var amountVal = (els.fdAmount && els.fdAmount.value !== '') ? Number(els.fdAmount.value) : null;
+
+    // 兩個方向都勾選時，兩行照日期先後排序（通常送機在前、接機在後，但日期
+    // 才是準確依據，避免固定順序在少數狀況下排反）
+    var entries = [];
+    if (wantArrival){
+      var arrivalOrder = findOrderById(els.fdArrivalOrderSelect && els.fdArrivalOrderSelect.value);
+      entries.push({ date: (arrivalOrder && arrivalOrder.date) || '', line: buildFindDriverLegLine(arrivalOrder, '接機', carStr, amountVal) });
+    }
+    if (wantDeparture){
+      var departureOrder = findOrderById(els.fdDepartureOrderSelect && els.fdDepartureOrderSelect.value);
+      entries.push({ date: (departureOrder && departureOrder.date) || '', line: buildFindDriverLegLine(departureOrder, '送機', carStr, amountVal) });
+    }
+    if (entries.length > 1 && entries[0].date && entries[1].date){
+      entries.sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+    }
+    var lines = entries.map(function(e){ return e.line; });
+    return lines.join('\n');
+  }
+
+  function fdOrderOptionLabel(o){
+    var summary = fmtMD(o.date) + ' ' + o.svcType + (o.flightNo ? ' ' + o.flightNo : '');
+    return orderSourceLabel(o) + '　' + summary;
+  }
+
+  function renderFindDriverOrderSelect(selectEl, matchSvcTypes){
+    if (!selectEl) return;
+    var prevVal = selectEl.value;
+    var filtered = recentOrders.filter(function(o){ return matchSvcTypes.indexOf(o.svcType) !== -1; });
+    var opts = ['<option value="">－選擇訂單－</option>'].concat(filtered.map(function(o){
+      return '<option value="' + o.id + '">' + escapeHtml(fdOrderOptionLabel(o)) + '</option>';
+    }));
+    selectEl.innerHTML = opts.join('');
+    if (filtered.some(function(o){ return o.id === prevVal; })) selectEl.value = prevVal;
+  }
+
+  function renderFindDriverOrderSelects(){
+    renderFindDriverOrderSelect(els.fdArrivalOrderSelect, ['接機', '接送']);
+    renderFindDriverOrderSelect(els.fdDepartureOrderSelect, ['送機', '接送']);
   }
 
   function renderFindDriverDoc(){
@@ -3194,6 +3266,22 @@
     renderFindDriverDoc();
     copyToClipboard(buildFindDriverText(), els.findDriverStatusMsg);
   });
+  // 接機／送機勾選才顯示對應的「選擇訂單」欄位，兩個都勾就兩個欄位都顯示，
+  // 找司機訊息會照勾選的方向各出一行
+  if (els.fdSvcArrival){
+    els.fdSvcArrival.addEventListener('change', function(){
+      if (els.fdArrivalOrderField) els.fdArrivalOrderField.style.display = els.fdSvcArrival.checked ? '' : 'none';
+      renderFindDriverDoc();
+    });
+  }
+  if (els.fdSvcDeparture){
+    els.fdSvcDeparture.addEventListener('change', function(){
+      if (els.fdDepartureOrderField) els.fdDepartureOrderField.style.display = els.fdSvcDeparture.checked ? '' : 'none';
+      renderFindDriverDoc();
+    });
+  }
+  if (els.fdArrivalOrderSelect) els.fdArrivalOrderSelect.addEventListener('change', renderFindDriverDoc);
+  if (els.fdDepartureOrderSelect) els.fdDepartureOrderSelect.addEventListener('change', renderFindDriverDoc);
   document.querySelectorAll('.fd-car-chk').forEach(function(chk){
     chk.addEventListener('change', function(){
       if (chk.checked){
@@ -4750,20 +4838,22 @@
   }
 
   function renderRecentOrdersList(){
-    if (!els.recentOrderList) return;
-    if (!recentOrders.length){
-      els.recentOrderList.innerHTML = '<p class="list-empty">尚未儲存訂單</p>';
-      return;
+    if (els.recentOrderList){
+      if (!recentOrders.length){
+        els.recentOrderList.innerHTML = '<p class="list-empty">尚未儲存訂單</p>';
+      } else {
+        els.recentOrderList.innerHTML = recentOrders.map(function(o){
+          var summary = fmtMD(o.date) + ' ' + o.svcType + (o.flightNo ? ' ' + o.flightNo : '');
+          return '<div class="list-row" data-id="' + o.id + '">' +
+            '<div class="li-main"><div class="li-name">' + escapeHtml(orderSourceLabel(o)) + '</div>' +
+            '<div class="li-sub">' + escapeHtml(summary) + '　存於 ' + fmtSavedAt(o.savedAt) + '</div></div>' +
+            '<button type="button" class="chip" data-load-order="' + o.id + '">載入</button>' +
+            '<button type="button" class="del" data-del-order="' + o.id + '">✕</button>' +
+            '</div>';
+        }).join('');
+      }
     }
-    els.recentOrderList.innerHTML = recentOrders.map(function(o){
-      var summary = fmtMD(o.date) + ' ' + o.svcType + (o.flightNo ? ' ' + o.flightNo : '');
-      return '<div class="list-row" data-id="' + o.id + '">' +
-        '<div class="li-main"><div class="li-name">' + escapeHtml(orderSourceLabel(o)) + '</div>' +
-        '<div class="li-sub">' + escapeHtml(summary) + '　存於 ' + fmtSavedAt(o.savedAt) + '</div></div>' +
-        '<button type="button" class="chip" data-load-order="' + o.id + '">載入</button>' +
-        '<button type="button" class="del" data-del-order="' + o.id + '">✕</button>' +
-        '</div>';
-    }).join('');
+    renderFindDriverOrderSelects();
   }
 
   function serializeCurrentOrder(){
