@@ -2822,9 +2822,23 @@
       drivers.push(d);
       saveDrivers();
       renderDriverList();
+      // 剛貼上新增的司機，通常就是這張訂單要指派的那一位——直接帶入「指派
+      // 司機」，不用使用者自己再選一次；不然使用者會以為已經指派了，結果
+      // 複製給客人／給司機的文字裡卻沒有司機資料。如果目前的「車型篩選」
+      // 把這位司機篩掉了，就先切回「不限」讓選單抓得到這個新司機。
+      if (els.dDriverSelect){
+        var filterEl = document.querySelector('input[name="dCarFilter"]:checked');
+        if (filterEl && filterEl.value !== 'all' && filterEl.value !== d.size){
+          var allFilterEl = document.querySelector('input[name="dCarFilter"][value="all"]');
+          if (allFilterEl) allFilterEl.checked = true;
+          populateDriverSelect();
+        }
+        els.dDriverSelect.value = d.id;
+        updateDriverReadout();
+      }
       els.driverPaste.value = '';
       if (els.driverFormal) els.driverFormal.checked = false;
-      setDispatchStatus(statusEl, '已新增司機：' + d.name, 'ok');
+      setDispatchStatus(statusEl, '已新增司機：' + d.name + '，並已指派給這張訂單', 'ok');
     });
   }
 
