@@ -1268,7 +1268,7 @@
 
           <details class="settings" open style="margin-bottom:14px;">
             <summary><span class="dot"></span>🪄 貼上客人資訊，自動辨識新增行程<span class="chev">▾</span></summary>
-            <p class="hint">把客人傳的文字整段貼進來即可，不管是班機資訊（日期／班機號／時間）還是口語需求（幾號、幾點接、幾人幾件行李）都會自動拆解；空白行隔開的多筆行程會一次新增多筆；也可以用下方「貼上」或「上傳截圖」附上客人傳來的截圖，再按「辨識文字」帶入下方欄位（辨識為輔助功能，請務必核對結果是否正確）；格式抓不到的部分請手動補上</p>
+            <p class="hint">貼上文字或截圖即可自動辨識日期、航班、人數等資訊；空行分隔可一次新增多筆，請核對結果並補上抓不到的部分</p>
             <div class="settings-body">
               <div class="field">
                 <textarea id="quotePasteInput" rows="4" placeholder="例如：9/2 CI909 08:00 送機&#10;&#10;或口語需求：&#10;On 8/31, pick us at 5:20 am, 2 ppl, 4 bags"></textarea>
@@ -3483,7 +3483,7 @@
       '<button type="button" class="secondary q-flight-lookup-btn">🔍 查詢起降時間</button>' +
       '</div>' +
       '<p class="hint q-flight-lookup-status" style="margin-top:-6px;"></p>' +
-      '<div class="field"><label>上車時間（送機建議提前 3 小時；接機以航班落地時間為準，可手動調整）</label><input type="time" class="q-pickup-time">' +
+      '<div class="field"><label>上車時間（送機提前3小時／接機以航班為準）</label><input type="time" class="q-pickup-time">' +
       '<div class="quick-picks"><button type="button" class="chip q-pickup-auto-btn">依航班時間自動計算</button></div></div>' +
       '<div class="row2">' +
       '<div class="field"><label>上車地區</label><input type="text" class="q-pickup-area" placeholder="例如：台北信義">' +
@@ -3491,7 +3491,7 @@
       '<div class="field"><label>下車地區</label><input type="text" class="q-dropoff-area" placeholder="例如：台北信義">' +
       '<div class="quick-picks"><button type="button" class="chip" data-target=".q-dropoff-area" data-fill="桃園國際機場">桃園國際機場</button></div></div>' +
       '</div>' +
-      '<p class="hint" style="margin-top:-6px;">報價給客人只需縣市／區域即可，完整地址留到「訂單／派車」再填寫</p>' +
+      '<p class="hint" style="margin-top:-6px;">報價只需縣市／區域，完整地址留到訂單／派車再填</p>' +
       '<div class="field">' +
       '<div class="check-row"><input type="checkbox" class="q-extra-stop-chk"><label style="margin:0;">增加地點（客人途中還要多上／下車一個地方）</label></div>' +
       '<textarea class="q-extra-stop-addr" rows="2" placeholder="貼上加點地址，多個地點請分行" style="display:none; margin-top:6px;"></textarea>' +
@@ -3981,9 +3981,9 @@
 
   var currentQuoteLang = safeGet('hhlc_quote_lang') || 'zh-TW';
   var QLABELS = {
-    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
-    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
-    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
+    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
+    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
+    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
@@ -4046,11 +4046,19 @@
     if (els.qWedding.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discWedding); }
     if (els.qManager.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discManager); }
     var afterDiscount = Math.round(rawTotal * discountFactor);
-    var finalTotal = els.qInvoice.checked ? Math.round(afterDiscount * 1.05) : afterDiscount;
+    var hasInvoiceTax = els.qInvoice.checked;
+    var finalTotal = hasInvoiceTax ? Math.round(afterDiscount * 1.05) : afterDiscount;
 
     if (finalTotal !== rawTotal){
-      var discPrefix = appliedDiscountNames.length ? (appliedDiscountNames.join(L.discNameSep) + L.discNameSuffix) : '';
-      lines.push(L.totalDiscounted + fmtNum(rawTotal) + '(' + discPrefix + L.afterDiscountLabel + fmtNum(finalTotal) + ')');
+      // 折扣（來回優惠／親友優惠…）跟開發票要加的 +5% 營業稅是兩件不同的事，
+      // 不能都寫成「折扣後」——沒有折扣、只是加稅的話要寫「稅後」，兩個都有
+      // 才寫「折扣、稅後」，避免看起來像是稅金也算進折扣裡。
+      var hasDiscount = appliedDiscountNames.length > 0;
+      var discPrefix = hasDiscount ? (appliedDiscountNames.join(L.discNameSep) + L.discNameSuffix) : '';
+      var afterLabel = hasDiscount
+        ? (hasInvoiceTax ? L.afterDiscountAndTaxLabel : L.afterDiscountLabel)
+        : L.afterTaxLabel;
+      lines.push(L.totalDiscounted + fmtNum(rawTotal) + '(' + discPrefix + afterLabel + fmtNum(finalTotal) + ')');
     } else {
       lines.push(L.total + fmtNum(rawTotal));
     }
@@ -5558,11 +5566,18 @@
     if (els.cWedding.checked){ discountFactor *= 0.95; appliedCharterDiscountNames.push('禮車新人'); }
     if (els.cManager.checked){ discountFactor *= 0.95; appliedCharterDiscountNames.push('主管優惠'); }
     var afterDiscount = Math.round(rawTotal * discountFactor);
-    var finalTotal = els.cInvoice.checked ? Math.round(afterDiscount * 1.05) : afterDiscount;
+    var hasCharterInvoiceTax = els.cInvoice.checked;
+    var finalTotal = hasCharterInvoiceTax ? Math.round(afterDiscount * 1.05) : afterDiscount;
 
     if (finalTotal !== rawTotal){
-      var charterDiscPrefix = appliedCharterDiscountNames.length ? (appliedCharterDiscountNames.join('、')) : '';
-      lines.push('合計 = ' + fmtNum(rawTotal) + '(' + charterDiscPrefix + '折扣後$' + fmtNum(finalTotal) + ')');
+      // 折扣跟開發票要加的 +5% 營業稅是兩件不同的事，沒有折扣、只是加稅的話
+      // 要寫「稅後」，不能寫成「折扣後」；兩個都有才寫「折扣、稅後」。
+      var hasCharterDiscount = appliedCharterDiscountNames.length > 0;
+      var charterDiscPrefix = hasCharterDiscount ? appliedCharterDiscountNames.join('、') : '';
+      var charterAfterLabel = hasCharterDiscount
+        ? (hasCharterInvoiceTax ? '折扣、稅後$' : '折扣後$')
+        : '稅後$';
+      lines.push('合計 = ' + fmtNum(rawTotal) + '(' + charterDiscPrefix + charterAfterLabel + fmtNum(finalTotal) + ')');
     } else {
       lines.push('合計 = $' + fmtNum(rawTotal));
     }
