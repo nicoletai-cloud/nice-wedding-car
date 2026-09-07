@@ -2991,6 +2991,25 @@
       'ドライバーの対応やその他の点でお気づきのことがございましたら、いつでもカスタマーサービスまでお聞かせください。いただいたご意見は、より良いサービスへの大切な機会となります。\n' +
       'ご理解とご信頼に感謝いたします。どうぞ安全で素敵なご旅行を ♡'
   };
+  // 報價文字的匯款資訊、發票／出車前說明——中文版由使用者自己在「報價固定
+  // 文字」編輯、可自由修改，這裡的 en/ja 是固定翻譯版本（銀行名稱、戶名、
+  // 公司名稱等專有名詞維持原文，不會被翻譯，只翻譯欄位說明文字）。切換報價
+  // 語言時，附上匯款資訊／發票說明也要跟著換成對應語言，不能只翻標籤跟刷卡
+  // 提醒、卻漏掉這兩段。
+  var BANK_BLOCK_I18N = {
+    en: {
+      future: 'Bank Transfer Details:\nFuture Bank (823) | Business Dept. (1688)\nAccount No.: 8865-36668-36668\nAccount Name: 答O正\n\nAfter payment, please provide the passenger’s name, phone number, and pickup/drop-off address',
+      jindachun: 'Bank Transfer Details:\nCTBC Bank (822) Chengbei Branch\nAccount No.: 200-54023678-1\nAccount Name: Jin Da Chun Co., Ltd. (金大春有限公司)\n\nAfter payment, please provide the passenger’s name, phone number, and pickup/drop-off address'
+    },
+    ja: {
+      future: 'お振込先情報：\n將來銀行(823)｜営業部(1688)\n口座番号：8865-36668-36668\n口座名義：答O正\n\nお支払い完了後、乗客様のお名前・電話番号・送迎先住所をご提供ください',
+      jindachun: 'お振込先情報：\n中國信託銀行(822) 城北支店\n口座番号：200-54023678-1\n口座名義：金大春有限公司\n\nお支払い完了後、乗客様のお名前・電話番号・送迎先住所をご提供ください'
+    }
+  };
+  var NOTICE_BLOCK_I18N = {
+    en: 'An e-receipt is provided for every order. If you need a formal invoice (item: service fee), please provide your tax ID and company name.\n(+5% business tax applies)\n\nDriver and vehicle information will be provided the day before your trip',
+    ja: 'ご注文ごとに電子領収書を発行いたします。統一発票（項目：サービス料）が必要な場合は、統一番号と宛名をご提供ください。\n（別途+5%の営業税がかかります）\n\nご利用前日にドライバーと車両の情報をお送りいたします'
+  };
   function pl(){ return PLABELS[currentPassengerLang] || PLABELS['zh-TW']; }
   function updatePassengerLangButtons(){
     if (!els.dLangRow) return;
@@ -4067,7 +4086,7 @@
     // 「附上刷卡付款連結」——刷卡有手續費，客人習慣匯款的話可以只附匯款資訊，
     // 不用把刷卡連結也貼給客人。
     if (shouldShowBankInfo()){
-      var bankText = selectedBankBlockText();
+      var bankText = selectedBankBlockText(currentQuoteLang);
       if (bankText) lines.push(bankText);
     }
     if (shouldShowCardLink() && els.qPayLink.value.trim()){
@@ -4075,9 +4094,10 @@
       lines.push(L.creditCard + els.qPayLink.value.trim());
       lines.push(L.creditCardNote);
     }
-    if (els.qNoticeBlock.value.trim()){
+    var noticeText = currentQuoteLang === 'zh-TW' ? els.qNoticeBlock.value.trim() : (NOTICE_BLOCK_I18N[currentQuoteLang] || '');
+    if (noticeText){
       lines.push('');
-      lines.push(els.qNoticeBlock.value.trim());
+      lines.push(noticeText);
     }
     return lines.join('\n');
   }
@@ -4092,9 +4112,18 @@
     return !els.qShowCardLink || els.qShowCardLink.checked;
   }
 
-  function selectedBankBlockText(){
+  // lang 省略、或傳 'zh-TW' 時維持原本行為：使用者在「報價固定文字」自己編輯
+  // 的中文版本。傳 en／ja 時改用 BANK_BLOCK_I18N 的固定翻譯——報價選了英文／
+  // 日文，匯款資訊也要跟著換成對應語言，不能還是整段中文貼給外國客人。包車
+  // 報價（buildCharterQuoteText）沒有語言切換，呼叫這個函式時不帶 lang，一律
+  // 維持中文版本。
+  function selectedBankBlockText(lang){
     var el = document.querySelector('input[name="qBankChoice"]:checked');
     var choice = el ? el.value : 'future';
+    if (lang && lang !== 'zh-TW'){
+      var i18nBlock = BANK_BLOCK_I18N[lang];
+      return i18nBlock ? (i18nBlock[choice] || i18nBlock.future) : '';
+    }
     var block = choice === 'jindachun' ? els.qBankBlockJindachun.value : els.qBankBlockFuture.value;
     return block.trim();
   }
