@@ -3158,7 +3158,37 @@
   // 要讓使用者各自指定要用哪一筆訂單，兩個都勾就兩行一起貼給司機群組。
   function findOrderById(id){
     if (!id) return null;
-    return recentOrders.find(function(x){ return x.id === id; }) || null;
+    return findDriverCandidateOrders().find(function(x){ return x.id === id; }) || null;
+  }
+
+  // 使用者平常大多是在「報價」分頁存報價（一筆報價可能有多段行程），很少
+  // 特地在「訂單／派車」分頁另外存一次訂單——如果找司機的「選擇訂單」只從
+  // recentOrders 找，實務上常常是空的。這裡把每筆報價的每一段行程也攤平成
+  // 跟訂單同樣格式的候選項目，兩邊來源合併，才找得到使用者實際存的資料。
+  function quoteLegToFindDriverOrder(q, leg, idx){
+    return {
+      id: 'ql_' + q.id + '_' + idx,
+      date: leg.date || '',
+      svcType: leg.svc || '',
+      flightNo: leg.flight || '',
+      pickupAddr: leg.pickupArea || '',
+      dropoffAddr: leg.dropoffArea || '',
+      pickupTime: leg.pickupTime || '',
+      custSource: q.custSource,
+      custSourceName: q.custSourceName,
+      contactName: q.custName,
+      savedAt: q.savedAt
+    };
+  }
+
+  function findDriverCandidateOrders(){
+    var fromQuotes = [];
+    recentQuotes.forEach(function(q){
+      (q.legs || []).forEach(function(leg, idx){
+        fromQuotes.push(quoteLegToFindDriverOrder(q, leg, idx));
+      });
+    });
+    return recentOrders.concat(fromQuotes);
   }
 
   function buildFindDriverLegLine(order, direction, carStr, amountVal){
@@ -3218,7 +3248,7 @@
   function renderFindDriverOrderSelect(selectEl, matchSvcTypes){
     if (!selectEl) return;
     var prevVal = selectEl.value;
-    var filtered = recentOrders.filter(function(o){ return matchSvcTypes.indexOf(o.svcType) !== -1; });
+    var filtered = findDriverCandidateOrders().filter(function(o){ return matchSvcTypes.indexOf(o.svcType) !== -1; });
     var opts = ['<option value="">－選擇訂單－</option>'].concat(filtered.map(function(o){
       return '<option value="' + o.id + '">' + escapeHtml(fdOrderOptionLabel(o)) + '</option>';
     }));
@@ -4729,21 +4759,24 @@
   }
 
   function renderRecentQuotesList(){
-    if (!els.recentQuoteList) return;
-    if (!recentQuotes.length){
-      els.recentQuoteList.innerHTML = '<p class="list-empty">尚未儲存報價</p>';
-      return;
+    if (els.recentQuoteList){
+      if (!recentQuotes.length){
+        els.recentQuoteList.innerHTML = '<p class="list-empty">尚未儲存報價</p>';
+      } else {
+        els.recentQuoteList.innerHTML = recentQuotes.map(function(q){
+          var firstLeg = q.legs && q.legs[0];
+          var legSummary = firstLeg ? (fmtMD(firstLeg.date) + ' ' + firstLeg.svc) : '';
+          return '<div class="list-row" data-id="' + q.id + '">' +
+            '<div class="li-main"><div class="li-name">' + escapeHtml(quoteSourceLabel(q)) + '　NT$ ' + fmtNum(q.finalTotal) + '</div>' +
+            '<div class="li-sub">' + escapeHtml(legSummary) + '　存於 ' + fmtSavedAt(q.savedAt) + '</div></div>' +
+            '<button type="button" class="chip" data-load-quote="' + q.id + '">載入</button>' +
+            '<button type="button" class="del" data-del-quote="' + q.id + '">✕</button>' +
+            '</div>';
+        }).join('');
+      }
     }
-    els.recentQuoteList.innerHTML = recentQuotes.map(function(q){
-      var firstLeg = q.legs && q.legs[0];
-      var legSummary = firstLeg ? (fmtMD(firstLeg.date) + ' ' + firstLeg.svc) : '';
-      return '<div class="list-row" data-id="' + q.id + '">' +
-        '<div class="li-main"><div class="li-name">' + escapeHtml(quoteSourceLabel(q)) + '　NT$ ' + fmtNum(q.finalTotal) + '</div>' +
-        '<div class="li-sub">' + escapeHtml(legSummary) + '　存於 ' + fmtSavedAt(q.savedAt) + '</div></div>' +
-        '<button type="button" class="chip" data-load-quote="' + q.id + '">載入</button>' +
-        '<button type="button" class="del" data-del-quote="' + q.id + '">✕</button>' +
-        '</div>';
-    }).join('');
+    // 報價存的每一段行程也是找司機的候選訂單來源，報價列表更新時要一併刷新
+    renderFindDriverOrderSelects();
   }
 
   function serializeCurrentQuote(){
