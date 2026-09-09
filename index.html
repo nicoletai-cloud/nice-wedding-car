@@ -1584,7 +1584,11 @@
         </details>
       </div>
 
-      <div class="card">
+      <div class="card" id="gmapsCompactStatus" hidden>
+        <button type="button" class="link-btn" id="gmapsCompactEditBtn">🗺️ Google 地圖已啟用（地址自動完成／距離）　變更設定</button>
+      </div>
+
+      <div class="card" id="gmapsSettingsCard">
         <details class="settings">
           <summary><span class="dot"></span>Google 地圖設定（地址自動完成／距離）<span class="chev">▾</span></summary>
           <p class="hint">
@@ -1750,6 +1754,9 @@
     companyPhone: document.getElementById('companyPhone'),
     gmapsApiKey: document.getElementById('gmapsApiKey'),
     gmapsStatusMsg: document.getElementById('gmapsStatusMsg'),
+    gmapsSettingsCard: document.getElementById('gmapsSettingsCard'),
+    gmapsCompactStatus: document.getElementById('gmapsCompactStatus'),
+    gmapsCompactEditBtn: document.getElementById('gmapsCompactEditBtn'),
     logoInput: document.getElementById('logoInput'),
     resetLogoBtn: document.getElementById('resetLogoBtn'),
     settingsLogoPreview: document.getElementById('settingsLogoPreview'),
@@ -2489,6 +2496,15 @@
     });
   }
 
+  // 金鑰填好、功能正常運作之後，這張設定卡片對她來說已經沒事可做了——收合成
+  // 一行小提示，不要一直佔設定區的版面；要改金鑰的話點那行小提示就能叫回來。
+  function updateGmapsCardVisibility(){
+    if (!els.gmapsSettingsCard || !els.gmapsCompactStatus) return;
+    var hasKey = !!(safeGet('hhlc_gmaps_api_key') || '').trim();
+    els.gmapsCompactStatus.hidden = !hasKey;
+    els.gmapsSettingsCard.hidden = hasKey;
+  }
+
   if (els.gmapsApiKey){
     els.gmapsApiKey.value = safeGet('hhlc_gmaps_api_key') || '';
     els.gmapsApiKey.addEventListener('change', function(){
@@ -2503,6 +2519,18 @@
         safeRemove('hhlc_gmaps_api_key');
         if (els.gmapsStatusMsg) setDispatchStatus(els.gmapsStatusMsg, '', '');
       }
+      updateGmapsCardVisibility();
+    });
+    updateGmapsCardVisibility();
+  }
+
+  if (els.gmapsCompactEditBtn){
+    els.gmapsCompactEditBtn.addEventListener('click', function(){
+      els.gmapsCompactStatus.hidden = true;
+      els.gmapsSettingsCard.hidden = false;
+      var detailsEl = els.gmapsSettingsCard.querySelector('details');
+      if (detailsEl) detailsEl.open = true;
+      els.gmapsApiKey.focus();
     });
   }
 
