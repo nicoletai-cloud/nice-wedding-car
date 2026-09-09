@@ -944,27 +944,30 @@
           </div>
 
           <div class="field">
-            <label for="dPickupAddr">上車地區（簡易地址，例如：台北內湖，不用寫縣市區——找司機訊息會用這個）</label>
-            <input type="text" id="dPickupAddr">
-            <div class="quick-picks">
-              <button type="button" class="chip" data-target="#dPickupAddr" data-fill="桃園國際機場">桃園國際機場</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="dDropoffAddr">下車地區（簡易地址，例如：台北內湖，不用寫縣市區——找司機訊息會用這個）</label>
-            <input type="text" id="dDropoffAddr">
-            <div class="quick-picks">
-              <button type="button" class="chip" data-target="#dDropoffAddr" data-fill="桃園國際機場">桃園國際機場</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="dPickupFullAddr">完整上車地址（給司機單／乘客單使用，選填——沒填就會用上面的簡易地址代替）</label>
+            <label for="dPickupFullAddr">上車地址（給司機單／乘客單使用；找司機訊息會自動抓出簡易地區，不用另外再填一次）</label>
             <input type="text" id="dPickupFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
+            <div class="quick-picks">
+              <button type="button" class="chip" data-target="#dPickupFullAddr" data-fill="桃園國際機場">桃園國際機場</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="dDropoffFullAddr">下車地址（給司機單／乘客單使用；找司機訊息會自動抓出簡易地區，不用另外再填一次）</label>
+            <input type="text" id="dDropoffFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
+            <div class="quick-picks">
+              <button type="button" class="chip" data-target="#dDropoffFullAddr" data-fill="桃園國際機場">桃園國際機場</button>
+            </div>
+          </div>
+          <!-- 簡易地址欄位不再顯示在畫面上（使用者反映跟完整地址重複填寫太麻煩）——
+               找司機訊息一律直接從上面的地址欄位自動抓出簡易地區（shortAreaForFindDriver），
+               這兩個欄位保留在畫面外只是為了不用大幅改動儲存格式／舊資料仍相容。 -->
+          <div class="field" hidden>
+            <label for="dPickupAddr">上車地區（簡易地址）</label>
+            <input type="text" id="dPickupAddr">
             <div class="quick-picks"></div>
           </div>
-          <div class="field">
-            <label for="dDropoffFullAddr">完整下車地址（給司機單／乘客單使用，選填——沒填就會用上面的簡易地址代替）</label>
-            <input type="text" id="dDropoffFullAddr" placeholder="例如：台北市內湖區康樂街136巷18弄62號">
+          <div class="field" hidden>
+            <label for="dDropoffAddr">下車地區（簡易地址）</label>
+            <input type="text" id="dDropoffAddr">
             <div class="quick-picks"></div>
           </div>
           <div class="field">
@@ -1276,7 +1279,7 @@
               <div class="trip-add-row" style="margin-bottom:10px;">
                 <button type="button" class="add-btn ghost" id="ocrPasteBtn">📋 貼上</button>
                 <button type="button" class="add-btn ghost" id="ocrUploadBtn">📷 上傳截圖</button>
-                <button type="button" class="add-btn ghost" id="ocrRecognizeBtn" disabled>🔍 辨識文字</button>
+                <button type="button" class="add-btn ghost" id="ocrRecognizeBtn">🔍 辨識文字</button>
                 <input type="file" id="ocrFileInput" accept="image/*" hidden>
               </div>
               <div class="status" id="ocrStatusMsg"></div>
@@ -4732,7 +4735,11 @@
     var existing = els.quotePasteInput.value.trim();
     els.quotePasteInput.value = existing ? (existing + '\n\n' + text) : text;
   }
-  // ---- Two-step flow: stage an image first (貼上 / 上傳截圖), then explicitly 辨識文字 ----
+  // ---- 附上截圖後直接自動開始辨識，不用使用者自己再按一次「辨識文字」——
+  // 原本是「先附上截圖、再手動按辨識文字」兩個步驟，但附上截圖後畫面上只有
+  // 一張小縮圖跟一行不太顯眼的狀態文字，很容易讓人以為「上傳截圖沒有反應」
+  // （使用者反映：上傳截圖、辨識文字都「沒有作用」）。「辨識文字」按鈕還是
+  // 保留著，辨識失敗、或想針對同一張截圖重跑一次的話可以再手動按一次。 ----
   var ocrStagedFile = null;
   function stageOcrImage(file, statusEl){
     if (!file) return;
@@ -4743,7 +4750,9 @@
       els.ocrPreviewImg.style.display = '';
     }
     if (els.ocrRecognizeBtn) els.ocrRecognizeBtn.disabled = false;
-    setDispatchStatus(statusEl, '已附上截圖，請按「辨識文字」', 'ok');
+    runOcrOnFile(file, statusEl).then(function(text){
+      insertOcrTextIntoPasteInput(text);
+    }).catch(function(){});
   }
   if (els.ocrUploadBtn && els.ocrFileInput){
     els.ocrUploadBtn.addEventListener('click', function(){ els.ocrFileInput.click(); });
@@ -4797,7 +4806,10 @@
   }
   if (els.ocrRecognizeBtn){
     els.ocrRecognizeBtn.addEventListener('click', function(){
-      if (!ocrStagedFile) return;
+      if (!ocrStagedFile){
+        setDispatchStatus(els.ocrStatusMsg, '請先用「上傳截圖」或「貼上」附上一張截圖，再按這個按鈕', 'err');
+        return;
+      }
       els.ocrRecognizeBtn.disabled = true;
       runOcrOnFile(ocrStagedFile, els.ocrStatusMsg).then(function(text){
         insertOcrTextIntoPasteInput(text);
