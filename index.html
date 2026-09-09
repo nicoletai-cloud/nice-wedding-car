@@ -1583,6 +1583,26 @@
           </div>
         </details>
       </div>
+
+      <div class="card">
+        <details class="settings">
+          <summary><span class="dot"></span>Google 地圖設定（地址自動完成／距離）<span class="chev">▾</span></summary>
+          <p class="hint">
+            填入你自己的 Google Maps API 金鑰後，「報價」「訂單／派車」的地址欄位打字時會有
+            Google 地圖建議地址可以直接點選（客人地址沒寫完整也能自動補完整），報價的上／
+            下車地區選了建議地址後，也會自動算出距離桃園機場約幾公里（僅供參考顯示，加價還是
+            依鄉鎮市區加價表自動判斷，不會因為公里數變動）。這個金鑰只會存在這個瀏覽器，不會
+            送去別的地方。沒有金鑰的話，以上兩個功能就不會啟用，其他功能不受影響。
+          </p>
+          <div class="settings-body">
+            <div class="field">
+              <label for="gmapsApiKey">Google Maps API 金鑰</label>
+              <input type="text" id="gmapsApiKey" placeholder="貼上你的 Google Maps API 金鑰" autocomplete="off">
+            </div>
+            <div id="gmapsStatusMsg" class="hint"></div>
+          </div>
+        </details>
+      </div>
     </div>
 
     <!-- RIGHT: PREVIEW -->
@@ -1728,6 +1748,8 @@
     receiptNo: document.getElementById('receiptNo'),
     issueDate: document.getElementById('issueDate'),
     companyPhone: document.getElementById('companyPhone'),
+    gmapsApiKey: document.getElementById('gmapsApiKey'),
+    gmapsStatusMsg: document.getElementById('gmapsStatusMsg'),
     logoInput: document.getElementById('logoInput'),
     resetLogoBtn: document.getElementById('resetLogoBtn'),
     settingsLogoPreview: document.getElementById('settingsLogoPreview'),
@@ -2250,6 +2272,7 @@
     els.companyPhone.value = loadPhone();
     addTripRow({});
     updateCompanyAndPeriodVisibility();
+    if (currentGmapsKey()) enableGoogleAddressFeatures();
   }
 
   // ---------- shareable e-receipt link (#r=...) ----------
@@ -2355,6 +2378,133 @@
     safeSet('hhlc_phone', els.companyPhone.value);
     render();
   });
+
+  // =====================================================================
+  // Google 地圖：地址自動完成（Places Autocomplete）＋ 距離桃園機場（僅供
+  // 參考顯示，偏遠地區加價仍依鄉鎮市區加價表自動判斷，不受這裡影響）。
+  // 金鑰要使用者自己申請、自己填，只存在這個瀏覽器（localStorage），沒有
+  // 金鑰就完全不載入 Google 的 script，其他功能不受影響。
+  // =====================================================================
+  var TAOYUAN_AIRPORT_LATLNG = { lat: 25.0797, lng: 121.2342 };
+  var gmapsLoadState = 'idle'; // idle | loading | ready | error
+  var gmapsLoadCallbacks = [];
+  var gmapsDistanceService = null;
+
+  function currentGmapsKey(){
+    return (els.gmapsApiKey && els.gmapsApiKey.value.trim()) || safeGet('hhlc_gmaps_api_key') || '';
+  }
+
+  function loadGoogleMapsIfNeeded(cb){
+    var key = currentGmapsKey();
+    if (!key){ if (cb) cb(false); return; }
+    if (gmapsLoadState === 'ready'){ if (cb) cb(true); return; }
+    if (gmapsLoadState === 'error'){ if (cb) cb(false); return; }
+    if (cb) gmapsLoadCallbacks.push(cb);
+    if (gmapsLoadState === 'loading') return;
+    gmapsLoadState = 'loading';
+    var script = document.createElement('script');
+    script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places';
+    script.async = true;
+    script.onload = function(){
+      gmapsLoadState = 'ready';
+      gmapsDistanceService = new google.maps.DistanceMatrixService();
+      gmapsLoadCallbacks.forEach(function(fn){ fn(true); });
+      gmapsLoadCallbacks = [];
+    };
+    script.onerror = function(){
+      gmapsLoadState = 'error';
+      if (els.gmapsStatusMsg) setDispatchStatus(els.gmapsStatusMsg, 'Google 地圖載入失敗，請確認金鑰是否正確、是否已在 Google Cloud 開啟 Places API 與計費', 'err');
+      gmapsLoadCallbacks.forEach(function(fn){ fn(false); });
+      gmapsLoadCallbacks = [];
+    };
+    document.head.appendChild(script);
+  }
+
+  // 幫某個地址欄位接上 Google 地址自動完成建議——選了建議地址後欄位會自動
+  // 換成 Google 回傳的完整地址（客人自己打的地址沒寫完整，選一次就補齊），
+  // 並觸發原本的 input 監聽（地址簡化、偏遠地區加價判斷都會照原本邏輯跑）。
+  function bindAddressAutocomplete(inputEl, onPlace){
+    if (!inputEl || !window.google || !google.maps || !google.maps.places) return;
+    if (inputEl.dataset.gmapsBound === 'true') return;
+    inputEl.dataset.gmapsBound = 'true';
+    var autocomplete = new google.maps.places.Autocomplete(inputEl, {
+      componentRestrictions: { country: 'tw' },
+      fields: ['formatted_address', 'geometry', 'name']
+    });
+    autocomplete.addListener('place_changed', function(){
+      var place = autocomplete.getPlace();
+      if (!place) return;
+      var addr = place.formatted_address || place.name || '';
+      if (addr){
+        inputEl.value = addr;
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (onPlace) onPlace(place);
+    });
+  }
+
+  // 選了報價地址欄位的建議地址後，算一次到桃園機場的距離，顯示在欄位下面
+  // 的提示文字裡（僅供參考，不會影響偏遠地區加價金額）。
+  function updateQuoteDistanceNote(noteEl, place){
+    if (!noteEl) return;
+    if (!place || !place.geometry || !place.geometry.location || !gmapsDistanceService){
+      noteEl.textContent = '';
+      return;
+    }
+    noteEl.textContent = '距桃園機場：計算中…';
+    gmapsDistanceService.getDistanceMatrix({
+      origins: [place.geometry.location],
+      destinations: [TAOYUAN_AIRPORT_LATLNG],
+      travelMode: 'DRIVING',
+      unitSystem: google.maps.UnitSystem.METRIC
+    }, function(res, status){
+      if (status !== 'OK' || !res || !res.rows || !res.rows[0] || !res.rows[0].elements || !res.rows[0].elements[0] || res.rows[0].elements[0].status !== 'OK'){
+        noteEl.textContent = '距桃園機場：查詢失敗';
+        return;
+      }
+      noteEl.textContent = '距桃園機場約 ' + res.rows[0].elements[0].distance.text + '（僅供參考）';
+    });
+  }
+
+  // 幫某一筆報價行程的上／下車地區欄位接上自動完成＋距離顯示
+  function bindQuoteLegAddressAutocomplete(row){
+    if (!row) return;
+    var pickupEl = row.querySelector('.q-pickup-area');
+    var dropoffEl = row.querySelector('.q-dropoff-area');
+    var pickupNote = row.querySelector('.q-pickup-area').closest('.field').querySelector('.q-distance-note');
+    var dropoffNote = row.querySelector('.q-dropoff-area').closest('.field').querySelector('.q-distance-note');
+    if (pickupEl) bindAddressAutocomplete(pickupEl, function(place){ updateQuoteDistanceNote(pickupNote, place); });
+    if (dropoffEl) bindAddressAutocomplete(dropoffEl, function(place){ updateQuoteDistanceNote(dropoffNote, place); });
+  }
+
+  function enableGoogleAddressFeatures(){
+    loadGoogleMapsIfNeeded(function(ok){
+      if (!ok) return;
+      if (els.dPickupFullAddr) bindAddressAutocomplete(els.dPickupFullAddr);
+      if (els.dDropoffFullAddr) bindAddressAutocomplete(els.dDropoffFullAddr);
+      document.querySelectorAll('#quoteLegsContainer .trip-row').forEach(function(row){
+        bindQuoteLegAddressAutocomplete(row);
+      });
+      if (els.gmapsStatusMsg) setDispatchStatus(els.gmapsStatusMsg, 'Google 地圖已啟用，地址欄位打字會出現建議地址', 'ok');
+    });
+  }
+
+  if (els.gmapsApiKey){
+    els.gmapsApiKey.value = safeGet('hhlc_gmaps_api_key') || '';
+    els.gmapsApiKey.addEventListener('change', function(){
+      var key = els.gmapsApiKey.value.trim();
+      if (key){
+        safeSet('hhlc_gmaps_api_key', key);
+        // 金鑰換了要重新載入，舊的 script／狀態作廢
+        gmapsLoadState = 'idle';
+        gmapsLoadCallbacks = [];
+        enableGoogleAddressFeatures();
+      } else {
+        safeRemove('hhlc_gmaps_api_key');
+        if (els.gmapsStatusMsg) setDispatchStatus(els.gmapsStatusMsg, '', '');
+      }
+    });
+  }
 
   if (els.langRow){
     els.langRow.querySelectorAll('.lang-btn').forEach(function(btn){
@@ -2963,6 +3113,13 @@
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
     }
   };
+  // 客人選付現時，貼給客人的文字要清楚寫「收現金 $xxxx」，客人才知道要準備
+  // 多少現金——回金／匯款帳號是公司跟司機之間的事，不寫進客人版。
+  var PAY_CASH_LABEL = {
+    'zh-TW': '收款方式｜收現金 $',
+    en: 'Payment | Cash on arrival: $',
+    ja: 'お支払い方法｜現地にて現金でお支払い：$'
+  };
   // fixed translations of the wait-time notice (the zh-TW version stays user-editable
   // via dWaitNoticeBlock; these two are machine-translated — worth a native check before heavy use)
   var WAIT_NOTICE_I18N = {
@@ -3085,6 +3242,13 @@
     var L = pl();
     var lang = currentPassengerLang;
     var lines = buildTripInfoLines(L, lang);
+    // 客人選付現時，貼給客人的文字也要寫清楚現場要收多少現金，客人才知道要
+    // 準備多少錢——回金／匯款帳號是公司跟司機之間的事，客人版不需要看到。
+    if (currentPaymentMethod() === 'cash'){
+      var amount = Number(els.dAmount && els.dAmount.value) || 0;
+      lines.push('');
+      lines.push((PAY_CASH_LABEL[lang] || PAY_CASH_LABEL['zh-TW']) + fmtNum(amount));
+    }
     var waitNotice = (lang === 'zh-TW')
       ? (els.dWaitNoticeBlock ? els.dWaitNoticeBlock.value.trim() : '')
       : (WAIT_NOTICE_I18N[lang] || '');
@@ -3191,13 +3355,45 @@
     return recentOrders.concat(fromQuotes);
   }
 
+  // 找司機是發到司機群組的招車短訊，地址只需要讓當地司機看得懂大概在哪裡，
+  // 不需要完整地址（完整地址司機到現場再看訂單／派車單即可）——所以這裡比
+  // 「報價」用的 simplifyAddressArea() 更進一步，連城市名都拿掉，只留鄉鎮市
+  // 區本身（例如「臺北市士林區中山北路...」->「士林」，就算沒寫「臺北市」
+  // 也能靠 extractCityDistrict() 的對照表反查出來）。但像「北區」「中區」這種
+  // 只剩一個字會看不出地名的，保留「區」字（->「北區」），避免語意不清。
+  function shortAreaForFindDriver(addr){
+    var s = String(addr || '').trim();
+    if (!s) return s;
+    var hit = extractCityDistrict(s);
+    if (!hit) return s;
+    return shortDistrictName(hit.district);
+  }
+
+  // 上車時間用 12 小時制＋am/pm（例如「10:30am」「5:00pm」），比 24 小時制更
+  // 符合司機群組平常溝通時間的習慣寫法。
+  function fmtTimeAmPm(hhmm){
+    if (!hhmm) return '';
+    var parts = hhmm.split(':');
+    var h = Number(parts[0]), m = parts[1];
+    if (isNaN(h) || m == null) return '';
+    var suffix = h < 12 ? 'am' : 'pm';
+    var h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    return h12 + ':' + m + suffix;
+  }
+
   function buildFindDriverLegLine(order, direction, carStr, amountVal){
     var o = order || {};
     var dateStr = fmtMD(o.date || '');
-    var timeStr = fmtTime24(o.pickupTime || '');
-    var flight = (o.flightNo || '').trim();
-    var pickupArea = (o.pickupAddr || '').trim();
-    var dropoffArea = (o.dropoffAddr || '').trim();
+    var timeStr = fmtTimeAmPm(o.pickupTime || '');
+    // 送機司機不需要知道客人的班機（司機只要準時到府接客人去機場）；接機才
+    // 要看班機號，才能配合航班狀況調整到場時間，所以只有接機才顯示班機號。
+    var flight = direction === '接機' ? (o.flightNo || '').trim() : '';
+    // 訂單／派車現在轉入報價時直接帶完整地址（見 dImportQuoteBtn），簡易地址
+    // 欄位常常是空的——找司機需要的簡易地區直接從完整地址自動抓，兩邊都
+    // 沒填才會是空字串。
+    var pickupArea = shortAreaForFindDriver(o.pickupAddr || o.pickupFullAddr || '');
+    var dropoffArea = shortAreaForFindDriver(o.dropoffAddr || o.dropoffFullAddr || '');
     var svcArea;
     if (direction === '接機'){
       svcArea = dropoffArea ? ('接機' + dropoffArea) : '接機';
@@ -3536,9 +3732,11 @@
       '<div class="quick-picks"><button type="button" class="chip q-pickup-auto-btn">依航班時間自動計算</button></div></div>' +
       '<div class="row2">' +
       '<div class="field"><label>上車地區</label><input type="text" class="q-pickup-area" placeholder="例如：台北信義">' +
-      '<div class="quick-picks"><button type="button" class="chip" data-target=".q-pickup-area" data-fill="桃園國際機場">桃園國際機場</button></div></div>' +
+      '<div class="quick-picks"><button type="button" class="chip" data-target=".q-pickup-area" data-fill="桃園國際機場">桃園國際機場</button></div>' +
+      '<div class="hint q-distance-note" style="margin-top:2px;"></div></div>' +
       '<div class="field"><label>下車地區</label><input type="text" class="q-dropoff-area" placeholder="例如：台北信義">' +
-      '<div class="quick-picks"><button type="button" class="chip" data-target=".q-dropoff-area" data-fill="桃園國際機場">桃園國際機場</button></div></div>' +
+      '<div class="quick-picks"><button type="button" class="chip" data-target=".q-dropoff-area" data-fill="桃園國際機場">桃園國際機場</button></div>' +
+      '<div class="hint q-distance-note" style="margin-top:2px;"></div></div>' +
       '</div>' +
       '<p class="hint" style="margin-top:-6px;">報價只需縣市／區域，完整地址留到訂單／派車再填</p>' +
       '<div class="field">' +
@@ -3559,6 +3757,8 @@
       '<span class="amt-inline"><input type="number" class="q-seat-amt" value="250" min="0"></span></div>' +
       '<div class="check-row"><input type="checkbox" class="q-extra-chk"><label style="margin:0;">加點</label>' +
       '<span class="amt-inline"><input type="number" class="q-extra-amt" value="100" min="0"></span></div>' +
+      '<div class="check-row"><input type="checkbox" class="q-remote-chk"><label style="margin:0;">偏遠地區加價<span class="q-remote-note" style="color:#8a6d3b;"></span></label>' +
+      '<span class="amt-inline"><input type="number" class="q-remote-amt" value="0" min="0"></span></div>' +
       '<div class="field" style="margin-bottom:0;"><label>小計</label>' +
       '<div class="driver-readout q-subtotal">NT$ 0</div></div>';
     els.quoteLegsContainer.appendChild(row);
@@ -3596,6 +3796,17 @@
     if (prefill.seatAmt != null) row.querySelector('.q-seat-amt').value = prefill.seatAmt;
     if (prefill.extraChk) row.querySelector('.q-extra-chk').checked = true;
     if (prefill.extraAmt != null) row.querySelector('.q-extra-amt').value = prefill.extraAmt;
+    // remoteChk 是布林值，就算是 false 也代表這筆資料原本就有記錄（例如載入
+    // 已存的報價，使用者當初手動取消了偏遠地區加價）——要標記成手動調整過，
+    // 之後改地址才不會又被自動判斷覆蓋掉。「來回」按鈕複製上一筆行程時不會
+    // 帶這個欄位（prefill.remoteChk 是 undefined），才會走下面自動判斷那條路。
+    if (typeof prefill.remoteChk === 'boolean'){
+      row.querySelector('.q-remote-chk').checked = prefill.remoteChk;
+      if (prefill.remoteAmt != null) row.querySelector('.q-remote-amt').value = prefill.remoteAmt;
+      row.dataset.remoteManual = 'true';
+    } else {
+      autoApplyRemoteSurcharge(row);
+    }
     if (prefill.extraStopChk){
       row.querySelector('.q-extra-stop-chk').checked = true;
       row.querySelector('.q-extra-stop-addr').style.display = '';
@@ -3608,6 +3819,7 @@
       updateQuoteModelBase(row);
     }
     if (!prefill.pickupTime) autoPickupTime(row);
+    bindQuoteLegAddressAutocomplete(row);
     renderQuoteDoc();
   }
 
@@ -3659,6 +3871,29 @@
     if (p) row.querySelector('.q-base').value = p.price;
   }
 
+  // 上／下車地區只要有一邊落在偏遠地區加價表，就自動幫忙勾選「偏遠地區加價」
+  // 並帶入對應金額，省得使用者自己對照表格手動加。使用者如果自己勾／取消或
+  // 改金額（row.dataset.remoteManual），之後改地址就不再自動覆蓋，尊重手動
+  // 調整過的結果。
+  function autoApplyRemoteSurcharge(row){
+    if (row.dataset.remoteManual === 'true') return;
+    var pickupArea = row.querySelector('.q-pickup-area').value.trim();
+    var dropoffArea = row.querySelector('.q-dropoff-area').value.trim();
+    var hit = remoteAreaSurchargeFor(pickupArea, dropoffArea);
+    var chk = row.querySelector('.q-remote-chk');
+    var amtEl = row.querySelector('.q-remote-amt');
+    var noteEl = row.querySelector('.q-remote-note');
+    if (hit){
+      chk.checked = true;
+      amtEl.value = hit.amount;
+      if (noteEl) noteEl.textContent = '（' + hit.district + '，可調整／取消）';
+    } else {
+      chk.checked = false;
+      amtEl.value = 0;
+      if (noteEl) noteEl.textContent = '';
+    }
+  }
+
   function bindQuoteLegEvents(row){
     row.querySelector('.remove-trip').addEventListener('click', function(){
       if (els.quoteLegsContainer.querySelectorAll('.trip-row').length <= 1) return;
@@ -3671,8 +3906,27 @@
       renderQuoteDoc();
     });
     row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); renderQuoteDoc(); }); });
+    // 上／下車地區原本沒有接 input 監聽，使用者打字或用快速按鈕帶入地址時，
+    // 報價文字預覽不會馬上更新（要等其他欄位剛好也觸發才會一起更新），
+    // 容易讓人誤以為地址沒存到。這裡補上，輸入當下就即時反映在預覽裡。
     ['.q-date','.q-flight','.q-base','.q-air-amt','.q-night-amt','.q-sign-amt','.q-seat-amt','.q-extra-amt'].forEach(function(sel){
       row.querySelector(sel).addEventListener('input', renderQuoteDoc);
+    });
+    // 上／下車地區另外接自動判斷偏遠地區加價（見 autoApplyRemoteSurcharge），
+    // 要先判斷完再重繪預覽，不能跟上面共用同一個監聽陣列。
+    ['.q-pickup-area','.q-dropoff-area'].forEach(function(sel){
+      row.querySelector(sel).addEventListener('input', function(){
+        autoApplyRemoteSurcharge(row);
+        renderQuoteDoc();
+      });
+    });
+    row.querySelector('.q-remote-chk').addEventListener('change', function(){
+      row.dataset.remoteManual = 'true';
+      renderQuoteDoc();
+    });
+    row.querySelector('.q-remote-amt').addEventListener('input', function(){
+      row.dataset.remoteManual = 'true';
+      renderQuoteDoc();
     });
     row.querySelector('.q-dep').addEventListener('input', function(){ autoNight(row); autoPickupTime(row); renderQuoteDoc(); });
     row.querySelector('.q-arr').addEventListener('input', function(){ autoNight(row); autoPickupTime(row); renderQuoteDoc(); });
@@ -3707,6 +3961,7 @@
         if (!input) return;
         input.value = btn.dataset.fill;
         input.focus();
+        renderQuoteDoc();
       });
     });
     var lookupBtn = row.querySelector('.q-flight-lookup-btn');
@@ -3867,19 +4122,121 @@
     return (text || '').split(/\n\s*\n+/).map(function(b){ return b.trim(); }).filter(Boolean);
   }
 
-  // 報價只需要簡易地區（例如「新竹北區」「新竹香山區」），不用完整地址——完整
+  // 全台縣市／鄉鎮市區對照表——客人貼過來的地址常常沒寫縣市（例如直接寫
+  // 「新店區中正路700巷80號」，沒寫「新北市」），要簡化地址時得先知道這個
+  // 區屬於哪個縣市才補得回去。同名的鄉鎮市區不同縣市重複時（例如「北區」
+  // 臺中／新竹／臺南／基隆都有，「大安區」臺北／臺中都有，「中正區」「中山
+  // 區」臺北／基隆都有），依照下面陣列的順序（愈常服務的縣市排愈前面）先
+  // 登記的優先，避免同名誤判成外縣市。
+  var CITY_SHORT_NAME = {
+    '臺北市':'臺北', '新北市':'新北', '桃園市':'桃園', '新竹市':'新竹', '新竹縣':'新竹',
+    '基隆市':'基隆', '苗栗縣':'苗栗', '臺中市':'臺中', '彰化縣':'彰化', '南投縣':'南投',
+    '雲林縣':'雲林', '嘉義市':'嘉義', '嘉義縣':'嘉義', '臺南市':'臺南', '高雄市':'高雄',
+    '屏東縣':'屏東', '宜蘭縣':'宜蘭', '花蓮縣':'花蓮', '台東縣':'台東', '澎湖縣':'澎湖',
+    '金門縣':'金門', '連江縣':'連江'
+  };
+  var CITY_DISTRICTS = [
+    ['臺北市', ['松山區','信義區','大安區','中山區','中正區','大同區','萬華區','文山區','南港區','內湖區','士林區','北投區']],
+    ['新北市', ['板橋區','三重區','中和區','永和區','新莊區','新店區','樹林區','鶯歌區','三峽區','淡水區','汐止區','瑞芳區','土城區','蘆洲區','五股區','泰山區','林口區','深坑區','石碇區','坪林區','三芝區','石門區','八里區','平溪區','雙溪區','貢寮區','金山區','萬里區','烏來區']],
+    ['桃園市', ['桃園區','中壢區','平鎮區','八德區','楊梅區','蘆竹區','大溪區','龍潭區','龜山區','大園區','觀音區','新屋區','復興區']],
+    ['新竹市', ['東區','北區','香山區']],
+    ['新竹縣', ['竹北市','竹東鎮','新埔鎮','關西鎮','湖口鄉','新豐鄉','芎林鄉','橫山鄉','北埔鄉','寶山鄉','峨眉鄉','尖石鄉','五峰鄉']],
+    ['基隆市', ['仁愛區','信義區','中正區','中山區','安樂區','暖暖區','七堵區']],
+    ['苗栗縣', ['苗栗市','苑裡鎮','通霄鎮','竹南鎮','頭份市','後龍鎮','卓蘭鎮','大湖鄉','公館鄉','銅鑼鄉','南庄鄉','頭屋鄉','三義鄉','西湖鄉','造橋鄉','三灣鄉','獅潭鄉','泰安鄉']],
+    ['臺中市', ['中區','東區','南區','西區','北區','北屯區','西屯區','南屯區','太平區','大里區','霧峰區','烏日區','豐原區','后里區','石岡區','東勢區','和平區','新社區','潭子區','大雅區','神岡區','大肚區','沙鹿區','龍井區','梧棲區','清水區','大甲區','外埔區','大安區']],
+    ['彰化縣', ['彰化市','鹿港鎮','和美鎮','線西鄉','伸港鄉','福興鄉','秀水鄉','花壇鄉','芬園鄉','員林市','溪湖鎮','田中鎮','大村鄉','埔鹽鄉','埔心鄉','永靖鄉','社頭鄉','二水鄉','北斗鎮','二林鎮','田尾鄉','埤頭鄉','芳苑鄉','大城鄉','竹塘鄉','溪州鄉']],
+    ['南投縣', ['南投市','埔里鎮','草屯鎮','竹山鎮','集集鎮','名間鄉','鹿谷鄉','中寮鄉','魚池鄉','國姓鄉','水里鄉','信義鄉','仁愛鄉']],
+    ['雲林縣', ['斗六市','斗南鎮','虎尾鎮','西螺鎮','土庫鎮','北港鎮','古坑鄉','大埤鄉','莿桐鄉','林內鄉','二崙鄉','崙背鄉','麥寮鄉','東勢鄉','褒忠鄉','台西鄉','元長鄉','四湖鄉','口湖鄉','水林鄉']],
+    ['嘉義市', ['東區','西區']],
+    ['嘉義縣', ['太保市','朴子市','布袋鎮','大林鎮','民雄鄉','溪口鄉','新港鄉','六腳鄉','東石鄉','義竹鄉','鹿草鄉','水上鄉','中埔鄉','竹崎鄉','梅山鄉','番路鄉','大埔鄉','阿里山鄉']],
+    ['臺南市', ['中西區','東區','南區','北區','安平區','安南區','永康區','歸仁區','新化區','左鎮區','玉井區','楠西區','南化區','仁德區','關廟區','龍崎區','官田區','麻豆區','佳里區','西港區','七股區','將軍區','學甲區','北門區','新營區','後壁區','白河區','東山區','六甲區','下營區','柳營區','鹽水區','善化區','大內區','山上區','新市區','安定區']],
+    ['高雄市', ['鹽埕區','鼓山區','左營區','楠梓區','三民區','新興區','前金區','苓雅區','前鎮區','旗津區','小港區','鳳山區','林園區','大寮區','大樹區','大社區','仁武區','鳥松區','岡山區','橋頭區','燕巢區','田寮區','阿蓮區','路竹區','湖內區','茄萣區','永安區','彌陀區','梓官區','旗山區','美濃區','六龜區','甲仙區','杉林區','內門區','茂林區','桃源區','那瑪夏區']],
+    ['屏東縣', ['屏東市','潮州鎮','東港鎮','恆春鎮','萬丹鄉','長治鄉','麟洛鄉','九如鄉','里港鄉','鹽埔鄉','高樹鄉','萬巒鄉','內埔鄉','竹田鄉','新埤鄉','枋寮鄉','新園鄉','崁頂鄉','林邊鄉','南州鄉','佳冬鄉','琉球鄉','車城鄉','滿州鄉','枋山鄉','三地門鄉','霧台鄉','瑪家鄉','泰武鄉','來義鄉','春日鄉','獅子鄉','牡丹鄉']],
+    ['宜蘭縣', ['宜蘭市','羅東鎮','蘇澳鎮','頭城鎮','礁溪鄉','壯圍鄉','員山鄉','冬山鄉','五結鄉','三星鄉','大同鄉','南澳鄉']],
+    ['花蓮縣', ['花蓮市','鳳林鎮','玉里鎮','新城鄉','吉安鄉','壽豐鄉','光復鄉','豐濱鄉','瑞穗鄉','富里鄉','秀林鄉','萬榮鄉','卓溪鄉']],
+    ['台東縣', ['台東市','成功鎮','關山鎮','卑南鄉','大武鄉','太麻里鄉','東河鄉','長濱鄉','鹿野鄉','池上鄉','綠島鄉','蘭嶼鄉','延平鄉','海端鄉','達仁鄉','金峰鄉']],
+    ['澎湖縣', ['馬公市','湖西鄉','白沙鄉','西嶼鄉','望安鄉','七美鄉']],
+    ['金門縣', ['金城鎮','金湖鎮','金沙鎮','金寧鄉','烈嶼鄉','烏坵鄉']],
+    ['連江縣', ['南竿鄉','北竿鄉','莒光鄉','東引鄉']]
+  ];
+  var DISTRICT_TO_CITY = {};
+  var DISTRICT_NAMES_BY_LEN_DESC = [];
+  CITY_DISTRICTS.forEach(function(pair){
+    var cityFull = pair[0];
+    pair[1].forEach(function(d){
+      if (!DISTRICT_TO_CITY[d]) DISTRICT_TO_CITY[d] = cityFull;
+    });
+  });
+  Object.keys(DISTRICT_TO_CITY).forEach(function(d){ DISTRICT_NAMES_BY_LEN_DESC.push(d); });
+  DISTRICT_NAMES_BY_LEN_DESC.sort(function(a, b){ return b.length - a.length; });
+  var DISTRICT_START_RE = new RegExp('^(?:\\d{3,6}\\s*)?(' + DISTRICT_NAMES_BY_LEN_DESC.join('|') + ')');
+
+  // 鄉鎮市區名稱去掉「市／區／鄉／鎮」字尾（單字地名例外，例如「北區」「中
+  // 區」拿掉字尾會看不出是哪裡，所以保留）。
+  function shortDistrictName(fullDistrict){
+    var core = fullDistrict.slice(0, -1);
+    return core.length >= 2 ? core : fullDistrict;
+  }
+
+  // 從地址開頭找出「縣市＋鄉鎮市區」——先試著直接從文字裡抓縣市＋區（例如
+  // 「新竹市北區英明街5號」），抓不到（客人常常直接貼「新店區中正路700巷80
+  // 號」，沒寫「新北市」）就用鄉鎮市區對照表反查是哪個縣市。抓不到就回傳
+  // null，呼叫端原樣保留（例如「桃園國際機場」這種本來就不是路名地址的）。
+  function extractCityDistrict(addr){
+    var s = String(addr || '').trim();
+    if (!s) return null;
+    var m1 = /^(?:\d{3,6}\s*)?([一-鿿]{1,3}?)([市縣])([一-鿿]{1,3}[市區鄉鎮])/.exec(s);
+    if (m1){
+      var cityFull = m1[1] + m1[2];
+      return { cityShort: CITY_SHORT_NAME[cityFull] || m1[1], district: m1[3] };
+    }
+    var m2 = DISTRICT_START_RE.exec(s);
+    if (m2){
+      var cityFull2 = DISTRICT_TO_CITY[m2[1]];
+      return { cityShort: CITY_SHORT_NAME[cityFull2] || '', district: m2[1] };
+    }
+    return null;
+  }
+
+  // 偏遠地區加價表（新北市山區／偏遠行政區，單趟加價金額）。判斷用「鄉鎮市區
+  // 全名」當 key（不看縣市，因為這些區名不會撞名），報價的上／下車地區只要
+  // 有一邊落在表裡，就自動幫忙勾選、帶入對應金額（可再手動調整或取消）。
+  var REMOTE_AREA_SURCHARGE = {
+    '八里區': 300, '汐止區': 300,
+    '淡水區': 400, '深坑區': 400,
+    '石碇區': 600,
+    '金山區': 900, '萬里區': 900, '瑞芳區': 900, '三芝區': 900, '石門區': 900, '坪林區': 900, '烏來區': 900,
+    '雙溪區': 1300,
+    '貢寮區': 1500
+  };
+  // 上／下車地區只要有一邊命中偏遠地區加價表就回傳 {amount, district}，兩邊都
+  // 命中的話（理論上很少見）取金額較高的那個；都沒命中回傳 null。
+  function remoteAreaSurchargeFor(pickupArea, dropoffArea){
+    var best = null;
+    [pickupArea, dropoffArea].forEach(function(addr){
+      var hit = extractCityDistrict(addr);
+      if (!hit) return;
+      var amt = REMOTE_AREA_SURCHARGE[hit.district];
+      if (amt == null) return;
+      if (!best || amt > best.amount) best = { amount: amt, district: hit.district };
+    });
+    return best;
+  }
+
+  // 報價只需要簡易地區（例如「新竹北區」「新竹香山」），不用完整地址——完整
   // 地址留到「訂單／派車」階段再補。客人貼過來的訊息裡常常直接寫完整地址（含
-  // 路名／門牌），所以智慧貼上抓到地址、以及報價文件組字時，都先簡化成
-  // 「城市＋鄉鎮市區」（去掉市／縣，但保留區／市／鄉／鎮，因為像「北區」「香山
-  // 區」這種地名，拿掉「區」字反而讓人看不出來是哪裡），例如「新竹市北區英明
-  // 街5號」->「新竹北區」。如果不是看得出來的標準地址格式（例如本來就是「桃園
-  // 國際機場」這種地名），就原樣保留，不做處理。
+  // 路名／門牌，甚至沒寫縣市），所以智慧貼上抓到地址、以及報價文件組字時，
+  // 都先簡化成「縣市＋鄉鎮市區」，不加「市」「區」等字尾（單字地名例外，例如
+  // 「北區」保留「區」字，不然看不出地名），例如「新竹市北區英明街5號」->
+  // 「新竹北區」、「新店區中正路700巷80號」（沒寫「新北市」）->「新北新店」。
+  // 如果不是看得出來的標準地址格式（例如本來就是「桃園國際機場」這種地
+  // 名），就原樣保留，不做處理。
   function simplifyAddressArea(addr){
     var s = String(addr || '').trim();
     if (!s) return s;
-    var m = /^(?:\d{3,6}\s*)?([一-鿿]{1,3}?)[市縣]([一-鿿]{1,3}[市區鄉鎮])/.exec(s);
-    if (!m) return s;
-    return m[1] + m[2];
+    var hit = extractCityDistrict(s);
+    if (!hit) return s;
+    return (hit.cityShort || '') + shortDistrictName(hit.district);
   }
 
   function parseFlightPasteText(text){
@@ -3991,12 +4348,14 @@
       var signChk = row.querySelector('.q-sign-chk').checked;
       var seatChk = row.querySelector('.q-seat-chk').checked;
       var extraChk = row.querySelector('.q-extra-chk').checked;
+      var remoteChk = row.querySelector('.q-remote-chk').checked;
       var airAmt = Number(row.querySelector('.q-air-amt').value) || 0;
       var nightAmt = Number(row.querySelector('.q-night-amt').value) || 0;
       var signAmt = Number(row.querySelector('.q-sign-amt').value) || 0;
       var seatAmt = Number(row.querySelector('.q-seat-amt').value) || 0;
       var extraAmt = Number(row.querySelector('.q-extra-amt').value) || 0;
-      var subtotal = base + (airChk ? airAmt : 0) + (nightChk ? nightAmt : 0) + (signChk ? signAmt : 0) + (seatChk ? seatAmt : 0) + (extraChk ? extraAmt : 0);
+      var remoteAmt = Number(row.querySelector('.q-remote-amt').value) || 0;
+      var subtotal = base + (airChk ? airAmt : 0) + (nightChk ? nightAmt : 0) + (signChk ? signAmt : 0) + (seatChk ? seatAmt : 0) + (extraChk ? extraAmt : 0) + (remoteChk ? remoteAmt : 0);
       row.querySelector('.q-subtotal').textContent = 'NT$ ' + fmtNum(subtotal);
       var modelSel = row.querySelector('.q-model');
       var modelOpt = modelSel.options[modelSel.selectedIndex];
@@ -4016,8 +4375,8 @@
         luggageCount: row.querySelector('.q-luggage').value,
         modelId: modelSel.value,
         modelLabel: modelOpt ? modelOpt.textContent.split('　')[0] : '',
-        base: base, airChk: airChk, nightChk: nightChk, signChk: signChk, seatChk: seatChk, extraChk: extraChk,
-        airAmt: airAmt, nightAmt: nightAmt, signAmt: signAmt, seatAmt: seatAmt, extraAmt: extraAmt, subtotal: subtotal
+        base: base, airChk: airChk, nightChk: nightChk, signChk: signChk, seatChk: seatChk, extraChk: extraChk, remoteChk: remoteChk,
+        airAmt: airAmt, nightAmt: nightAmt, signAmt: signAmt, seatAmt: seatAmt, extraAmt: extraAmt, remoteAmt: remoteAmt, subtotal: subtotal
       });
     });
     return legs;
@@ -4030,9 +4389,9 @@
 
   var currentQuoteLang = safeGet('hhlc_quote_lang') || 'zh-TW';
   var QLABELS = {
-    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
-    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
-    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
+    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', remote:'偏遠地區', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
+    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', remote:'Remote Area', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
+    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', remote:'遠隔地', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
@@ -4064,18 +4423,35 @@
         : [];
       var pickupAreaShort = simplifyAddressArea(leg.pickupArea);
       var dropoffAreaShort = simplifyAddressArea(leg.dropoffArea);
+      // 有指定車型（不是預設的「不指定進口車（起）」）才把車型加進報價文字，
+      // 客人才知道報的是哪一種車；用預設車型報價時，不特別強調車型，維持
+      // 原本簡潔的寫法。
+      var modelLabel = (leg.modelLabel || '').trim();
+      var showModel = !!modelLabel && modelLabel !== '不指定進口車（起）';
       var areaLabel;
       if (leg.svc === '接機'){
         var arrAreas = [dropoffAreaShort].concat(extraAreas).filter(Boolean);
         areaLabel = arrAreas.length ? (svcLabel + arrAreas.join('+')) : svcLabel;
+        lineParts.push(areaLabel);
+        if (showModel) lineParts.push(modelLabel);
       } else if (leg.svc === '送機'){
         var depAreas = [pickupAreaShort].concat(extraAreas).filter(Boolean);
-        areaLabel = depAreas.length ? (depAreas.join('+') + svcLabel) : svcLabel;
+        var depAreaStr = depAreas.join('+');
+        if (showModel){
+          // 有車型時拆成三段（地區／車型／送機），中間才塞得下車型
+          if (depAreaStr) lineParts.push(depAreaStr);
+          lineParts.push(modelLabel);
+          lineParts.push(svcLabel);
+        } else {
+          // 沒有車型時維持原本「地區送機」黏在一起、不加空白的寫法
+          lineParts.push(depAreaStr ? (depAreaStr + svcLabel) : svcLabel);
+        }
       } else {
         var legAreas = [pickupAreaShort || dropoffAreaShort].concat(extraAreas).filter(Boolean);
         areaLabel = legAreas.length ? (legAreas.join('+') + svcLabel) : svcLabel;
+        lineParts.push(areaLabel);
+        if (showModel) lineParts.push(modelLabel);
       }
-      lineParts.push(areaLabel);
       var priceStr = '$' + fmtNum(leg.base);
       var breakdown = '';
       if (leg.airChk) breakdown += '+' + fmtNum(leg.airAmt) + '(' + L.air + ')';
@@ -4083,6 +4459,7 @@
       if (leg.signChk) breakdown += '+' + fmtNum(leg.signAmt) + '(' + L.sign + ')';
       if (leg.seatChk) breakdown += '+' + fmtNum(leg.seatAmt) + '(' + L.seat + ')';
       if (leg.extraChk) breakdown += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
+      if (leg.remoteChk) breakdown += '+' + fmtNum(leg.remoteAmt) + '(' + L.remote + ')';
       if (breakdown) priceStr = '$' + fmtNum(leg.base) + breakdown + '=$' + fmtNum(leg.subtotal);
       lines.push(lineParts.join(' ') + ' ' + priceStr);
     });
@@ -4857,6 +5234,7 @@
         signChk: leg.signChk, signAmt: leg.signAmt,
         seatChk: leg.seatChk, seatAmt: leg.seatAmt,
         extraChk: leg.extraChk, extraAmt: leg.extraAmt,
+        remoteChk: leg.remoteChk, remoteAmt: leg.remoteAmt,
         extraStopChk: leg.extraStopChk, extraStopAddr: leg.extraStopAddr
       });
     });
@@ -5197,17 +5575,21 @@
       if (leg.terminal) els.dTerminal.value = leg.terminal;
       if (leg.dep && els.dFlightDepTime) els.dFlightDepTime.value = leg.dep;
       if (leg.arr && els.dFlightArrTime) els.dFlightArrTime.value = leg.arr;
-      if (leg.pickupArea) els.dPickupAddr.value = leg.pickupArea;
-      if (leg.dropoffArea) els.dDropoffAddr.value = leg.dropoffArea;
+      // 報價的上／下車地區欄位，使用者實務上都是直接寫完整地址（不是簡易
+      // 地區），所以轉入派車時直接帶進「完整地址」欄位，不用再另外帶一次
+      // 簡易地址、也不用使用者事後再補一次完整門牌——找司機需要的簡易地區，
+      // 系統會在組字時自動從完整地址抓出來（見 shortAreaForFindDriver()）。
+      if (leg.pickupArea) els.dPickupFullAddr.value = leg.pickupArea;
+      if (leg.dropoffArea) els.dDropoffFullAddr.value = leg.dropoffArea;
       if (leg.pax) els.dPax.value = leg.pax;
       if (leg.luggageCount) els.dLuggageCount.value = leg.luggageCount;
       lastImportedLegAmount = leg.subtotal;
       if (els.dAmount && typeof leg.subtotal === 'number') els.dAmount.value = leg.subtotal;
       updatePaymentUI();
     }
-    // 報價單本身沒有存完整地址（報價階段只需要簡易地區），但如果這位客人已經
-    // 是熟客、有存常用地址，匯入報價時就自動比對出來，讓完整地址欄位下方直接
-    // 出現可點選的按鈕，不用再另外去「選擇熟客」那邊按一次
+    // 如果這位客人已經是熟客、有存常用地址，匯入報價時就自動比對出來，讓
+    // 完整地址欄位下方直接出現可點選的按鈕，不用再另外去「選擇熟客」那邊
+    // 按一次（客人這次臨時改地址時還是可以自己蓋掉）
     var matchedCustomer = findKnownCustomerByContact(els.dContactName.value, els.dContactPhone.value);
     if (matchedCustomer){
       if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
@@ -5216,8 +5598,8 @@
     renderPassengerDoc();
     renderDispatchSheet();
     var importMsg = (matchedCustomer && matchedCustomer.addresses && matchedCustomer.addresses.length)
-      ? '已帶入報價單資料，完整地址欄位下方可直接點選常用地址帶入完整地址'
-      : '已帶入報價單資料，地址請補上完整門牌';
+      ? '已帶入報價單資料（含完整地址），下方也可點選常用地址覆蓋'
+      : '已帶入報價單資料（含完整地址）';
     setDispatchStatus(els.dispatchStatusMsg, importMsg, 'ok');
   });
 
@@ -5243,8 +5625,8 @@
     addTripRow({
       when: o.date || todayStr(),
       amount: (typeof o.amount === 'number') ? o.amount : '',
-      pickup: o.pickupAddr || '',
-      dropoff: o.dropoffAddr || ''
+      pickup: o.pickupFullAddr || o.pickupAddr || '',
+      dropoff: o.dropoffFullAddr || o.dropoffAddr || ''
     });
     render();
     setDispatchStatus(els.rImportStatusMsg, '已帶入訂單資料', 'ok');
