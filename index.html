@@ -1564,7 +1564,11 @@
         <p class="hint" style="margin-top:-6px;">請先選「付款日期」，編號會依日期自動流水產生（不重複）；需要的話也可以手動修改</p>
       </div>
 
-      <div class="card">
+      <div class="card" id="companySettingsCompactStatus" hidden>
+        <button type="button" class="link-btn" id="companySettingsCompactEditBtn">⚙️ 公司設定已完成（電話／Logo）　變更設定</button>
+      </div>
+
+      <div class="card" id="companySettingsCard">
         <details class="settings">
           <summary><span class="dot"></span>公司設定<span class="chev">▾</span></summary>
           <p class="hint">電話與 Logo 會自動儲存在這個瀏覽器，之後開啟不用重填</p>
@@ -1760,6 +1764,9 @@
     gmapsSettingsCard: document.getElementById('gmapsSettingsCard'),
     gmapsCompactStatus: document.getElementById('gmapsCompactStatus'),
     gmapsCompactEditBtn: document.getElementById('gmapsCompactEditBtn'),
+    companySettingsCard: document.getElementById('companySettingsCard'),
+    companySettingsCompactStatus: document.getElementById('companySettingsCompactStatus'),
+    companySettingsCompactEditBtn: document.getElementById('companySettingsCompactEditBtn'),
     logoInput: document.getElementById('logoInput'),
     resetLogoBtn: document.getElementById('resetLogoBtn'),
     settingsLogoPreview: document.getElementById('settingsLogoPreview'),
@@ -2374,6 +2381,7 @@
       if (!safeSet('hhlc_logo', dataUrl)){
         setStatus('Logo 已套用，但瀏覽器儲存空間不足，重新整理後可能需要重新上傳', 'err');
       }
+      updateCompanySettingsCardVisibility(true);
     }).catch(function(){
       setStatus('Logo 讀取失敗，請換一張圖片試試', 'err');
     });
@@ -2382,11 +2390,18 @@
   els.resetLogoBtn.addEventListener('click', function(){
     safeRemove('hhlc_logo');
     applyLogo(DEFAULT_LOGO);
+    updateCompanySettingsCardVisibility(true);
   });
 
   els.companyPhone.addEventListener('input', function(){
     safeSet('hhlc_phone', els.companyPhone.value);
     render();
+  });
+
+  // 電話欄位打完字、離開欄位（blur）才收合——用 change 而不是 input，才不會
+  // 打到一半就把卡片收起來
+  els.companyPhone.addEventListener('change', function(){
+    updateCompanySettingsCardVisibility(true);
   });
 
   // =====================================================================
@@ -2534,6 +2549,26 @@
       var detailsEl = els.gmapsSettingsCard.querySelector('details');
       if (detailsEl) detailsEl.open = true;
       els.gmapsApiKey.focus();
+    });
+  }
+
+  // 公司電話／Logo 本來就有預設值可以直接用，不用每次都攤開整張卡片佔位
+  // 置——比照 Google 地圖設定卡片的收合方式：一開始就收合成一行小提示，要
+  // 改電話或 Logo 的話點那行小提示叫回來；改好之後（存電話／換 Logo／還原
+  // 預設 Logo）就自動收回去，不用手動再收一次。
+  function updateCompanySettingsCardVisibility(collapsed){
+    if (!els.companySettingsCard || !els.companySettingsCompactStatus) return;
+    els.companySettingsCompactStatus.hidden = !collapsed;
+    els.companySettingsCard.hidden = collapsed;
+  }
+  updateCompanySettingsCardVisibility(true);
+
+  if (els.companySettingsCompactEditBtn){
+    els.companySettingsCompactEditBtn.addEventListener('click', function(){
+      updateCompanySettingsCardVisibility(false);
+      var detailsEl = els.companySettingsCard.querySelector('details');
+      if (detailsEl) detailsEl.open = true;
+      if (els.companyPhone) els.companyPhone.focus();
     });
   }
 
@@ -4136,13 +4171,20 @@
   }
   // like normalizeTimeStr but also accepts a trailing am/pm ("5:20 am", "4:44pm")
   function normalizeTimeStrLoose(raw){
-    var m = /(\d{1,2}):(\d{2})\s*([ap])\.?m?\.?/i.exec(raw);
+    // am/pm 可能寫在時間「前面」（客人常見寫法，例如「pm 5:00」）或「後面」
+    // （例如「5:00pm」），兩種都要認得，不然「pm 5:00」會被誤判成上午 5:00
+    var m = /([ap])\.?m?\.?\s*(\d{1,2}):(\d{2})/i.exec(raw);
+    var h, mm, ap;
     if (m){
-      var h = Number(m[1]);
-      var ap = m[3].toLowerCase();
+      h = Number(m[2]); mm = m[3]; ap = m[1].toLowerCase();
+    } else {
+      m = /(\d{1,2}):(\d{2})\s*([ap])\.?m?\.?/i.exec(raw);
+      if (m){ h = Number(m[1]); mm = m[2]; ap = m[3].toLowerCase(); }
+    }
+    if (m){
       if (ap === 'p' && h < 12) h += 12;
       if (ap === 'a' && h === 12) h = 0;
-      return pad2(h) + ':' + m[2];
+      return pad2(h) + ':' + mm;
     }
     return normalizeTimeStr(raw);
   }
@@ -4291,7 +4333,9 @@
         result.date = year + '-' + pad2(Number(mdMatch[1])) + '-' + pad2(Number(mdMatch[2]));
       }
     }
-    var timeMatches = text.match(/\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?/gi) || [];
+    // am/pm 可能在時間前面（"pm 5:00"）或後面（"5:00pm"），兩邊都要抓進來，
+    // 交給 normalizeTimeStrLoose 判斷；只抓後面會把「pm 5:00」誤判成上午
+    var timeMatches = text.match(/(?:[ap]\.?m\.?\s*)?\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?/gi) || [];
     if (result.flight){
       // flight-number style paste ("CI909 08:00 送機") — bare times are departure/arrival
       if (timeMatches[0]) result.dep = normalizeTimeStrLoose(timeMatches[0]);
@@ -4735,6 +4779,37 @@
     var existing = els.quotePasteInput.value.trim();
     els.quotePasteInput.value = existing ? (existing + '\n\n' + text) : text;
   }
+  // 「貼上文字／截圖欄位」裡目前的內容解析成行程並新增——「解析並新增行程」
+  // 按鈕、以及貼上文字時的「貼上」「辨識文字」按鈕都共用同一套邏輯，這樣不
+  // 管客人資訊是用哪個按鈕帶進來的，結果都一致。
+  function parseAndAddTripsFromPasteInput(){
+    if (!els.quotePasteInput) return { hadContent: false, addedCount: 0, skippedCount: 0 };
+    var blocks = splitPasteBlocks(els.quotePasteInput.value);
+    if (!blocks.length) return { hadContent: false, addedCount: 0, skippedCount: 0 };
+    var addedCount = 0;
+    var skippedCount = 0;
+    blocks.forEach(function(block){
+      var parsed = parseFlightPasteText(block);
+      if (!isMeaningfulParsedLeg(parsed)){
+        // e.g. a lone "以及" / "另外" divider line between two trip blocks — not a trip itself
+        skippedCount++;
+        return;
+      }
+      addQuoteLegRow(parsed);
+      addedCount++;
+    });
+    if (addedCount) els.quotePasteInput.value = '';
+    return { hadContent: true, addedCount: addedCount, skippedCount: skippedCount };
+  }
+  function reportParseResult(statusEl, r, opts){
+    if (!r.addedCount){
+      setDispatchStatus(statusEl, opts.fail, 'err');
+      return;
+    }
+    var msg = r.addedCount > 1 ? (opts.ok + ' ' + r.addedCount + ' 筆行程，請逐筆確認') : (opts.ok + '行程，請確認');
+    if (r.skippedCount) msg += '（已略過 ' + r.skippedCount + ' 段無法辨識的文字）';
+    setDispatchStatus(statusEl, msg, 'ok');
+  }
   // ---- 附上截圖後直接自動開始辨識，不用使用者自己再按一次「辨識文字」——
   // 原本是「先附上截圖、再手動按辨識文字」兩個步驟，但附上截圖後畫面上只有
   // 一張小縮圖跟一行不太顯眼的狀態文字，很容易讓人以為「上傳截圖沒有反應」
@@ -4753,6 +4828,25 @@
     runOcrOnFile(file, statusEl).then(function(text){
       insertOcrTextIntoPasteInput(text);
     }).catch(function(){});
+  }
+  // 客人資訊不一定是截圖，很多時候是直接複製的一段文字（例如報價需求表單）
+  // ——這種情況不用等 OCR，直接拿剪貼簿的文字辨識、新增行程就好
+  function pasteClipboardTextAsTrip(statusEl){
+    if (!(navigator.clipboard && navigator.clipboard.readText)){
+      setDispatchStatus(statusEl, '剪貼簿內沒有截圖，請先複製一張圖片，或改用「上傳截圖」', 'err');
+      return;
+    }
+    navigator.clipboard.readText().then(function(text){
+      text = (text || '').trim();
+      if (!text){
+        setDispatchStatus(statusEl, '剪貼簿內沒有截圖或文字，請先複製客人資訊，或改用「上傳截圖」', 'err');
+        return;
+      }
+      insertOcrTextIntoPasteInput(text);
+      reportParseResult(statusEl, parseAndAddTripsFromPasteInput(), { ok: '已辨識文字並新增', fail: '已貼上文字，但沒有辨識到可用的行程資訊，請確認內容' });
+    }).catch(function(){
+      setDispatchStatus(statusEl, '無法讀取剪貼簿文字，請改用「上傳截圖」，或直接在下方欄位貼上文字', 'err');
+    });
   }
   if (els.ocrUploadBtn && els.ocrFileInput){
     els.ocrUploadBtn.addEventListener('click', function(){ els.ocrFileInput.click(); });
@@ -4779,7 +4873,9 @@
           if (imageItem) break;
         }
         if (!imageItem){
-          setDispatchStatus(els.ocrStatusMsg, '剪貼簿內沒有截圖，請先複製一張圖片，或改用「上傳截圖」', 'err');
+          // 剪貼簿裡沒有截圖——不一定代表沒東西，客人資訊常常是純文字，改
+          // 讀文字直接辨識、新增行程
+          pasteClipboardTextAsTrip(els.ocrStatusMsg);
           return;
         }
         return imageItem.getType(imageType).then(function(blob){
@@ -4806,42 +4902,29 @@
   }
   if (els.ocrRecognizeBtn){
     els.ocrRecognizeBtn.addEventListener('click', function(){
-      if (!ocrStagedFile){
-        setDispatchStatus(els.ocrStatusMsg, '請先用「上傳截圖」或「貼上」附上一張截圖，再按這個按鈕', 'err');
+      if (ocrStagedFile){
+        els.ocrRecognizeBtn.disabled = true;
+        runOcrOnFile(ocrStagedFile, els.ocrStatusMsg).then(function(text){
+          insertOcrTextIntoPasteInput(text);
+        }).catch(function(){}).then(function(){
+          if (els.ocrRecognizeBtn) els.ocrRecognizeBtn.disabled = false;
+        });
         return;
       }
-      els.ocrRecognizeBtn.disabled = true;
-      runOcrOnFile(ocrStagedFile, els.ocrStatusMsg).then(function(text){
-        insertOcrTextIntoPasteInput(text);
-      }).catch(function(){}).then(function(){
-        if (els.ocrRecognizeBtn) els.ocrRecognizeBtn.disabled = false;
-      });
+      // 沒有附上截圖——如果欄位裡已經有貼上／打的文字，客人資訊不一定要靠
+      // 截圖，直接辨識文字內容、新增行程即可，不用強迫一定要先附截圖
+      if (els.quotePasteInput && els.quotePasteInput.value.trim()){
+        reportParseResult(els.ocrStatusMsg, parseAndAddTripsFromPasteInput(), { ok: '已辨識文字並新增', fail: '沒有辨識到可用的行程資訊，請確認貼上的文字內容' });
+        return;
+      }
+      setDispatchStatus(els.ocrStatusMsg, '請先貼上文字，或用「上傳截圖」／「貼上」附上一張截圖，再按這個按鈕', 'err');
     });
   }
 
   if (els.quotePasteBtn) els.quotePasteBtn.addEventListener('click', function(){
-    var blocks = splitPasteBlocks(els.quotePasteInput.value);
-    if (!blocks.length) return;
-    var addedCount = 0;
-    var skippedCount = 0;
-    blocks.forEach(function(block){
-      var parsed = parseFlightPasteText(block);
-      if (!isMeaningfulParsedLeg(parsed)){
-        // e.g. a lone "以及" / "另外" divider line between two trip blocks — not a trip itself
-        skippedCount++;
-        return;
-      }
-      addQuoteLegRow(parsed);
-      addedCount++;
-    });
-    if (!addedCount){
-      setDispatchStatus(els.quoteStatusMsg, '沒有解析到可用的行程資訊，請確認貼上的內容', 'err');
-      return;
-    }
-    els.quotePasteInput.value = '';
-    var msg = addedCount > 1 ? ('已新增 ' + addedCount + ' 筆行程，請逐筆確認') : '已新增行程，請確認';
-    if (skippedCount) msg += '（已略過 ' + skippedCount + ' 段無法辨識的文字）';
-    setDispatchStatus(els.quoteStatusMsg, msg, 'ok');
+    var r = parseAndAddTripsFromPasteInput();
+    if (!r.hadContent) return;
+    reportParseResult(els.quoteStatusMsg, r, { ok: '已新增', fail: '沒有解析到可用的行程資訊，請確認貼上的內容' });
   });
   if (els.dFlightLookupBtn) els.dFlightLookupBtn.addEventListener('click', function(){
     els.dFlightLookupStatus.textContent = '查詢中…';
