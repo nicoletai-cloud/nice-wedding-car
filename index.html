@@ -3772,8 +3772,7 @@
   // QUOTE TAB (報價)
   // =====================================================================
   var quoteLegSeq = 0;
-  function addQuoteLegRow(prefill){
-    prefill = prefill || {};
+  function createQuoteLegRow(){
     quoteLegSeq++;
     var row = document.createElement('div');
     row.className = 'trip-row';
@@ -3829,12 +3828,22 @@
       '<div class="driver-readout q-subtotal">NT$ 0</div></div>';
     els.quoteLegsContainer.appendChild(row);
     populateAllModelSelects();
+    bindQuoteLegEvents(row);
+    bindQuoteLegAddressAutocomplete(row);
+    return row;
+  }
+
+  // 套用 prefill 資料到一個既有的行程列（不管這個列是剛新增的空白列，還是
+  // 使用者還沒填任何東西的既有空白列）——拆成獨立函式是因為 bindQuoteLegEvents
+  // 不能重複呼叫同一個列（會疊加重複的事件監聽），所以「建立列」跟「套用資料」
+  // 一定要分開，重複使用既有空白列時才能只套資料、不重新綁定事件。
+  function applyQuoteLegPrefill(row, prefill){
+    prefill = prefill || {};
     if (prefill.modelId && Array.prototype.some.call(row.querySelector('.q-model').options, function(o){ return o.value === prefill.modelId; })){
       row.querySelector('.q-model').value = prefill.modelId;
     } else if (priceList.length){
       row.querySelector('.q-model').selectedIndex = 0;
     }
-    bindQuoteLegEvents(row);
     if (prefill.svc){
       var svcInput = row.querySelector('.q-svc[value="' + prefill.svc + '"]');
       if (svcInput) svcInput.checked = true;
@@ -3885,8 +3894,57 @@
       updateQuoteModelBase(row);
     }
     if (!prefill.pickupTime) autoPickupTime(row);
-    bindQuoteLegAddressAutocomplete(row);
     renderQuoteDoc();
+  }
+
+  function addQuoteLegRow(prefill){
+    var row = createQuoteLegRow();
+    applyQuoteLegPrefill(row, prefill);
+    return row;
+  }
+
+  // 判斷一個行程列是不是「完全空白、使用者還沒動過」——用來決定貼上／辨識
+  // 文字匯入資料時，可不可以直接填進這個列，而不是又在下面新增一列，讓
+  // 畫面上原本看得到的那個空白「行程 1」白白留著，使用者以為沒有反應。
+  function isLegRowBlank(row){
+    if (!row) return false;
+    // 注意：不檢查 .q-date——頁面一開始那個預設空白行程列本來就會自動帶入
+    // 今天的日期（見 addQuoteLegRow({ date: todayStr() }) 那次呼叫），如果把
+    // 日期也算進「有沒有填過」，那個預設列永遠不會被判斷成空白，貼上資料就
+    // 永遠只會往下新增一列，而不是填進使用者眼前那個看起來空白的列。
+    var emptyFieldSelectors = ['.q-flight', '.q-dep', '.q-arr', '.q-terminal',
+      '.q-pickup-time', '.q-pickup-area', '.q-dropoff-area', '.q-pax', '.q-luggage', '.q-extra-stop-addr'];
+    for (var i = 0; i < emptyFieldSelectors.length; i++){
+      var el = row.querySelector(emptyFieldSelectors[i]);
+      if (el && el.value && el.value.trim()) return false;
+    }
+    var checkedSelectors = ['.q-extra-stop-chk', '.q-air-chk', '.q-night-chk', '.q-sign-chk', '.q-seat-chk', '.q-extra-chk', '.q-remote-chk'];
+    for (var j = 0; j < checkedSelectors.length; j++){
+      var chk = row.querySelector(checkedSelectors[j]);
+      if (chk && chk.checked) return false;
+    }
+    return true;
+  }
+
+  // 只有畫面上「剛好只有一列、而且那一列完全空白」的時候才重複使用它——
+  // 已經有多筆行程時，貼上新的內容還是應該新增一列，不能誤蓋掉其他行程。
+  function findSingleBlankLegRow(){
+    if (!els.quoteLegsContainer) return null;
+    var rows = els.quoteLegsContainer.querySelectorAll('.trip-row');
+    if (rows.length !== 1) return null;
+    return isLegRowBlank(rows[0]) ? rows[0] : null;
+  }
+
+  // 貼上／辨識文字匯入行程專用：有既有空白列就直接填進去，沒有（或已經有
+  // 資料了）才新增一列。一般手動按「+ 新增行程」還是走 addQuoteLegRow，
+  // 永遠新增一列，不受這個邏輯影響。
+  function fillOrAddQuoteLegRow(prefill){
+    var existing = findSingleBlankLegRow();
+    if (existing){
+      applyQuoteLegPrefill(existing, prefill);
+      return existing;
+    }
+    return addQuoteLegRow(prefill);
   }
 
   function relabelQuoteLegs(){
@@ -4782,12 +4840,29 @@
   // 「貼上文字／截圖欄位」裡目前的內容解析成行程並新增——「解析並新增行程」
   // 按鈕、以及貼上文字時的「貼上」「辨識文字」按鈕都共用同一套邏輯，這樣不
   // 管客人資訊是用哪個按鈕帶進來的，結果都一致。
+  // 同一段內容（例如剪貼簿裡的客人資訊一直沒換）重複按「貼上」／「辨識文字」
+  // 不應該一直新增新的行程列——把每段解析成功的原始文字（去除多餘空白後）記
+  // 在該行程列的 dataset 上，之後再遇到同樣的內容就略過，不新增也不覆蓋。
+  // 用「目前畫面上有沒有列還留著同樣的來源文字」判斷，而不是永久記錄，這樣
+  // 使用者如果手動刪掉那個行程列，之後要重貼同一段內容還是可以正常匯入。
+  function normalizePasteBlockKey(block){
+    return (block || '').replace(/\s+/g, ' ').trim();
+  }
+  function isDuplicatePasteBlock(key){
+    if (!key || !els.quoteLegsContainer) return false;
+    var rows = els.quoteLegsContainer.querySelectorAll('.trip-row');
+    for (var i = 0; i < rows.length; i++){
+      if (rows[i].dataset.pasteSourceKey === key) return true;
+    }
+    return false;
+  }
   function parseAndAddTripsFromPasteInput(){
-    if (!els.quotePasteInput) return { hadContent: false, addedCount: 0, skippedCount: 0 };
+    if (!els.quotePasteInput) return { hadContent: false, addedCount: 0, skippedCount: 0, duplicateCount: 0 };
     var blocks = splitPasteBlocks(els.quotePasteInput.value);
-    if (!blocks.length) return { hadContent: false, addedCount: 0, skippedCount: 0 };
+    if (!blocks.length) return { hadContent: false, addedCount: 0, skippedCount: 0, duplicateCount: 0 };
     var addedCount = 0;
     var skippedCount = 0;
+    var duplicateCount = 0;
     blocks.forEach(function(block){
       var parsed = parseFlightPasteText(block);
       if (!isMeaningfulParsedLeg(parsed)){
@@ -4795,19 +4870,32 @@
         skippedCount++;
         return;
       }
-      addQuoteLegRow(parsed);
+      var key = normalizePasteBlockKey(block);
+      if (isDuplicatePasteBlock(key)){
+        duplicateCount++;
+        return;
+      }
+      var row = fillOrAddQuoteLegRow(parsed);
+      if (row && key) row.dataset.pasteSourceKey = key;
       addedCount++;
     });
     if (addedCount) els.quotePasteInput.value = '';
-    return { hadContent: true, addedCount: addedCount, skippedCount: skippedCount };
+    return { hadContent: true, addedCount: addedCount, skippedCount: skippedCount, duplicateCount: duplicateCount };
   }
   function reportParseResult(statusEl, r, opts){
     if (!r.addedCount){
+      if (r.duplicateCount){
+        setDispatchStatus(statusEl, '這筆內容剛才已經新增過了，沒有重複加入', 'ok');
+        return;
+      }
       setDispatchStatus(statusEl, opts.fail, 'err');
       return;
     }
     var msg = r.addedCount > 1 ? (opts.ok + ' ' + r.addedCount + ' 筆行程，請逐筆確認') : (opts.ok + '行程，請確認');
-    if (r.skippedCount) msg += '（已略過 ' + r.skippedCount + ' 段無法辨識的文字）';
+    var notes = [];
+    if (r.skippedCount) notes.push('已略過 ' + r.skippedCount + ' 段無法辨識的文字');
+    if (r.duplicateCount) notes.push('已略過 ' + r.duplicateCount + ' 段剛才已新增過的重複內容');
+    if (notes.length) msg += '（' + notes.join('、') + '）';
     setDispatchStatus(statusEl, msg, 'ok');
   }
   // ---- 附上截圖後直接自動開始辨識，不用使用者自己再按一次「辨識文字」——
