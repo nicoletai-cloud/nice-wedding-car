@@ -3435,17 +3435,16 @@
     return shortDistrictName(hit.district);
   }
 
-  // 上車時間用 12 小時制＋am/pm（例如「10:30am」「5:00pm」），比 24 小時制更
-  // 符合司機群組平常溝通時間的習慣寫法。
+  // 上車時間用 24 小時制＋am/pm（例如「09:50am」「21:50pm」）——原本用 12 小時制
+  // 會把 24 小時制的「21:50」寫成「9:50pm」，容易跟真正的上午 9:50 搞混，所以
+  // 時間本身維持 24 小時制不轉換，只在後面加註 am/pm 方便司機一眼判斷上下午。
   function fmtTimeAmPm(hhmm){
     if (!hhmm) return '';
     var parts = hhmm.split(':');
     var h = Number(parts[0]), m = parts[1];
     if (isNaN(h) || m == null) return '';
     var suffix = h < 12 ? 'am' : 'pm';
-    var h12 = h % 12;
-    if (h12 === 0) h12 = 12;
-    return h12 + ':' + m + suffix;
+    return pad2(h) + ':' + m + suffix;
   }
 
   function buildFindDriverLegLine(order, direction, carStr, amountVal){
@@ -4084,7 +4083,13 @@
         var input = row.querySelector(btn.dataset.target);
         if (!input) return;
         input.value = btn.dataset.fill;
-        input.focus();
+        // 注意：這裡故意不 focus() 這個欄位——上／下車地區有接 Google 地址自動
+        // 完成（見 bindQuoteLegAddressAutocomplete），一 focus 就會跳出自動完成
+        // 建議框，對著「桃園國際機場」這種本來就不是完整路名地址的快速帶入
+        // 文字去查詢建議地址，Google 那邊常常查不到或連線失敗，就會在欄位
+        // 旁邊冒出「糟糕！出了點狀況！」的錯誤訊息，看起來像畫面壞掉、亂碼。
+        // 快速按鈕的目的本來就是直接把值填好，不需要使用者接著手動編輯，
+        // 所以不需要 focus。
         renderQuoteDoc();
       });
     });
