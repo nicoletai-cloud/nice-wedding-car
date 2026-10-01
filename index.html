@@ -2415,6 +2415,32 @@
   var gmapsLoadCallbacks = [];
   var gmapsDistanceService = null;
 
+  // Google 地圖的 script 本身如果「載入成功」（HTTP 200、JS 語法沒錯），
+  // script.onerror 不會觸發——但金鑰如果打錯、網域被限制擋住、或沒開通
+  // Places API／計費，Google 會在背景判定「驗證失敗」，預設行為是在整個
+  // 畫面蓋一層灰色「糟糕！出了點狀況！」的警告框，或是在打字查詢地址建議
+  // 時，每次查詢失敗就在欄位旁邊多疊一個小驚嘆號圖示、越疊越多，兩種都會
+  // 讓畫面看起來像壞掉／亂碼，但其實都是同一個根本原因：金鑰驗證失敗。
+  // window.gm_authFailure 是 Google 官方提供、專門用來攔截這個情況的
+  // callback——要在 Google 的 script 執行之前就定義好，Google 驗證失敗時
+  // 會呼叫它，而不是顯示自己預設的錯誤畫面。攔下來之後直接關閉這個功能、
+  // 用我們自己原本就有的狀態訊息清楚告訴她金鑰有問題，並且把設定卡片強制
+  // 展開，不要讓它一直停在「已完成設定」的收合狀態誤導她。
+  window.gm_authFailure = function(){
+    gmapsLoadState = 'error';
+    if (els.gmapsStatusMsg){
+      setDispatchStatus(els.gmapsStatusMsg, 'Google 地圖金鑰驗證失敗（金鑰可能打錯、還沒在 Google Cloud 開通 Places API／計費，或網域限制擋住了這個網址）——地址自動完成功能已自動關閉，不影響其他功能，請檢查金鑰設定後再試一次', 'err');
+    }
+    if (els.gmapsSettingsCard && els.gmapsCompactStatus){
+      els.gmapsCompactStatus.hidden = true;
+      els.gmapsSettingsCard.hidden = false;
+      var detailsEl = els.gmapsSettingsCard.querySelector('details');
+      if (detailsEl) detailsEl.open = true;
+    }
+    gmapsLoadCallbacks.forEach(function(fn){ fn(false); });
+    gmapsLoadCallbacks = [];
+  };
+
   function currentGmapsKey(){
     return (els.gmapsApiKey && els.gmapsApiKey.value.trim()) || safeGet('hhlc_gmaps_api_key') || '';
   }
