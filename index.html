@@ -1400,6 +1400,14 @@
             <label for="qPaymentConfirmed" style="margin:0;">✅ 已完成付款（對帳完成後勾選）</label>
           </div>
           <div id="paymentNoticeBlock" hidden style="margin-top:14px;">
+            <div class="field" style="margin-bottom:10px;">
+              <label>通知語言</label>
+              <div class="lang-row" id="pnLangRow" role="group" aria-label="通知語言">
+                <button type="button" class="lang-btn" data-lang="zh-TW">繁中</button>
+                <button type="button" class="lang-btn" data-lang="en">English</button>
+                <button type="button" class="lang-btn" data-lang="ja">日本語</button>
+              </div>
+            </div>
             <div class="doc-card">
               <div class="doc-title">💌 付款完成通知（貼給客人）</div>
               <div id="paymentNoticeBody"></div>
@@ -1902,6 +1910,7 @@
     qCustPhone: document.getElementById('qCustPhone'),
     qIsKnownCustomer: document.getElementById('qIsKnownCustomer'),
     qLangRow: document.getElementById('qLangRow'),
+    pnLangRow: document.getElementById('pnLangRow'),
     qPaymentConfirmed: document.getElementById('qPaymentConfirmed'),
     paymentNoticeBlock: document.getElementById('paymentNoticeBlock'),
     paymentNoticeBody: document.getElementById('paymentNoticeBody'),
@@ -3131,6 +3140,8 @@
       btn.addEventListener('click', function(){
         currentQuoteLang = btn.dataset.lang;
         safeSet('hhlc_quote_lang', currentQuoteLang);
+        // 改報價語言時，付款完成通知跟著換（之後仍可在通知卡片上單獨改）
+        paymentNoticeLangOverride = null;
         updateQuoteLangButtons();
         renderQuoteDoc();
       });
@@ -4727,11 +4738,53 @@
     return location.origin + location.pathname + '#r=' + encodeURIComponent(b64);
   }
 
+  // 付款完成通知的固定文字（只翻譯制式文字；行程裡的地址、地區是客人／我們
+  // 輸入的原文，不做機器翻譯，跟報價文字的做法一致）。
+  var PN_I18N = {
+    'zh-TW': {
+      title: '好好禮車｜付款完成通知',
+      intro: '您好，已收到您的付款，行程已為您確認：',
+      line1: '出車前一天，我們會主動提供司機與車輛資訊',
+      line2: '若航班時間有異動，請主動通知客服，以便我們協助調整安排',
+      contact: '好好禮車客服｜0981-836-668',
+      thanks: '感謝您的信任，祝您旅途愉快 ♡'
+    },
+    en: {
+      title: 'Nice Wedding Car | Payment Confirmation',
+      intro: 'Hello, we have received your payment and your trip is confirmed:',
+      line1: 'The day before your trip, we will send you the driver and vehicle details.',
+      line2: 'If your flight time changes, please let us know so we can adjust the arrangements.',
+      contact: 'Nice Wedding Car Customer Service | 0981-836-668',
+      thanks: 'Thank you for your trust. Have a wonderful trip ♡'
+    },
+    ja: {
+      title: '好好禮車｜お支払い完了のお知らせ',
+      intro: 'お支払いを確認いたしました。ご予約が確定しましたのでご案内いたします：',
+      line1: 'ご出発の前日に、ドライバーと車両の情報をご連絡いたします。',
+      line2: 'フライトの時間に変更がある場合は、調整いたしますのでお早めにご連絡ください。',
+      contact: '好好禮車カスタマーサービス｜0981-836-668',
+      thanks: 'ご信頼いただきありがとうございます。素敵な旅になりますように ♡'
+    }
+  };
+  var paymentNoticeLangOverride = null;
+  function currentPaymentNoticeLang(){
+    var l = paymentNoticeLangOverride || currentQuoteLang;
+    return PN_I18N[l] ? l : 'zh-TW';
+  }
+  function updatePaymentNoticeLangButtons(){
+    if (!els.pnLangRow) return;
+    var cur = currentPaymentNoticeLang();
+    els.pnLangRow.querySelectorAll('.lang-btn').forEach(function(btn){
+      btn.classList.toggle('active', btn.dataset.lang === cur);
+    });
+  }
+
   function buildPaymentNoticeText(){
     var legs = readQuoteLegs();
+    var T = PN_I18N[currentPaymentNoticeLang()];
     var lines = [];
-    lines.push('好好禮車｜付款完成通知');
-    lines.push('您好，已收到您的付款，行程已為您確認：');
+    lines.push(T.title);
+    lines.push(T.intro);
     lines.push('');
     legs.forEach(function(leg){
       var timeStr = fmtTime24(leg.pickupTime) || fmtTime24(leg.dep) || fmtTime24(leg.arr);
@@ -4742,11 +4795,11 @@
       lines.push(lineParts.join(' '));
     });
     lines.push('');
-    lines.push('出車前一天，我們會主動提供司機與車輛資訊');
-    lines.push('若航班時間有異動，請主動通知客服，以便我們協助調整安排');
+    lines.push(T.line1);
+    lines.push(T.line2);
     lines.push('');
-    lines.push('好好禮車客服｜0981-836-668');
-    lines.push('感謝您的信任，祝您旅途愉快 ♡');
+    lines.push(T.contact);
+    lines.push(T.thanks);
     return lines.join('\n');
   }
 
@@ -4754,6 +4807,15 @@
     var show = !!(els.qPaymentConfirmed && els.qPaymentConfirmed.checked);
     if (els.paymentNoticeBlock) els.paymentNoticeBlock.hidden = !show;
     if (show && els.paymentNoticeBody) els.paymentNoticeBody.textContent = buildPaymentNoticeText();
+    updatePaymentNoticeLangButtons();
+  }
+  if (els.pnLangRow){
+    els.pnLangRow.querySelectorAll('.lang-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        paymentNoticeLangOverride = btn.dataset.lang;
+        renderPaymentNotice();
+      });
+    });
   }
 
   if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(){
