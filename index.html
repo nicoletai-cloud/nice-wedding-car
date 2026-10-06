@@ -3788,14 +3788,24 @@
     { model: 'Toyota Alphard 豪華七人座（台中）', price: 6000, size: 'large' },
     { model: 'Lexus LM 豪華七人座（台中）', price: 8000, size: 'large' }
   ];
-  function seedTaichungPrices(){
-    if (safeGet(TC_SEED_KEY)) return;
-    TAICHUNG_PRICELIST.forEach(function(p, i){
+  // 第二批（2026-10-07）：台中「不指定進口車」$2,600 起——另用新的記錄鍵，只補這一項，
+  // 不會把你已刪掉的第一批台中項目又補回來。
+  var TC_SEED_KEY_V2 = 'hhlc_pricelist_tc_seeded_v2';
+  var TAICHUNG_PRICELIST_V2 = [
+    { model: '不指定進口車（台中）（起）', price: 2600, size: 'any' }
+  ];
+  function seedTaichungItems(list, keyName, idPrefix){
+    if (safeGet(keyName)) return;
+    list.forEach(function(p, i){
       var exists = priceList.some(function(x){ return x.model === p.model; });
-      if (!exists) priceList.push(Object.assign({ id: 'prc_tc_' + i }, p));
+      if (!exists) priceList.push(Object.assign({ id: idPrefix + i }, p));
     });
     savePriceList();
-    safeSet(TC_SEED_KEY, '1');
+    safeSet(keyName, '1');
+  }
+  function seedTaichungPrices(){
+    seedTaichungItems(TAICHUNG_PRICELIST, TC_SEED_KEY, 'prc_tc_');
+    seedTaichungItems(TAICHUNG_PRICELIST_V2, TC_SEED_KEY_V2, 'prc_tc2_');
   }
   function loadPriceList(){
     try {
@@ -3894,7 +3904,8 @@
       '</div>' +
       '<p class="hint q-flight-lookup-status" style="margin-top:-6px;"></p>' +
       '<div class="field"><label>上車時間（送機提前3小時／接機以航班為準）</label><input type="time" class="q-pickup-time">' +
-      '<div class="quick-picks"><button type="button" class="chip q-pickup-auto-btn">依航班時間自動計算</button></div></div>' +
+      '<div class="quick-picks"><button type="button" class="chip q-pickup-auto-btn">依航班時間自動計算</button></div>' +
+      '<p class="hint q-midnight-warn" style="display:none; color:#b45309; font-weight:600; margin-top:6px;"></p></div>' +
       '<div class="row2">' +
       '<div class="field"><label>上車地區</label><input type="text" class="q-pickup-area" placeholder="例如：台北信義">' +
       '<div class="quick-picks"><button type="button" class="chip" data-target=".q-pickup-area" data-fill="桃園國際機場">桃園國際機場</button></div>' +
@@ -3961,7 +3972,11 @@
     if (prefill.dropoffArea) row.querySelector('.q-dropoff-area').value = prefill.dropoffArea;
     if (prefill.pax != null) row.querySelector('.q-pax').value = prefill.pax;
     if (prefill.luggageCount != null) row.querySelector('.q-luggage').value = prefill.luggageCount;
-    if (prefill.airChk) row.querySelector('.q-air-chk').checked = true;
+    // 接機加成：選「接機」就自動勾選；已存報價／明確帶入的布林值視為手動決定，不被覆蓋
+    if (typeof prefill.airChk === 'boolean'){
+      row.querySelector('.q-air-chk').checked = prefill.airChk;
+      row.dataset.airManual = 'true';
+    }
     if (prefill.airAmt != null) row.querySelector('.q-air-amt').value = prefill.airAmt;
     // 夜間加成勾選：已存報價／明確帶入的布林值視為手動決定，不再被自動判斷覆蓋；
     // 沒帶（例如貼上文字匯入、來回新增）則依上車時間自動判斷（見檔尾 autoNight 呼叫）
@@ -4000,6 +4015,7 @@
     }
     if (!prefill.pickupTime) autoPickupTime(row);
     autoNight(row);
+    autoAirSurcharge(row);
     renderQuoteDoc();
   }
 
@@ -4145,7 +4161,7 @@
       updateQuoteModelBase(row);
       renderQuoteDoc();
     });
-    row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); autoNight(row); renderQuoteDoc(); }); });
+    row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); autoNight(row); autoAirSurcharge(row); autoRoundTrip(); renderQuoteDoc(); }); });
     // 上／下車地區原本沒有接 input 監聽，使用者打字或用快速按鈕帶入地址時，
     // 報價文字預覽不會馬上更新（要等其他欄位剛好也觸發才會一起更新），
     // 容易讓人誤以為地址沒存到。這裡補上，輸入當下就即時反映在預覽裡。
@@ -4188,6 +4204,7 @@
       row.querySelector(sel).addEventListener('change', renderQuoteDoc);
     });
     row.querySelector('.q-night-chk').addEventListener('change', function(){ row.dataset.nightManual = 'true'; });
+    row.querySelector('.q-air-chk').addEventListener('change', function(){ row.dataset.airManual = 'true'; });
     // 「增加地點」勾選才顯示貼地址的欄位，沒勾選就不算有加點
     var extraStopChkEl = row.querySelector('.q-extra-stop-chk');
     var extraStopAddrEl = row.querySelector('.q-extra-stop-addr');
@@ -4615,6 +4632,51 @@
   // 夜間加成以「上車時間」判斷（22:00–07:59），不是航班起降時間。
   // 使用者自己勾選／取消夜間加成之後（row.dataset.nightManual）就不再自動覆蓋；
   // 還沒有上車時間時不動勾選狀態。
+  // 接機加成 +200：服務類型選「接機」就自動勾選（送機／接送則取消）；
+  // 使用者手動勾選／取消之後（row.dataset.airManual）就以手動為準。
+  function autoAirSurcharge(row){
+    if (row.dataset.airManual === 'true') return;
+    var svcInput = row.querySelector('.q-svc:checked');
+    row.querySelector('.q-air-chk').checked = !!(svcInput && svcInput.value === '接機');
+  }
+
+  // 去回程同一張報價（同時有「送機」與「接機」行程）自動勾選「來回優惠」95 折；
+  // 客服手動勾選／取消後（roundTripManual）就以手動為準。
+  var roundTripManual = false;
+  function autoRoundTrip(){
+    if (roundTripManual || !els.qRoundTrip || !els.quoteLegsContainer) return;
+    var svcs = Array.prototype.map.call(els.quoteLegsContainer.querySelectorAll('.trip-row'), function(r){
+      var c = r.querySelector('.q-svc:checked'); return c ? c.value : '';
+    });
+    els.qRoundTrip.checked = svcs.indexOf('送機') !== -1 && svcs.indexOf('接機') !== -1;
+  }
+
+  // 上車時間跨午夜提醒：送機的上車時間比起飛時間「大」＝前一天；接機的上車時間
+  // 比落地時間「小」＝隔天。實際上車日期和行程日期不同時，在上車時間欄位下方提醒。
+  function shiftIsoDate(iso, days){
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return '';
+    var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days));
+    return (d.getUTCMonth() + 1) + '/' + d.getUTCDate();
+  }
+  function updateMidnightWarn(row){
+    var el = row.querySelector('.q-midnight-warn');
+    if (!el) return;
+    var svcInput = row.querySelector('.q-svc:checked');
+    var svc = svcInput ? svcInput.value : '';
+    var pickup = row.querySelector('.q-pickup-time').value;
+    var dep = row.querySelector('.q-dep').value;
+    var arr = row.querySelector('.q-arr').value;
+    var date = row.querySelector('.q-date').value;
+    var shift = 0;
+    if (pickup && svc === '送機' && dep && pickup > dep) shift = -1;
+    else if (pickup && svc === '接機' && arr && pickup < arr) shift = 1;
+    if (!shift){ el.style.display = 'none'; el.textContent = ''; return; }
+    var realDate = shiftIsoDate(date, shift);
+    el.textContent = '⚠️ 上車時間 ' + pickup + ' 跨午夜：實際上車日期是' + (realDate ? ' ' + realDate : '') + '（' + (shift < 0 ? '航班前一天' : '航班隔天') + '），請確認用車日期。';
+    el.style.display = '';
+  }
+
   function autoNight(row){
     if (row.dataset.nightManual === 'true') return;
     var pickup = row.querySelector('.q-pickup-time').value;
@@ -4866,6 +4928,8 @@
 
   function renderQuoteDoc(){
     if (!els.quoteDocBody) return;
+    autoRoundTrip();
+    if (els.quoteLegsContainer) els.quoteLegsContainer.querySelectorAll('.trip-row').forEach(updateMidnightWarn);
     els.quoteDocBody.textContent = buildQuoteText();
     renderPaymentNotice();
   }
@@ -5008,7 +5072,7 @@
       if (pax !== '') prefill.pax = pax;
       if (luggage !== '') prefill.luggageCount = luggage;
       prefill.modelId = last.querySelector('.q-model').value;
-      prefill.airChk = last.querySelector('.q-air-chk').checked;
+      // 接機加成不複製：回程服務類型已對調，依新的服務類型自動判斷
       prefill.airAmt = last.querySelector('.q-air-amt').value;
       // 夜間加成不複製：回程的上車時間不同，等填入航班後依上車時間自動判斷
       prefill.nightAmt = last.querySelector('.q-night-amt').value;
@@ -5301,6 +5365,7 @@
       els.dFlightLookupStatus.textContent = (err && err.message) || '查詢失敗';
     });
   });
+  if (els.qRoundTrip) els.qRoundTrip.addEventListener('change', function(){ roundTripManual = true; });
   [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qEsim, els.qInvoice].forEach(function(el){
     if (el) el.addEventListener('change', function(){ renderEsimCheck(); renderQuoteDoc(); });
   });
@@ -5687,6 +5752,7 @@
   function loadQuoteIntoForm(id){
     var q = recentQuotes.find(function(x){ return x.id === id; });
     if (!q) return;
+    roundTripManual = true; // 載入已存報價：優惠勾選以當時存的為準，不被自動判斷改掉
     var srcInput = document.querySelector('input[name="qCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.qCustSourceName.value = q.custSourceName || '';
@@ -5711,6 +5777,7 @@
     if (!q.legs || !q.legs.length) addQuoteLegRow({ date: todayStr() });
     if (q.discounts){
       els.qRoundTrip.checked = !!q.discounts.roundTrip;
+      roundTripManual = true; // 載入已存報價：保留當時的勾選結果
       els.qFriends.checked = !!q.discounts.friends;
       els.qWedding.checked = !!q.discounts.wedding;
       els.qManager.checked = !!q.discounts.manager;
