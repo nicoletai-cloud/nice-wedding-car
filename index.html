@@ -4204,13 +4204,48 @@
     noteEl.style.color = isErr ? '#b45309' : '';
   }
 
-  function computeExtraStopKm(pickup, stops, dropoff, cb){
-    var key = JSON.stringify([pickup, stops, dropoff]);
-    if (extraStopKmCache[key] != null){ cb(null, extraStopKmCache[key]); return; }
+  // 用 Routes API（Google 新版，建議）算出「原路線」與「經過加點」的里程；
+  // 如果 Routes API 沒開或失敗，退回舊版 Distance Matrix（舊專案才可能還能用）。
+  function routesApiMatrix(key, origins, dests, cb){
+    var wp = function(a){ return { waypoint: { address: a } }; };
+    fetch('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask': 'originIndex,destinationIndex,distanceMeters,condition'
+      },
+      body: JSON.stringify({
+        origins: origins.map(wp),
+        destinations: dests.map(wp),
+        travelMode: 'DRIVE',
+        languageCode: 'zh-TW',
+        regionCode: 'TW'
+      })
+    }).then(function(resp){
+      return resp.text().then(function(t){ return { ok: resp.ok, status: resp.status, text: t }; });
+    }).then(function(r){
+      if (!r.ok){
+        var disabled = r.status === 403 || /SERVICE_DISABLED|API_KEY_SERVICE_BLOCKED|has not been used|not enabled/i.test(r.text);
+        cb(disabled ? 'routes-disabled' : 'routes-fail');
+        return;
+      }
+      var arr;
+      try { arr = JSON.parse(r.text); } catch (e){ cb('routes-fail'); return; }
+      if (!Array.isArray(arr)) arr = [arr];
+      var grid = {};
+      arr.forEach(function(el){
+        if (el && el.condition === 'ROUTE_EXISTS' && el.distanceMeters != null){
+          grid[(el.originIndex || 0) + ',' + (el.destinationIndex || 0)] = el.distanceMeters;
+        }
+      });
+      cb(null, function(i, j){ return grid[i + ',' + j]; });
+    }).catch(function(){ cb('routes-fail'); });
+  }
+
+  function legacyMatrix(origins, dests, cb){
     loadGoogleMapsIfNeeded(function(ok){
       if (!ok || !gmapsDistanceService){ cb('nomaps'); return; }
-      var origins = [pickup].concat(stops);
-      var dests = stops.concat([dropoff]);
       gmapsDistanceService.getDistanceMatrix({
         origins: origins,
         destinations: dests,
@@ -4219,18 +4254,42 @@
         region: 'tw'
       }, function(res, status){
         if (status !== 'OK' || !res || !res.rows){ cb('fail'); return; }
-        var n = stops.length, via = 0, i, el;
-        for (i = 0; i <= n; i++){
-          el = res.rows[i] && res.rows[i].elements && res.rows[i].elements[i];
-          if (!el || el.status !== 'OK'){ cb('fail'); return; }
-          via += el.distance.value;
-        }
-        el = res.rows[0] && res.rows[0].elements && res.rows[0].elements[n];
-        if (!el || el.status !== 'OK'){ cb('fail'); return; }
-        var extraKm = (via - el.distance.value) / 1000;
-        if (extraKm < 0) extraKm = 0;
-        extraStopKmCache[key] = extraKm;
-        cb(null, extraKm);
+        cb(null, function(i, j){
+          var el = res.rows[i] && res.rows[i].elements && res.rows[i].elements[j];
+          return (el && el.status === 'OK' && el.distance) ? el.distance.value : undefined;
+        });
+      });
+    });
+  }
+
+  function computeExtraStopKm(pickup, stops, dropoff, cb){
+    var key = JSON.stringify([pickup, stops, dropoff]);
+    if (extraStopKmCache[key] != null){ cb(null, extraStopKmCache[key]); return; }
+    var mapsKey = currentGmapsKey();
+    if (!mapsKey){ cb('nomaps'); return; }
+    var origins = [pickup].concat(stops);
+    var dests = stops.concat([dropoff]);
+    function finish(err, meters){
+      if (err){ cb(err); return; }
+      var n = stops.length, via = 0, i, d;
+      for (i = 0; i <= n; i++){
+        d = meters(i, i);
+        if (d == null){ cb('fail'); return; }
+        via += d;
+      }
+      var direct = meters(0, n);
+      if (direct == null){ cb('fail'); return; }
+      var extraKm = (via - direct) / 1000;
+      if (extraKm < 0) extraKm = 0;
+      extraStopKmCache[key] = extraKm;
+      cb(null, extraKm);
+    }
+    routesApiMatrix(mapsKey, origins, dests, function(err, meters){
+      if (!err){ finish(null, meters); return; }
+      // Routes API 沒開或失敗 → 試舊版 Distance Matrix
+      legacyMatrix(origins, dests, function(err2, meters2){
+        if (!err2){ finish(null, meters2); return; }
+        cb(err === 'routes-disabled' ? 'routes-disabled' : 'fail');
       });
     });
   }
@@ -4273,7 +4332,9 @@
         row.dataset.extraAuto = 'false';
         setExtraKmNote(row, err === 'nomaps'
           ? '未啟用 Google 地圖，無法自動算里程，請依里程自行填加點金額'
-          : '里程查詢失敗，請確認地址或手動填加點金額', true);
+          : err === 'routes-disabled'
+            ? 'Google 尚未開啟 Routes API（或金鑰未允許），無法自動算里程，請手動填加點金額'
+            : '里程查詢失敗，請確認地址或手動填加點金額', true);
         renderQuoteDoc();
         return;
       }
