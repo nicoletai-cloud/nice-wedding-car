@@ -3274,16 +3274,38 @@
   // 公司名稱等專有名詞維持原文，不會被翻譯，只翻譯欄位說明文字）。切換報價
   // 語言時，附上匯款資訊／發票說明也要跟著換成對應語言，不能只翻標籤跟刷卡
   // 提醒、卻漏掉這兩段。
+  // 匯款資訊的英／日文版：銀行、帳號、戶名一律取自「報價固定文字」裡使用者自己存在
+  // 瀏覽器的中文版本（程式碼裡不內建任何帳號），這裡只放標題、欄位名稱與結尾提醒。
   var BANK_BLOCK_I18N = {
     en: {
-      future: 'Bank Transfer Details:\nFuture Bank (823) | Business Dept. (1688)\nAccount No.: 8865-36668-36668\nAccount Name: 答O正\n\nAfter payment, please provide the passenger’s name, phone number, and pickup/drop-off address',
-      jindachun: 'Bank Transfer Details:\nCTBC Bank (822) Chengbei Branch\nAccount No.: 200-54023678-1\nAccount Name: Jin Da Chun Co., Ltd. (金大春有限公司)\n\nAfter payment, please provide the passenger’s name, phone number, and pickup/drop-off address'
+      header: 'Bank Transfer Details:',
+      accountNo: 'Account No.: ',
+      accountName: 'Account Name: ',
+      footer: 'After payment, please provide the passenger’s name, phone number, and pickup/drop-off address'
     },
     ja: {
-      future: 'お振込先情報：\n將來銀行(823)｜営業部(1688)\n口座番号：8865-36668-36668\n口座名義：答O正\n\nお支払い完了後、乗客様のお名前・電話番号・送迎先住所をご提供ください',
-      jindachun: 'お振込先情報：\n中國信託銀行(822) 城北支店\n口座番号：200-54023678-1\n口座名義：金大春有限公司\n\nお支払い完了後、乗客様のお名前・電話番号・送迎先住所をご提供ください'
+      header: 'お振込先情報：',
+      accountNo: '口座番号：',
+      accountName: '口座名義：',
+      footer: 'お支払い完了後、乗客様のお名前・電話番号・送迎先住所をご提供ください'
     }
   };
+  // 把使用者存的中文匯款資訊（標題／銀行／帳號／戶名／空行／提醒）轉成英／日文版
+  function localizeBankBlock(zhBlock, lang){
+    var t = BANK_BLOCK_I18N[lang];
+    if (!t) return zhBlock;
+    var firstPara = String(zhBlock || '').trim().split(/\n\s*\n/)[0] || '';
+    var lines = firstPara.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+    if (lines.length && /^匯款資訊[：:]?$/.test(lines[0])) lines.shift();
+    var body = lines.map(function(line){
+      var m = /^帳號[：:]\s*(.*)$/.exec(line);
+      if (m) return t.accountNo + m[1];
+      m = /^戶名[：:]\s*(.*)$/.exec(line);
+      if (m) return t.accountName + m[1];
+      return line;
+    });
+    return [t.header].concat(body).join('\n') + '\n\n' + t.footer;
+  }
   var NOTICE_BLOCK_I18N = {
     en: 'An e-receipt is provided for every order. If you need a formal invoice (item: service fee), please provide your tax ID and company name.\n(+5% business tax applies)\n\nDriver and vehicle information will be provided the day before your trip',
     ja: 'ご注文ごとに電子領収書を発行いたします。統一発票（項目：サービス料）が必要な場合は、統一番号と宛名をご提供ください。\n（別途+5%の営業税がかかります）\n\nご利用前日にドライバーと車両の情報をお送りいたします'
@@ -3868,7 +3890,7 @@
       '<div class="field"><label>基本價格（可手動調整）</label><input type="number" class="q-base" min="0"></div>' +
       '<div class="check-row"><input type="checkbox" class="q-air-chk"><label style="margin:0;">接機加成</label>' +
       '<span class="amt-inline"><input type="number" class="q-air-amt" value="200" min="0"></span></div>' +
-      '<div class="check-row"><input type="checkbox" class="q-night-chk"><label style="margin:0;">夜間加成（22:00–07:59）</label>' +
+      '<div class="check-row"><input type="checkbox" class="q-night-chk"><label style="margin:0;">夜間加成（上車時間 22:00–07:59）</label>' +
       '<span class="amt-inline"><input type="number" class="q-night-amt" value="200" min="0"></span></div>' +
       '<div class="check-row"><input type="checkbox" class="q-sign-chk"><label style="margin:0;">舉牌</label>' +
       '<span class="amt-inline"><input type="number" class="q-sign-amt" value="200" min="0"></span></div>' +
@@ -3917,7 +3939,12 @@
     if (prefill.luggageCount != null) row.querySelector('.q-luggage').value = prefill.luggageCount;
     if (prefill.airChk) row.querySelector('.q-air-chk').checked = true;
     if (prefill.airAmt != null) row.querySelector('.q-air-amt').value = prefill.airAmt;
-    if (prefill.nightChk) row.querySelector('.q-night-chk').checked = true;
+    // 夜間加成勾選：已存報價／明確帶入的布林值視為手動決定，不再被自動判斷覆蓋；
+    // 沒帶（例如貼上文字匯入、來回新增）則依上車時間自動判斷（見檔尾 autoNight 呼叫）
+    if (typeof prefill.nightChk === 'boolean'){
+      row.querySelector('.q-night-chk').checked = prefill.nightChk;
+      row.dataset.nightManual = 'true';
+    }
     if (prefill.nightAmt != null) row.querySelector('.q-night-amt').value = prefill.nightAmt;
     if (prefill.signChk) row.querySelector('.q-sign-chk').checked = true;
     if (prefill.signAmt != null) row.querySelector('.q-sign-amt').value = prefill.signAmt;
@@ -3948,6 +3975,7 @@
       updateQuoteModelBase(row);
     }
     if (!prefill.pickupTime) autoPickupTime(row);
+    autoNight(row);
     renderQuoteDoc();
   }
 
@@ -4027,6 +4055,16 @@
     return pad2(h) + ':' + pad2(m);
   }
 
+  // 加分鐘（跨午夜會繞回 00:00），不做 10 分鐘進位——接機「落地 +30 分」要精準
+  function addMinutes(hhmm, mins){
+    if (!hhmm) return '';
+    var parts = hhmm.split(':');
+    var totalMin = Number(parts[0]) * 60 + Number(parts[1]) + mins;
+    totalMin = ((totalMin % 1440) + 1440) % 1440;
+    return pad2(Math.floor(totalMin / 60)) + ':' + pad2(totalMin % 60);
+  }
+  var ARRIVAL_PICKUP_BUFFER_MIN = 30; // 接機：預設落地後 30 分鐘為上車時間
+
   function autoPickupTime(row){
     if (row.dataset.pickupTimeManual === 'true') return;
     var svcInput = row.querySelector('.q-svc:checked');
@@ -4036,10 +4074,10 @@
       if (!dep) return;
       row.querySelector('.q-pickup-time').value = subtractHours(dep, 3);
     } else if (svc === '接機'){
-      // 接機：以飛機「落地」桃園機場的時間（抵達時間）作為上車/待客時間，而非起飛時間
+      // 接機：以飛機「落地」桃園機場的時間（抵達時間）+ 30 分鐘作為預設上車時間
       var arr = row.querySelector('.q-arr').value;
       if (!arr) return;
-      row.querySelector('.q-pickup-time').value = arr;
+      row.querySelector('.q-pickup-time').value = addMinutes(arr, ARRIVAL_PICKUP_BUFFER_MIN);
     }
   }
 
@@ -4083,7 +4121,7 @@
       updateQuoteModelBase(row);
       renderQuoteDoc();
     });
-    row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); renderQuoteDoc(); }); });
+    row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); autoNight(row); renderQuoteDoc(); }); });
     // 上／下車地區原本沒有接 input 監聽，使用者打字或用快速按鈕帶入地址時，
     // 報價文字預覽不會馬上更新（要等其他欄位剛好也觸發才會一起更新），
     // 容易讓人誤以為地址沒存到。這裡補上，輸入當下就即時反映在預覽裡。
@@ -4106,10 +4144,11 @@
       row.dataset.remoteManual = 'true';
       renderQuoteDoc();
     });
-    row.querySelector('.q-dep').addEventListener('input', function(){ autoNight(row); autoPickupTime(row); renderQuoteDoc(); });
-    row.querySelector('.q-arr').addEventListener('input', function(){ autoNight(row); autoPickupTime(row); renderQuoteDoc(); });
+    row.querySelector('.q-dep').addEventListener('input', function(){ autoPickupTime(row); autoNight(row); renderQuoteDoc(); });
+    row.querySelector('.q-arr').addEventListener('input', function(){ autoPickupTime(row); autoNight(row); renderQuoteDoc(); });
     row.querySelector('.q-pickup-time').addEventListener('input', function(){
       row.dataset.pickupTimeManual = 'true';
+      autoNight(row);
       renderQuoteDoc();
     });
     var pickupAutoBtn = row.querySelector('.q-pickup-auto-btn');
@@ -4117,12 +4156,14 @@
       pickupAutoBtn.addEventListener('click', function(){
         row.dataset.pickupTimeManual = 'false';
         autoPickupTime(row);
+        autoNight(row);
         renderQuoteDoc();
       });
     }
     ['.q-air-chk','.q-night-chk','.q-sign-chk','.q-seat-chk','.q-extra-chk'].forEach(function(sel){
       row.querySelector(sel).addEventListener('change', renderQuoteDoc);
     });
+    row.querySelector('.q-night-chk').addEventListener('change', function(){ row.dataset.nightManual = 'true'; });
     // 「增加地點」勾選才顯示貼地址的欄位，沒勾選就不算有加點
     var extraStopChkEl = row.querySelector('.q-extra-stop-chk');
     var extraStopAddrEl = row.querySelector('.q-extra-stop-addr');
@@ -4166,8 +4207,8 @@
             ? (times.arrTerminal ? formatTaoyuanTerminal(times.arrTerminal) : times.depTerminal)
             : (times.depTerminal ? formatTaoyuanTerminal(times.depTerminal) : times.arrTerminal);
           if (terminal) row.querySelector('.q-terminal').value = terminal;
-          autoNight(row);
           autoPickupTime(row);
+          autoNight(row);
           renderQuoteDoc();
           statusEl.textContent = terminal ? '已帶入起降時間與航廈，請再次確認' : '已帶入起降時間，請再次確認';
         }).catch(function(err){
@@ -4509,12 +4550,14 @@
       r.pax || r.luggageCount || r.pickupArea || r.dropoffArea || r.svc));
   }
 
+  // 夜間加成以「上車時間」判斷（22:00–07:59），不是航班起降時間。
+  // 使用者自己勾選／取消夜間加成之後（row.dataset.nightManual）就不再自動覆蓋；
+  // 還沒有上車時間時不動勾選狀態。
   function autoNight(row){
-    var dep = row.querySelector('.q-dep').value;
-    var arr = row.querySelector('.q-arr').value;
-    if (isNightTime(dep) || isNightTime(arr)){
-      row.querySelector('.q-night-chk').checked = true;
-    }
+    if (row.dataset.nightManual === 'true') return;
+    var pickup = row.querySelector('.q-pickup-time').value;
+    if (!pickup) return;
+    row.querySelector('.q-night-chk').checked = isNightTime(pickup);
   }
 
   function fmtMD(iso){
@@ -4750,12 +4793,9 @@
   function selectedBankBlockText(lang){
     var el = document.querySelector('input[name="qBankChoice"]:checked');
     var choice = el ? el.value : 'future';
-    if (lang && lang !== 'zh-TW'){
-      var i18nBlock = BANK_BLOCK_I18N[lang];
-      return i18nBlock ? (i18nBlock[choice] || i18nBlock.future) : '';
-    }
-    var block = choice === 'jindachun' ? els.qBankBlockJindachun.value : els.qBankBlockFuture.value;
-    return block.trim();
+    var block = (choice === 'jindachun' ? els.qBankBlockJindachun.value : els.qBankBlockFuture.value).trim();
+    if (lang && lang !== 'zh-TW' && BANK_BLOCK_I18N[lang]) return localizeBankBlock(block, lang);
+    return block;
   }
 
   function renderQuoteDoc(){
@@ -4904,7 +4944,7 @@
       prefill.modelId = last.querySelector('.q-model').value;
       prefill.airChk = last.querySelector('.q-air-chk').checked;
       prefill.airAmt = last.querySelector('.q-air-amt').value;
-      prefill.nightChk = last.querySelector('.q-night-chk').checked;
+      // 夜間加成不複製：回程的上車時間不同，等填入航班後依上車時間自動判斷
       prefill.nightAmt = last.querySelector('.q-night-amt').value;
       prefill.signChk = last.querySelector('.q-sign-chk').checked;
       prefill.signAmt = last.querySelector('.q-sign-amt').value;
@@ -5161,8 +5201,8 @@
       var svcEl = document.querySelector('input[name="dSvcType"]:checked');
       var svc = svcEl ? svcEl.value : '送機';
       // 送機：以起飛時間往前推 3 小時（無條件捨去至最近 10 分鐘）作為上車時間
-      // 接機：以「落地」桃園機場的時間（抵達時間）作為上車／待客時間，而非起飛時間
-      var t = svc === '接機' ? (times.arr || times.dep) : (times.dep ? subtractHours(times.dep, 3) : times.arr);
+      // 接機：以「落地」桃園機場的時間（抵達時間）+ 30 分鐘作為預設上車時間，而非起飛時間
+      var t = svc === '接機' ? (times.arr ? addMinutes(times.arr, ARRIVAL_PICKUP_BUFFER_MIN) : times.dep) : (times.dep ? subtractHours(times.dep, 3) : times.arr);
       if (t){
         els.dPickupTime.value = t;
         els.dPickupTime.dispatchEvent(new Event('input'));
@@ -5238,18 +5278,21 @@
     printDoc('print-quote', '好好禮車_報價_' + todayStr(), els.quoteStatusMsg);
   });
 
-  // superseded by the v2 wording below (adds 接送地址) — kept only so a
-  // still-default (unedited) browser copy can be detected and migrated forward
-  var OLD_DEFAULT_BANK_BLOCK_FUTURE_V1 =
-    '匯款資訊：\n將來銀行(823)｜營業部(1688)\n帳號：8865-36668-36668\n戶名：答O正\n\n付款完成後請提供乘客的姓名/電話';
+  // 匯款帳號（銀行／帳號／戶名）不寫在程式碼裡，只存在使用者自己瀏覽器的設定
+  // （localStorage：hhlc_bank_block_future／hhlc_bank_block_jindachun），在
+  // 「報價固定文字」裡填寫。程式碼只內建沒有帳號資料的提示文字。
   var DEFAULT_BANK_BLOCK_FUTURE =
-    '匯款資訊：\n將來銀行(823)｜營業部(1688)\n帳號：8865-36668-36668\n戶名：答O正\n\n付款完成後請提供乘客的姓名/電話/接送地址';
-  var OLD_PLACEHOLDER_BANK_BLOCK_JINDACHUN =
-    '匯款資訊：\n金大春\n（請填入帳號資訊）\n\n付款完成後請提供乘客的姓名/電話';
-  var OLD_DEFAULT_BANK_BLOCK_JINDACHUN_V1 =
-    '匯款資訊：\n中國信託(822)城北分行\n帳號：200-54023678-1\n戶名：金大春有限公司\n\n付款完成後請提供乘客的姓名/電話';
+    '匯款資訊：\n（請在「報價固定文字」填入銀行／帳號／戶名）\n\n付款完成後請提供乘客的姓名/電話/接送地址';
   var DEFAULT_BANK_BLOCK_JINDACHUN =
-    '匯款資訊：\n中國信託(822)城北分行\n帳號：200-54023678-1\n戶名：金大春有限公司\n\n付款完成後請提供乘客的姓名/電話/接送地址';
+    '匯款資訊：\n（請在「報價固定文字」填入銀行／帳號／戶名）\n\n付款完成後請提供乘客的姓名/電話/接送地址';
+  var BANK_BLOCK_TAIL_V1 = '付款完成後請提供乘客的姓名/電話';
+  // 舊版結尾沒有「接送地址」：已存的文字只要結尾還是舊版就補上，其餘內容原封不動
+  function upgradeStoredBankBlock(txt){
+    if (!txt) return txt;
+    var trimmed = txt.replace(/\s+$/, '');
+    if (trimmed.slice(-BANK_BLOCK_TAIL_V1.length) === BANK_BLOCK_TAIL_V1) return trimmed + '/接送地址';
+    return txt;
+  }
   // superseded by the v2 wording below (e-receipt-by-default + invoice item name)
   // — kept only so a still-default (unedited) browser copy can be migrated forward
   var OLD_DEFAULT_NOTICE_BLOCK_V1 =
@@ -5402,17 +5445,22 @@
     renderCustPickSelects();
     if (els.dUseDate) els.dUseDate.value = todayStr();
 
+    // 已存的匯款資訊永遠保留（只補舊版缺的「接送地址」結尾）；沒存過就只顯示提示文字，
+    // 提示文字不寫進 localStorage，等使用者真的填了帳號才會存。
     var storedFuture = safeGet('hhlc_bank_block_future');
-    if (!storedFuture || storedFuture === OLD_DEFAULT_BANK_BLOCK_FUTURE_V1){
+    if (storedFuture){
+      var upFuture = upgradeStoredBankBlock(storedFuture);
+      if (upFuture !== storedFuture){ storedFuture = upFuture; safeSet('hhlc_bank_block_future', storedFuture); }
+    } else {
       storedFuture = DEFAULT_BANK_BLOCK_FUTURE;
-      safeSet('hhlc_bank_block_future', storedFuture);
     }
     els.qBankBlockFuture.value = storedFuture;
     var storedJindachun = safeGet('hhlc_bank_block_jindachun');
-    if (!storedJindachun || storedJindachun === OLD_PLACEHOLDER_BANK_BLOCK_JINDACHUN || storedJindachun === OLD_DEFAULT_BANK_BLOCK_JINDACHUN_V1){
-      // migrate: fill in the real account info / latest wording once the old default hasn't been hand-edited
+    if (storedJindachun && storedJindachun.indexOf('（請填入帳號資訊）') === -1){
+      var upJin = upgradeStoredBankBlock(storedJindachun);
+      if (upJin !== storedJindachun){ storedJindachun = upJin; safeSet('hhlc_bank_block_jindachun', storedJindachun); }
+    } else {
       storedJindachun = DEFAULT_BANK_BLOCK_JINDACHUN;
-      safeSet('hhlc_bank_block_jindachun', storedJindachun);
     }
     els.qBankBlockJindachun.value = storedJindachun;
     var storedNotice = safeGet('hhlc_notice_block');
