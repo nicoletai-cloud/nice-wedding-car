@@ -3774,6 +3774,29 @@
     { model: 'Toyota Alphard 豪華七人座', price: 2500, size: 'large' },
     { model: 'Lexus LM 豪華七人座', price: 3000, size: 'large' }
   ];
+  // 臺中 ↔ 桃園國際機場單程基本價（來自官方帳號圖卡與老闆 2026-10-06 提供；
+  // 其他車型的臺中價格待確認）。不覆蓋使用者已存的價目表：只在還沒加過時補進去，
+  // 刪掉後不會自己長回來（用 TC_SEED_KEY 記錄已補過）。
+  var TC_SEED_KEY = 'hhlc_pricelist_tc_seeded_v1';
+  var TAICHUNG_PRICELIST = [
+    { model: 'Model 3（台中）', price: 2600, size: 'small' },
+    { model: 'Model Y（台中）', price: 2800, size: 'small' },
+    { model: 'Model S（台中）', price: 2900, size: 'small' },
+    { model: 'Model X（台中）', price: 3400, size: 'small' },
+    { model: 'Benz W222（台中）', price: 7500, size: 'small' },
+    { model: 'Benz Vito 九人座（台中）', price: 4000, size: 'large' },
+    { model: 'Toyota Alphard 豪華七人座（台中）', price: 6000, size: 'large' },
+    { model: 'Lexus LM 豪華七人座（台中）', price: 8000, size: 'large' }
+  ];
+  function seedTaichungPrices(){
+    if (safeGet(TC_SEED_KEY)) return;
+    TAICHUNG_PRICELIST.forEach(function(p, i){
+      var exists = priceList.some(function(x){ return x.model === p.model; });
+      if (!exists) priceList.push(Object.assign({ id: 'prc_tc_' + i }, p));
+    });
+    savePriceList();
+    safeSet(TC_SEED_KEY, '1');
+  }
   function loadPriceList(){
     try {
       var raw = safeGet(PRICE_KEY);
@@ -3785,6 +3808,7 @@
         savePriceList();
       }
     } catch(e){ priceList = []; }
+    try { if (priceList.length) seedTaichungPrices(); } catch(e){}
   }
   function savePriceList(){ safeSet(PRICE_KEY, JSON.stringify(priceList)); }
 
@@ -4102,7 +4126,7 @@
     if (hit){
       chk.checked = true;
       amtEl.value = hit.amount;
-      if (noteEl) noteEl.textContent = '（' + hit.district + '，可調整／取消）';
+      if (noteEl) noteEl.textContent = '（' + (hit.city === '臺中' ? '臺中' : '') + hit.district + '，' + (hit.note || '可調整／取消') + '）';
     } else {
       chk.checked = false;
       amtEl.value = 0;
@@ -4441,16 +4465,54 @@
     '雙溪區': 1300,
     '貢寮區': 1500
   };
-  // 上／下車地區只要有一邊命中偏遠地區加價表就回傳 {amount, district}，兩邊都
+  // 臺中市機場接送「偏遠地區」加價（參考表：輕度／沿海 大甲、外埔、大安；中度／山城
+  // 邊緣 東勢、新社，參考區間 $200～$500，老闆確認五區一律加 $300；和平區（谷關、
+  // 梨山）採獨立報價，金額留 0 由使用者手動填）。因為「大安區」臺北市也有，臺中
+  // 這張表一定要確認縣市是臺中才套用（地址沒寫縣市時，大安區會被當成臺北大安）。
+  var TAICHUNG_REMOTE_AREA_SURCHARGE = {
+    '大甲區': 300, '外埔區': 300, '大安區': 300,
+    '東勢區': 300, '新社區': 300,
+    '和平區': 0
+  };
+  var TAICHUNG_REMOTE_MANUAL_NOTE = { '和平區': '獨立報價，請手動填金額' };
+  // 上／下車地區只要有一邊命中偏遠地區加價表就回傳 {amount, district, note}，兩邊都
   // 命中的話（理論上很少見）取金額較高的那個；都沒命中回傳 null。
+  // 除了完整地址，也認得系統自己顯示的簡易地區寫法（例如「新北淡水」「台中大甲」）。
+  function remoteAreaLookupOne(addr){
+    var s0 = String(addr || '').trim();
+    if (!s0) return null;
+    var hit = extractCityDistrict(s0);
+    var norm = s0.replace(/台/g, '臺');
+    if (hit){
+      var cityNorm = String(hit.cityShort || '').replace(/台/g, '臺');
+      if (cityNorm === '臺中' && TAICHUNG_REMOTE_AREA_SURCHARGE[hit.district] != null){
+        return { amount: TAICHUNG_REMOTE_AREA_SURCHARGE[hit.district], district: hit.district, city: '臺中', note: TAICHUNG_REMOTE_MANUAL_NOTE[hit.district] || '' };
+      }
+      if (REMOTE_AREA_SURCHARGE[hit.district] != null){
+        return { amount: REMOTE_AREA_SURCHARGE[hit.district], district: hit.district, city: '新北', note: '' };
+      }
+    }
+    // 簡易地區寫法：縣市簡稱 + 區名（不含「區」字）
+    var found = null;
+    Object.keys(TAICHUNG_REMOTE_AREA_SURCHARGE).forEach(function(d){
+      if (norm.indexOf('臺中' + d.slice(0, -1)) !== -1 && !found){
+        found = { amount: TAICHUNG_REMOTE_AREA_SURCHARGE[d], district: d, city: '臺中', note: TAICHUNG_REMOTE_MANUAL_NOTE[d] || '' };
+      }
+    });
+    if (found) return found;
+    Object.keys(REMOTE_AREA_SURCHARGE).forEach(function(d){
+      if (norm.indexOf('新北' + d.slice(0, -1)) !== -1 && !found){
+        found = { amount: REMOTE_AREA_SURCHARGE[d], district: d, city: '新北', note: '' };
+      }
+    });
+    return found;
+  }
   function remoteAreaSurchargeFor(pickupArea, dropoffArea){
     var best = null;
     [pickupArea, dropoffArea].forEach(function(addr){
-      var hit = extractCityDistrict(addr);
+      var hit = remoteAreaLookupOne(addr);
       if (!hit) return;
-      var amt = REMOTE_AREA_SURCHARGE[hit.district];
-      if (amt == null) return;
-      if (!best || amt > best.amount) best = { amount: amt, district: hit.district };
+      if (!best || hit.amount > best.amount) best = hit;
     });
     return best;
   }
@@ -4724,7 +4786,7 @@
       if (leg.signChk) breakdown += '+' + fmtNum(leg.signAmt) + '(' + L.sign + ')';
       if (leg.seatChk) breakdown += '+' + fmtNum(leg.seatAmt) + '(' + L.seat + ')';
       if (leg.extraChk) breakdown += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
-      if (leg.remoteChk) breakdown += '+' + fmtNum(leg.remoteAmt) + '(' + L.remote + ')';
+      if (leg.remoteChk && leg.remoteAmt) breakdown += '+' + fmtNum(leg.remoteAmt) + '(' + L.remote + ')';
       if (breakdown) priceStr = '$' + fmtNum(leg.base) + breakdown + '=$' + fmtNum(leg.subtotal);
       lines.push(lineParts.join(' ') + ' ' + priceStr);
     });
@@ -4732,10 +4794,14 @@
 
     var discountFactor = 1;
     var appliedDiscountNames = [];
-    if (els.qRoundTrip.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discRoundTrip); }
-    if (els.qFriends.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discFriends); }
-    if (els.qWedding.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discWedding); }
-    if (els.qManager.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discManager); }
+    // 95 折類優惠（來回／親友／禮車新人／主管）不疊加：不管勾幾個，最多只打一次 95 折
+    // （2026-10-06 新規則）；報價文字只顯示依序第一個勾選的優惠名稱。之後仍可再扣 eSIM NT$30。
+    var pctDiscountName = '';
+    if (els.qRoundTrip.checked) pctDiscountName = L.discRoundTrip;
+    else if (els.qFriends.checked) pctDiscountName = L.discFriends;
+    else if (els.qWedding.checked) pctDiscountName = L.discWedding;
+    else if (els.qManager.checked) pctDiscountName = L.discManager;
+    if (pctDiscountName){ discountFactor = 0.95; appliedDiscountNames.push(pctDiscountName); }
     if (esimDiscountAmount() > 0) appliedDiscountNames.push(L.discEsim);
     var afterDiscount = quoteAfterDiscount(rawTotal, discountFactor);
     var hasInvoiceTax = els.qInvoice.checked;
@@ -5562,10 +5628,7 @@
   function serializeCurrentQuote(){
     var legs = readQuoteLegs();
     var discountFactor = 1;
-    if (els.qRoundTrip.checked) discountFactor *= 0.95;
-    if (els.qFriends.checked) discountFactor *= 0.95;
-    if (els.qWedding.checked) discountFactor *= 0.95;
-    if (els.qManager.checked) discountFactor *= 0.95;
+    if (els.qRoundTrip.checked || els.qFriends.checked || els.qWedding.checked || els.qManager.checked) discountFactor = 0.95; // 95 折類不疊加
     var rawTotal = legs.reduce(function(s, l){ return s + l.subtotal; }, 0);
     var afterDiscount = quoteAfterDiscount(rawTotal, discountFactor);
     var finalTotal = els.qInvoice.checked ? Math.round(afterDiscount * 1.05) : afterDiscount;
@@ -5958,7 +6021,7 @@
     var d = (q && q.discounts) || null;
     if (!d || !subs.length) return subs;
     var factor = 1;
-    ['roundTrip', 'friends', 'wedding', 'manager'].forEach(function(k){ if (d[k]) factor *= 0.95; });
+    if (d.roundTrip || d.friends || d.wedding || d.manager) factor = 0.95; // 95 折類不疊加，最多一次
     var raw = subs.reduce(function(a, b){ return a + b; }, 0);
     // 1) 95 折
     var targetAfterPct = Math.round(raw * factor);
