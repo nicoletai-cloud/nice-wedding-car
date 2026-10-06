@@ -5900,6 +5900,43 @@
     updateDispatchLegSelect();
   }
 
+  // 把已存報價的折扣與稅，分攤回每一段行程，回傳每段實際應收金額（陣列）。
+  // 步驟與 buildQuoteText 一致：各段小計 → 95 折（四捨五入）→ eSIM 折 NT$30（整張
+  // 只扣一次，扣在第一段）→ 營業稅 5%（四捨五入）；每一步都把四捨五入的零頭
+  // 補在最後一段，確保各段加總 = 報價總額。舊報價沒有 discounts 欄位就原樣回傳小計。
+  function quoteLegPayableAmounts(q){
+    var legs = (q && q.legs) || [];
+    var subs = legs.map(function(l){ return Number(l.subtotal) || 0; });
+    var d = (q && q.discounts) || null;
+    if (!d || !subs.length) return subs;
+    var factor = 1;
+    ['roundTrip', 'friends', 'wedding', 'manager'].forEach(function(k){ if (d[k]) factor *= 0.95; });
+    var raw = subs.reduce(function(a, b){ return a + b; }, 0);
+    // 1) 95 折
+    var targetAfterPct = Math.round(raw * factor);
+    var amts = subs.map(function(v){ return Math.round(v * factor); });
+    var drift = targetAfterPct - amts.reduce(function(a, b){ return a + b; }, 0);
+    amts[amts.length - 1] += drift;
+    // 2) eSIM（扣在第一段，最低 0；不足的部分不往後段補扣，總額照單一扣款規則算）
+    if (d.esim){
+      var cut = Math.min(ESIM_DISCOUNT_AMOUNT, amts[0]);
+      amts[0] -= cut;
+      // 第一段金額不夠扣時，剩下的往後面的段落繼續扣，維持整筆訂單折滿 NT$30（總額最低 0）
+      var rest = ESIM_DISCOUNT_AMOUNT - cut;
+      for (var i = 1; i < amts.length && rest > 0; i++){
+        var c2 = Math.min(rest, amts[i]); amts[i] -= c2; rest -= c2;
+      }
+    }
+    // 3) 營業稅
+    if (d.invoice){
+      var afterEsim = amts.reduce(function(a, b){ return a + b; }, 0);
+      var targetFinal = Math.round(afterEsim * 1.05);
+      amts = amts.map(function(v){ return Math.round(v * 1.05); });
+      amts[amts.length - 1] += targetFinal - amts.reduce(function(a, b){ return a + b; }, 0);
+    }
+    return amts;
+  }
+
   function updateDispatchLegSelect(){
     if (!els.dQuoteLegField) return;
     var q = recentQuotes.find(function(x){ return x.id === els.dQuoteSelect.value; });
@@ -5947,8 +5984,13 @@
       if (leg.dropoffArea) els.dDropoffFullAddr.value = leg.dropoffArea;
       if (leg.pax) els.dPax.value = leg.pax;
       if (leg.luggageCount) els.dLuggageCount.value = leg.luggageCount;
-      lastImportedLegAmount = leg.subtotal;
-      if (els.dAmount && typeof leg.subtotal === 'number') els.dAmount.value = leg.subtotal;
+      // 訂單金額要帶「這一段行程實際該收的金額」，不是折扣前的小計：
+      // 來回優惠等 95 折與營業稅依各段小計比例分攤；指定 eSIM 的 NT$30 整張報價只
+      // 折一次，固定算在報價的第一段行程上。各段加總一定等於報價的總金額。
+      var legAmount = quoteLegPayableAmounts(q)[legIdx];
+      if (typeof legAmount !== 'number') legAmount = leg.subtotal;
+      lastImportedLegAmount = legAmount;
+      if (els.dAmount && typeof legAmount === 'number') els.dAmount.value = legAmount;
       updatePaymentUI();
     }
     // 如果這位客人已經是熟客、有存常用地址，匯入報價時就自動比對出來，讓
