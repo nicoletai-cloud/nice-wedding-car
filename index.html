@@ -1634,6 +1634,23 @@
           </div>
         </details>
       </div>
+
+      <div class="card" id="aeroSettingsCard">
+        <details class="settings">
+          <summary><span class="dot"></span>航班查詢金鑰（查詢起降時間）<span class="chev">▾</span></summary>
+          <p class="hint">
+            「查詢起降時間」按鈕用的是 RapidAPI 的 AeroDataBox 航班資料服務，需要你自己的金鑰。
+            這個金鑰只會存在這個瀏覽器，不會寫在程式碼裡，也不會送去別的地方；換瀏覽器或換手機使用時要再貼一次。
+            沒有金鑰的話，只有「查詢起降時間」不能用，其他功能不受影響。
+          </p>
+          <div class="settings-body">
+            <div class="field">
+              <label for="aeroApiKeyInput">航班查詢金鑰（RapidAPI Application Key）</label>
+              <input type="password" id="aeroApiKeyInput" placeholder="貼上你的 RapidAPI 金鑰" autocomplete="off">
+            </div>
+          </div>
+        </details>
+      </div>
     </div>
 
     <!-- RIGHT: PREVIEW -->
@@ -4263,10 +4280,9 @@
   // FLIGHT LOOKUP (AeroDataBox via RapidAPI) — 選填，需自行填入金鑰
   // =====================================================================
   var AERO_API_KEY_STORAGE = 'hhlc_aero_api_key';
-  // 預設金鑰：Nicole 自己的 RapidAPI／AeroDataBox 金鑰，直接內建使用，不再顯示設定欄位
-  var DEFAULT_AERO_API_KEY = 'b673653943mshcffd5384b545d7ep165ed6jsnf40197fb811d';
+  // 金鑰只存在使用者自己的瀏覽器（設定裡的「航班查詢金鑰」），不寫在程式碼裡。
   function getAeroApiKey(){
-    return (els.aeroApiKeyInput && els.aeroApiKeyInput.value.trim()) || safeGet(AERO_API_KEY_STORAGE) || DEFAULT_AERO_API_KEY;
+    return (els.aeroApiKeyInput && els.aeroApiKeyInput.value.trim()) || safeGet(AERO_API_KEY_STORAGE) || '';
   }
   function extractLocalTime(timeObj){
     if (!timeObj) return '';
@@ -4328,7 +4344,7 @@
   function lookupFlightTimes(flightNo, dateIso){
     var key = getAeroApiKey();
     flightNo = (flightNo || '').trim();
-    if (!key) return Promise.reject(new Error('尚未設定班機查詢金鑰'));
+    if (!key) return Promise.reject(new Error('尚未設定航班查詢金鑰，請到「報價」分頁的設定貼上'));
     if (!flightNo) return Promise.reject(new Error('請先輸入班機號碼'));
     if (!dateIso) return Promise.reject(new Error('請先選擇日期'));
     var url = 'https://aerodatabox.p.rapidapi.com/flights/number/' + encodeURIComponent(flightNo) + '/' + dateIso;
@@ -5621,7 +5637,7 @@
     updatePaymentUI();
     updatePassengerLangButtons();
     updateQuoteLangButtons();
-    if (els.aeroApiKeyInput) els.aeroApiKeyInput.value = safeGet(AERO_API_KEY_STORAGE) || DEFAULT_AERO_API_KEY;
+    if (els.aeroApiKeyInput) els.aeroApiKeyInput.value = safeGet(AERO_API_KEY_STORAGE) || '';
     var savedBankChoice = safeGet('hhlc_bank_choice');
     if (savedBankChoice){
       var r = document.querySelector('input[name="qBankChoice"][value="' + savedBankChoice + '"]');
