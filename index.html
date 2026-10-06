@@ -610,6 +610,8 @@
     border-bottom:1px dashed #E6DAC1;
     font-size:.85rem;
   }
+  /* display:flex 會蓋掉 hidden 屬性，非月結收據的「月結期間」那一行會多出一條「—」 */
+  .r-line[hidden]{ display:none; }
   .r-line:last-child{ border-bottom:none; }
   .r-line .k{ color:#6B5B42; flex-shrink:0; }
   .r-line .v{ color:#2B241C; text-align:right; font-weight:500; }
@@ -1302,6 +1304,16 @@
           <div class="check-row"><input type="checkbox" id="qFriends"><label for="qFriends" style="margin:0;">親友優惠（95 折）</label></div>
           <div class="check-row"><input type="checkbox" id="qWedding"><label for="qWedding" style="margin:0;">禮車新人（95 折）</label></div>
           <div class="check-row"><input type="checkbox" id="qManager"><label for="qManager" style="margin:0;">主管優惠（95 折）</label></div>
+          <div class="check-row"><input type="checkbox" id="qEsim"><label for="qEsim" style="margin:0;">指定 eSIM 搭配機場接送（折 NT$30，每筆接送訂單限一次）</label></div>
+          <div id="qEsimCheckBlock" hidden style="margin:-4px 0 12px 26px;">
+            <p class="hint" style="margin-bottom:6px;">內部核對用（不會出現在給客人的報價）：eSIM 扣除商品成本及金流費後，利潤至少 NT$100 才適用折扣，由客服核對。三格都填了才會自動判斷。</p>
+            <div class="row2">
+              <div class="field"><label for="qEsimPrice">eSIM 售價</label><input type="number" id="qEsimPrice" min="0" placeholder="選填"></div>
+              <div class="field"><label for="qEsimCost">商品成本</label><input type="number" id="qEsimCost" min="0" placeholder="選填"></div>
+            </div>
+            <div class="field" style="margin-bottom:6px;"><label for="qEsimFee">金流費</label><input type="number" id="qEsimFee" min="0" placeholder="選填"></div>
+            <div class="driver-readout" id="qEsimCheckReadout">尚未填入售價／成本／金流費</div>
+          </div>
           <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qInvoice"><label for="qInvoice" style="margin:0;">需要開立統一發票（+5% 營業稅）</label></div>
         </div>
 
@@ -1925,6 +1937,12 @@
     qWedding: document.getElementById('qWedding'),
     qManager: document.getElementById('qManager'),
     qInvoice: document.getElementById('qInvoice'),
+    qEsim: document.getElementById('qEsim'),
+    qEsimCheckBlock: document.getElementById('qEsimCheckBlock'),
+    qEsimPrice: document.getElementById('qEsimPrice'),
+    qEsimCost: document.getElementById('qEsimCost'),
+    qEsimFee: document.getElementById('qEsimFee'),
+    qEsimCheckReadout: document.getElementById('qEsimCheckReadout'),
     qPayLink: document.getElementById('qPayLink'),
     qShowBankInfo: document.getElementById('qShowBankInfo'),
     qShowCardLink: document.getElementById('qShowCardLink'),
@@ -4564,9 +4582,9 @@
 
   var currentQuoteLang = safeGet('hhlc_quote_lang') || 'zh-TW';
   var QLABELS = {
-    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', remote:'偏遠地區', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discNameSep:'、', discNameSuffix:'' },
-    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', remote:'Remote Area', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discNameSep:' + ', discNameSuffix:' ' },
-    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', remote:'遠隔地', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discNameSep:'・', discNameSuffix:'' }
+    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', remote:'偏遠地區', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discEsim:'eSIM優惠', discNameSep:'、', discNameSuffix:'' },
+    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', remote:'Remote Area', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discEsim:'eSIM discount', discNameSep:' + ', discNameSuffix:' ' },
+    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', remote:'遠隔地', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discEsim:'eSIM割引', discNameSep:'・', discNameSuffix:'' }
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
@@ -4574,6 +4592,35 @@
     els.qLangRow.querySelectorAll('.lang-btn').forEach(function(btn){
       btn.classList.toggle('active', btn.dataset.lang === currentQuoteLang);
     });
+  }
+
+  // ---------- eSIM 折扣（新規則）----------
+  // 指定 eSIM 搭配機場接送：整筆接送訂單折 NT$30，每筆訂單限折一次（不是每一段
+  // 行程各折一次）。先算完百分比折扣（來回／親友／禮車新人／主管 95 折），再扣
+  // 這 NT$30，最後才加 5% 營業稅——這個先後順序是系統的預設做法，官網規則沒有
+  // 明講，待確認。折扣金額最多折到 0，不會變負數。
+  var ESIM_DISCOUNT_AMOUNT = 30;
+  var ESIM_MIN_PROFIT = 100;
+  function esimDiscountAmount(){
+    return (els.qEsim && els.qEsim.checked) ? ESIM_DISCOUNT_AMOUNT : 0;
+  }
+  function quoteAfterDiscount(rawTotal, discountFactor){
+    return Math.max(0, Math.round(rawTotal * discountFactor) - esimDiscountAmount());
+  }
+  // 內部核對：eSIM 扣除商品成本及金流費後，利潤至少 NT$100 才適用折扣。只做提醒，
+  // 不擋住報價（實際由客服核對）；三格都有填才判斷。
+  function renderEsimCheck(){
+    if (els.qEsimCheckBlock) els.qEsimCheckBlock.hidden = !(els.qEsim && els.qEsim.checked);
+    if (!els.qEsimCheckReadout) return;
+    var vals = [els.qEsimPrice, els.qEsimCost, els.qEsimFee].map(function(e){ return e ? e.value : ''; });
+    if (vals.some(function(v){ return v === ''; })){
+      els.qEsimCheckReadout.textContent = '尚未填入售價／成本／金流費';
+      return;
+    }
+    var profit = Number(vals[0]) - Number(vals[1]) - Number(vals[2]);
+    els.qEsimCheckReadout.textContent = profit >= ESIM_MIN_PROFIT
+      ? '利潤 NT$ ' + fmtNum(profit) + '　✅ 符合門檻（至少 NT$ ' + ESIM_MIN_PROFIT + '）'
+      : '利潤 NT$ ' + fmtNum(profit) + '　⚠️ 未達門檻（至少 NT$ ' + ESIM_MIN_PROFIT + '），不適用 eSIM 折扣，請客服確認';
   }
 
   function buildQuoteText(){
@@ -4646,7 +4693,8 @@
     if (els.qFriends.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discFriends); }
     if (els.qWedding.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discWedding); }
     if (els.qManager.checked){ discountFactor *= 0.95; appliedDiscountNames.push(L.discManager); }
-    var afterDiscount = Math.round(rawTotal * discountFactor);
+    if (esimDiscountAmount() > 0) appliedDiscountNames.push(L.discEsim);
+    var afterDiscount = quoteAfterDiscount(rawTotal, discountFactor);
     var hasInvoiceTax = els.qInvoice.checked;
     var finalTotal = hasInvoiceTax ? Math.round(afterDiscount * 1.05) : afterDiscount;
 
@@ -5147,8 +5195,11 @@
       els.dFlightLookupStatus.textContent = (err && err.message) || '查詢失敗';
     });
   });
-  [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qInvoice].forEach(function(el){
-    if (el) el.addEventListener('change', renderQuoteDoc);
+  [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qEsim, els.qInvoice].forEach(function(el){
+    if (el) el.addEventListener('change', function(){ renderEsimCheck(); renderQuoteDoc(); });
+  });
+  [els.qEsimPrice, els.qEsimCost, els.qEsimFee].forEach(function(el){
+    if (el) el.addEventListener('input', renderEsimCheck);
   });
   document.querySelectorAll('input[name="qBankChoice"]').forEach(function(r){
     r.addEventListener('change', function(){
@@ -5468,7 +5519,7 @@
     if (els.qWedding.checked) discountFactor *= 0.95;
     if (els.qManager.checked) discountFactor *= 0.95;
     var rawTotal = legs.reduce(function(s, l){ return s + l.subtotal; }, 0);
-    var afterDiscount = Math.round(rawTotal * discountFactor);
+    var afterDiscount = quoteAfterDiscount(rawTotal, discountFactor);
     var finalTotal = els.qInvoice.checked ? Math.round(afterDiscount * 1.05) : afterDiscount;
     var bankChoiceEl = document.querySelector('input[name="qBankChoice"]:checked');
     var sourceEl = document.querySelector('input[name="qCustSource"]:checked');
@@ -5485,6 +5536,10 @@
         friends: els.qFriends.checked,
         wedding: els.qWedding.checked,
         manager: els.qManager.checked,
+        esim: !!(els.qEsim && els.qEsim.checked),
+        esimPrice: els.qEsimPrice ? els.qEsimPrice.value : '',
+        esimCost: els.qEsimCost ? els.qEsimCost.value : '',
+        esimFee: els.qEsimFee ? els.qEsimFee.value : '',
         invoice: els.qInvoice.checked
       },
       bankChoice: bankChoiceEl ? bankChoiceEl.value : 'future',
@@ -5548,6 +5603,11 @@
       els.qFriends.checked = !!q.discounts.friends;
       els.qWedding.checked = !!q.discounts.wedding;
       els.qManager.checked = !!q.discounts.manager;
+      if (els.qEsim) els.qEsim.checked = !!q.discounts.esim;
+      if (els.qEsimPrice) els.qEsimPrice.value = q.discounts.esimPrice || '';
+      if (els.qEsimCost) els.qEsimCost.value = q.discounts.esimCost || '';
+      if (els.qEsimFee) els.qEsimFee.value = q.discounts.esimFee || '';
+      renderEsimCheck();
       els.qInvoice.checked = !!q.discounts.invoice;
     }
     if (q.bankChoice){
