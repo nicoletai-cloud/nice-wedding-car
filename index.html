@@ -4344,7 +4344,7 @@
   function lookupFlightTimes(flightNo, dateIso){
     var key = getAeroApiKey();
     flightNo = (flightNo || '').trim();
-    if (!key) return Promise.reject(new Error('尚未設定航班查詢金鑰，請到「報價」分頁的設定貼上'));
+    if (!key) return Promise.reject(new Error('尚未設定航班查詢金鑰，請到「收據」分頁的「航班查詢金鑰」設定貼上'));
     if (!flightNo) return Promise.reject(new Error('請先輸入班機號碼'));
     if (!dateIso) return Promise.reject(new Error('請先選擇日期'));
     var url = 'https://aerodatabox.p.rapidapi.com/flights/number/' + encodeURIComponent(flightNo) + '/' + dateIso;
