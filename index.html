@@ -3935,6 +3935,7 @@
       '<div class="field">' +
       '<div class="check-row"><input type="checkbox" class="q-extra-stop-chk"><label style="margin:0;">增加地點（客人途中還要多上／下車一個地方）</label></div>' +
       '<textarea class="q-extra-stop-addr" rows="2" placeholder="貼上加點地址，多個地點請分行" style="display:none; margin-top:6px;"></textarea>' +
+      '<div class="hint q-extra-km-note" style="display:none; margin-top:4px;"></div>' +
       '</div>' +
       '<div class="row2"><div class="field"><label>搭乘人數</label><input type="number" class="q-pax" min="0" placeholder="選填"></div>' +
       '<div class="field"><label>行李件數</label><input type="number" class="q-luggage" min="0" placeholder="選填"></div></div>' +
@@ -4007,7 +4008,11 @@
     if (prefill.seatChk) row.querySelector('.q-seat-chk').checked = true;
     if (prefill.seatAmt != null) row.querySelector('.q-seat-amt').value = prefill.seatAmt;
     if (prefill.extraChk) row.querySelector('.q-extra-chk').checked = true;
-    if (prefill.extraAmt != null) row.querySelector('.q-extra-amt').value = prefill.extraAmt;
+    if (prefill.extraAmt != null){
+      row.querySelector('.q-extra-amt').value = prefill.extraAmt;
+      // 已存報價／來回複製帶入的加點金額視為手動決定，載入時不重算（改加點地址才重算）
+      row.dataset.extraManual = 'true';
+    }
     // remoteChk 是布林值，就算是 false 也代表這筆資料原本就有記錄（例如載入
     // 已存的報價，使用者當初手動取消了偏遠地區加價）——要標記成手動調整過，
     // 之後改地址才不會又被自動判斷覆蓋掉。「來回」按鈕複製上一筆行程時不會
@@ -4024,6 +4029,7 @@
       row.querySelector('.q-extra-stop-addr').style.display = '';
     }
     if (prefill.extraStopAddr) row.querySelector('.q-extra-stop-addr').value = prefill.extraStopAddr;
+    if (prefill.extraStopChk && prefill.extraStopAddr && prefill.extraAmt == null) scheduleExtraStopFee(row, false);
     relabelQuoteLegs();
     if (prefill.base != null){
       row.querySelector('.q-base').value = prefill.base;
@@ -4167,6 +4173,127 @@
     }
   }
 
+  // =====================================================================
+  // 加點里程加價（階梯式）：以「因加點而實際增加的總里程」計費，費用已含起跳。
+  //   0.1～3.0 公里 → $200　3.1～7.0 → $250　7.1～12.0 → $300
+  //   超過 12.0 公里：每滿 5 公里再 +$100（12.1～17.0 → $400，依此類推）
+  // 沒有多繞（增加里程 < 0.1 公里）只收起跳 $100。
+  // 等候費（每組加點 10 分鐘免費，超過每 15 分鐘 $100）由司機現場依情況收，
+  // 不在報價裡產生。
+  // =====================================================================
+  function extraStopFeeForKm(km){
+    var k = Math.round(Number(km) * 10) / 10;
+    if (!(k >= 0.1)) return 100;
+    if (k <= 3.0) return 200;
+    if (k <= 7.0) return 250;
+    if (k <= 12.0) return 300;
+    return 300 + 100 * Math.ceil((k - 12.0) / 5);
+  }
+
+  function parseExtraStopLines(text){
+    return String(text || '').split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+  }
+
+  var extraStopKmCache = {};
+
+  function setExtraKmNote(row, msg, isErr){
+    var noteEl = row.querySelector('.q-extra-km-note');
+    if (!noteEl) return;
+    noteEl.textContent = msg || '';
+    noteEl.style.display = msg ? '' : 'none';
+    noteEl.style.color = isErr ? '#b45309' : '';
+  }
+
+  function computeExtraStopKm(pickup, stops, dropoff, cb){
+    var key = JSON.stringify([pickup, stops, dropoff]);
+    if (extraStopKmCache[key] != null){ cb(null, extraStopKmCache[key]); return; }
+    loadGoogleMapsIfNeeded(function(ok){
+      if (!ok || !gmapsDistanceService){ cb('nomaps'); return; }
+      var origins = [pickup].concat(stops);
+      var dests = stops.concat([dropoff]);
+      gmapsDistanceService.getDistanceMatrix({
+        origins: origins,
+        destinations: dests,
+        travelMode: 'DRIVING',
+        unitSystem: google.maps.UnitSystem.METRIC,
+        region: 'tw'
+      }, function(res, status){
+        if (status !== 'OK' || !res || !res.rows){ cb('fail'); return; }
+        var n = stops.length, via = 0, i, el;
+        for (i = 0; i <= n; i++){
+          el = res.rows[i] && res.rows[i].elements && res.rows[i].elements[i];
+          if (!el || el.status !== 'OK'){ cb('fail'); return; }
+          via += el.distance.value;
+        }
+        el = res.rows[0] && res.rows[0].elements && res.rows[0].elements[n];
+        if (!el || el.status !== 'OK'){ cb('fail'); return; }
+        var extraKm = (via - el.distance.value) / 1000;
+        if (extraKm < 0) extraKm = 0;
+        extraStopKmCache[key] = extraKm;
+        cb(null, extraKm);
+      });
+    });
+  }
+
+  // 輸入加點地址後，自動算出比原本路線多繞幾公里，並帶入加點金額；
+  // 客服手動改過勾選或金額之後就不再自動覆蓋（改了加點地址才會重新計算）。
+  function updateExtraStopFee(row){
+    if (!row || !row.isConnected) return;
+    var stopChk = row.querySelector('.q-extra-stop-chk');
+    var stopAddr = row.querySelector('.q-extra-stop-addr');
+    var chkEl = row.querySelector('.q-extra-chk');
+    var amtEl = row.querySelector('.q-extra-amt');
+    if (!stopChk || !stopAddr || !chkEl || !amtEl) return;
+    var stops = stopChk.checked ? parseExtraStopLines(stopAddr.value) : [];
+    if (!stops.length){
+      setExtraKmNote(row, '');
+      row.dataset.extraSeq = String((Number(row.dataset.extraSeq) || 0) + 1);
+      if (row.dataset.extraAuto === 'true' && row.dataset.extraManual !== 'true'){
+        chkEl.checked = false;
+        amtEl.value = 100;
+        row.dataset.extraAuto = 'false';
+        renderQuoteDoc();
+      }
+      return;
+    }
+    if (row.dataset.extraManual === 'true') return;
+    var pickup = row.querySelector('.q-pickup-area').value.trim();
+    var dropoff = row.querySelector('.q-dropoff-area').value.trim();
+    if (!pickup || !dropoff){
+      setExtraKmNote(row, '請先填上車與下車地區，才能算加點多繞幾公里', true);
+      return;
+    }
+    var seq = (Number(row.dataset.extraSeq) || 0) + 1;
+    row.dataset.extraSeq = String(seq);
+    setExtraKmNote(row, '計算加點多繞里程中…');
+    computeExtraStopKm(pickup, stops, dropoff, function(err, km){
+      if (!row.isConnected || Number(row.dataset.extraSeq) !== seq || row.dataset.extraManual === 'true') return;
+      if (err){
+        chkEl.checked = true;
+        row.dataset.extraAuto = 'false';
+        setExtraKmNote(row, err === 'nomaps'
+          ? '未啟用 Google 地圖，無法自動算里程，請依里程自行填加點金額'
+          : '里程查詢失敗，請確認地址或手動填加點金額', true);
+        renderQuoteDoc();
+        return;
+      }
+      var fee = extraStopFeeForKm(km);
+      chkEl.checked = true;
+      amtEl.value = fee;
+      row.dataset.extraAuto = 'true';
+      var kmTxt = (Math.round(km * 10) / 10).toFixed(1);
+      setExtraKmNote(row, '加點多繞約 ' + kmTxt + ' 公里 → 加點加價 $' + fmtNum(fee) + '（含起跳，可手動修改金額）');
+      renderQuoteDoc();
+    });
+  }
+
+  function scheduleExtraStopFee(row, resetManual){
+    if (!row) return;
+    if (resetManual) row.dataset.extraManual = 'false';
+    clearTimeout(row._extraFeeTimer);
+    row._extraFeeTimer = setTimeout(function(){ updateExtraStopFee(row); }, 700);
+  }
+
   function bindQuoteLegEvents(row){
     row.querySelector('.remove-trip').addEventListener('click', function(){
       if (els.quoteLegsContainer.querySelectorAll('.trip-row').length <= 1) return;
@@ -4191,6 +4318,7 @@
       row.querySelector(sel).addEventListener('input', function(){
         autoApplyRemoteSurcharge(row);
         renderQuoteDoc();
+        scheduleExtraStopFee(row, false);
       });
     });
     row.querySelector('.q-remote-chk').addEventListener('change', function(){
@@ -4220,6 +4348,8 @@
     ['.q-air-chk','.q-night-chk','.q-sign-chk','.q-seat-chk','.q-extra-chk'].forEach(function(sel){
       row.querySelector(sel).addEventListener('change', renderQuoteDoc);
     });
+    row.querySelector('.q-extra-chk').addEventListener('change', function(){ row.dataset.extraManual = 'true'; });
+    row.querySelector('.q-extra-amt').addEventListener('input', function(){ row.dataset.extraManual = 'true'; });
     row.querySelector('.q-night-chk').addEventListener('change', function(){ row.dataset.nightManual = 'true'; });
     row.querySelector('.q-air-chk').addEventListener('change', function(){ row.dataset.airManual = 'true'; });
     // 「增加地點」勾選才顯示貼地址的欄位，沒勾選就不算有加點
@@ -4229,8 +4359,12 @@
       extraStopChkEl.addEventListener('change', function(){
         extraStopAddrEl.style.display = extraStopChkEl.checked ? '' : 'none';
         renderQuoteDoc();
+        scheduleExtraStopFee(row, true);
       });
-      extraStopAddrEl.addEventListener('input', renderQuoteDoc);
+      extraStopAddrEl.addEventListener('input', function(){
+        renderQuoteDoc();
+        scheduleExtraStopFee(row, true);
+      });
     }
     row.querySelectorAll('.chip:not(.q-pickup-auto-btn)').forEach(function(btn){
       btn.addEventListener('click', function(){
