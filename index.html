@@ -6446,7 +6446,19 @@
     }).catch(function(e){
       if (manual) botStatus('從機器人讀取訂單失敗：' + (e && e.message ? e.message : e), 'err');
       return null;
-    }).then(function(r){ botPullBusy = false; return r; });
+    }).then(function(r){ botPullBusy = false; try { openOrderFromHash(); } catch(e){} return r; });
+  }
+  var pendingOpenId = null;
+  function openOrderFromHash(){
+    try { var m = location.hash.match(/(?:^#|&)open=([^&]+)/); if (m) pendingOpenId = decodeURIComponent(m[1]); } catch(e){}
+    if (!pendingOpenId) return;
+    var id = pendingOpenId;
+    if (!recentOrders.some(function(x){ return x && x.id === id; })) return;
+    pendingOpenId = null;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+    switchTab('dispatch');
+    loadOrderIntoDispatchForm(id);
+    try { window.scrollTo(0, 0); } catch(e){}
   }
   function botDeleteOrder(id){
     var cfg = botConfig();
@@ -6467,6 +6479,7 @@
   if (els.botSyncBtn) els.botSyncBtn.addEventListener('click', function(){ botReadyUrl = ''; pullOrdersFromBot(true).then(function(){ return pushOrdersToBot(true); }); });
   if (els.botUrlInput) els.botUrlInput.value = safeGet(BOT_URL_KEY) || '';
   if (els.botTokenInput) els.botTokenInput.value = safeGet(BOT_TOKEN_KEY) || '';
+  setTimeout(function(){ try { openOrderFromHash(); } catch(e){} }, 300);
   setTimeout(function(){ pullOrdersFromBot(false); }, 800);
   var lastBotPullAt = Date.now();
   document.addEventListener('visibilitychange', function(){
