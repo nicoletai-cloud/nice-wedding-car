@@ -6393,6 +6393,61 @@
     if (botPushTimer) clearTimeout(botPushTimer);
     botPushTimer = setTimeout(function(){ botPushTimer = null; pushOrdersToBot(false); }, 1500);
   }
+  // 從機器人把訂單讀回來：機器人那邊有、這個瀏覽器還沒有的訂單（例如請 Claude 直接加到機器人的單、或別台裝置存的單）補進「最近訂單」。
+  // 已經有的訂單只在機器人那份比較新時才更新，而且只更新機器人有記的欄位，其餘欄位保留；你刪掉的訂單不會被補回來。
+  var botPullBusy = false;
+  function botOrderToLocal(b){
+    var o = {};
+    ['id','savedAt','svcType','date','pickupTime','flightNo','terminal','flightDepTime','flightArrTime','otherAirport',
+     'contactName','contactPhone','pickupAddr','dropoffAddr','pickupFullAddr','dropoffFullAddr','extraStopAddr','pax','luggageCount',
+     'note','custSource','custSourceName','driverName','driverPhone','driverCar','driverPlate'].forEach(function(k){ o[k] = (b[k] == null ? '' : String(b[k])); });
+    o.extraStopChk = !!b.extraStopChk;
+    o.amount = (typeof b.amount === 'number') ? b.amount : null;
+    if (!o.custSource) o.custSource = 'LINE';
+    o.driverId = '';
+    o.luggageSize = '';
+    o.paymentMethod = 'noSign';
+    o.driverFee = null;
+    o.isKnownCustomer = false;
+    return o;
+  }
+  function pullOrdersFromBot(manual){
+    var cfg = botConfig();
+    if (!cfg || botPullBusy) return Promise.resolve(null);
+    botPullBusy = true;
+    return botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airPull' }); }).then(function(j){
+      var inc = Array.isArray(j.orders) ? j.orders : [], del = (j.deleted && typeof j.deleted === 'object') ? j.deleted : {};
+      var added = 0, updated = 0;
+      inc.forEach(function(b){
+        if (!b || !b.id) return;
+        var bTs = Date.parse(b.savedAt) || 0;
+        if (del[b.id] && del[b.id] >= bTs) return;
+        var idx = -1; recentOrders.forEach(function(x, i){ if (x && x.id === b.id) idx = i; });
+        if (idx < 0){ recentOrders.push(botOrderToLocal(b)); added++; return; }
+        var cur = recentOrders[idx];
+        if ((Date.parse(cur.savedAt) || 0) < bTs){
+          var nb = botOrderToLocal(b);
+          Object.keys(nb).forEach(function(k){
+            if (k === 'driverId' || k === 'luggageSize' || k === 'paymentMethod' || k === 'driverFee' || k === 'isKnownCustomer') return;
+            cur[k] = nb[k];
+          });
+          updated++;
+        }
+      });
+      if (added || updated){
+        recentOrders.sort(function(a, b){ return new Date(b.savedAt || 0) - new Date(a.savedAt || 0); });
+        saveRecentOrdersList();
+        renderRecentOrdersList();
+        renderReceiptOrderSelect();
+        if (typeof renderDispatchQuoteSelect === 'function') renderDispatchQuoteSelect();
+      }
+      if (manual && added + updated) botStatus('已從機器人補進 ' + added + ' 筆新訂單' + (updated ? '、更新 ' + updated + ' 筆' : ''), 'ok');
+      return { added: added, updated: updated };
+    }).catch(function(e){
+      if (manual) botStatus('從機器人讀取訂單失敗：' + (e && e.message ? e.message : e), 'err');
+      return null;
+    }).then(function(r){ botPullBusy = false; return r; });
+  }
   function botDeleteOrder(id){
     var cfg = botConfig();
     if (!cfg) return;
@@ -6409,9 +6464,14 @@
   if (els.botTokenInput) els.botTokenInput.addEventListener('input', function(){
     safeSet(BOT_TOKEN_KEY, els.botTokenInput.value.trim());
   });
-  if (els.botSyncBtn) els.botSyncBtn.addEventListener('click', function(){ botReadyUrl = ''; pushOrdersToBot(true); });
+  if (els.botSyncBtn) els.botSyncBtn.addEventListener('click', function(){ botReadyUrl = ''; pullOrdersFromBot(true).then(function(){ return pushOrdersToBot(true); }); });
   if (els.botUrlInput) els.botUrlInput.value = safeGet(BOT_URL_KEY) || '';
   if (els.botTokenInput) els.botTokenInput.value = safeGet(BOT_TOKEN_KEY) || '';
+  setTimeout(function(){ pullOrdersFromBot(false); }, 800);
+  var lastBotPullAt = Date.now();
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden && Date.now() - lastBotPullAt > 60000){ lastBotPullAt = Date.now(); pullOrdersFromBot(false); }
+  });
 
   // =====================================================================
   // 雲端同步（報價／訂單），跨裝置共用 — 需要先在畫面上方輸入同步密碼
@@ -6466,7 +6526,7 @@
       safeSet('hhlc_sync_passcode', passcode);
       var now = new Date();
       hhlcSyncStatus('已同步（' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + '）', 'ok');
-      scheduleBotPush();
+      pullOrdersFromBot(false).then(function(){ scheduleBotPush(); });
     }).catch(function(){
       hhlcSyncStatus('同步失敗，請確認密碼或網路連線後再試一次', 'err');
     }).then(function(){
