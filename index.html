@@ -820,7 +820,7 @@
       <div class="form-col">
         <div class="card">
           <details class="settings">
-            <summary><span class="dot"></span>最近訂單（點選載入）<span class="chev">▾</span></summary>
+            <summary><span class="dot"></span>最近訂單（點選載入）<span id="orderAssignTag" style="margin-left:8px;font-weight:700;"></span><span class="chev">▾</span></summary>
             <p class="hint">儲存過的訂單會列在這裡；收據分頁也能從這裡選取</p>
             <div class="settings-body">
               <div id="recentOrderList"></div>
@@ -1001,7 +1001,9 @@
           </div>
           <div class="trip-add-row" style="margin-bottom:0;">
             <button type="button" class="add-btn" id="saveOrderBtn">💾 儲存訂單</button>
+            <button type="button" class="chip" id="saveOrderAsNewBtn" style="display:none;margin-left:8px;">另存新單</button>
           </div>
+          <p class="hint" id="orderEditNote" style="display:none;margin-top:8px;color:var(--accent-strong);">目前是從「最近訂單」載入的訂單：按「更新這筆訂單」會直接改掉原本那一筆；想另外存成新的一筆，請按「另存新單」。</p>
           <div class="status" id="dispatchStatusMsg"></div>
         </div>
 
@@ -1098,6 +1100,20 @@
             <label>司機資訊預覽</label>
             <div class="driver-readout" id="dDriverReadout"><span class="empty">尚未選擇司機</span></div>
           </div>
+          <div class="trip-add-row" style="margin-top:14px;margin-bottom:0;">
+            <button type="button" class="add-btn" id="saveAssignBtn">💾 儲存司機指派</button>
+          </div>
+          <p class="hint" style="margin-top:6px;">選好司機後按這裡，會把司機記錄在這張訂單上（已載入的訂單會更新原本那一筆）。已指派的訂單會寫進 Google 日曆；未指派的訂單，機器人會在用車日前 2 天起每天早上 9 點提醒。</p>
+        </div>
+
+        <div class="card">
+          <h2><span class="dot"></span>TimeTree 行程（複製貼上）</h2>
+          <p class="hint">TimeTree 沒辦法自動寫入，所以這裡把目前表單的內容整理好：先複製標題、再複製內容，貼到 TimeTree 的新行程就好。Google 日曆則由機器人自動寫入（已指派司機的訂單）。</p>
+          <div class="trip-add-row" style="margin-bottom:0;">
+            <button type="button" class="add-btn" id="ttCopyTitleBtn">複製標題</button>
+            <button type="button" class="add-btn" id="ttCopyBodyBtn" style="margin-left:8px;">複製內容</button>
+          </div>
+          <div class="status" id="ttStatusMsg"></div>
         </div>
 
         <div class="card">
@@ -1651,6 +1667,31 @@
           </div>
         </details>
       </div>
+
+      <div class="card" id="botSettingsCard">
+        <details class="settings">
+          <summary><span class="dot"></span>派車機器人連線（待指派提醒、司機行程提醒、日曆）<span class="chev">▾</span></summary>
+          <p class="hint">
+            連到「好好禮車機器人」的 Google Apps Script，讓機場接送訂單（含已指派的司機）傳給機器人：
+            未指派的訂單，用車日前 2 天起每天早上 9 點在 LINE 提醒你；已指派的訂單，接客時間前 18 小時再提醒一次，並寫進 Google 日曆。
+            網址和金鑰只會存在這個瀏覽器，不會寫在程式碼裡；換瀏覽器或換手機使用時要再貼一次。
+          </p>
+          <div class="settings-body">
+            <div class="field">
+              <label for="botUrlInput">機器人程式網址（結尾是 /exec）</label>
+              <input type="text" id="botUrlInput" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="botTokenInput">機器人金鑰（Apps Script 裡的 TOKEN）</label>
+              <input type="password" id="botTokenInput" placeholder="貼上金鑰" autocomplete="off">
+            </div>
+            <div class="trip-add-row" style="margin-bottom:0;">
+              <button type="button" class="add-btn" id="botSyncBtn">立即傳送訂單給機器人</button>
+            </div>
+            <div class="status" id="botStatusMsg"></div>
+          </div>
+        </details>
+      </div>
     </div>
 
     <!-- RIGHT: PREVIEW -->
@@ -1923,6 +1964,17 @@
 
     // quote tab
     aeroApiKeyInput: document.getElementById('aeroApiKeyInput'),
+    botUrlInput: document.getElementById('botUrlInput'),
+    botTokenInput: document.getElementById('botTokenInput'),
+    botSyncBtn: document.getElementById('botSyncBtn'),
+    botStatusMsg: document.getElementById('botStatusMsg'),
+    saveOrderAsNewBtn: document.getElementById('saveOrderAsNewBtn'),
+    orderEditNote: document.getElementById('orderEditNote'),
+    saveAssignBtn: document.getElementById('saveAssignBtn'),
+    ttCopyTitleBtn: document.getElementById('ttCopyTitleBtn'),
+    ttCopyBodyBtn: document.getElementById('ttCopyBodyBtn'),
+    ttStatusMsg: document.getElementById('ttStatusMsg'),
+    orderAssignTag: document.getElementById('orderAssignTag'),
     quotePasteInput: document.getElementById('quotePasteInput'),
     quotePasteBtn: document.getElementById('quotePasteBtn'),
     ocrPasteBtn: document.getElementById('ocrPasteBtn'),
@@ -3626,6 +3678,28 @@
     el.textContent = msg;
     el.className = 'status ' + (kind === 'err' ? 'err' : 'ok');
   }
+
+  // ---------- TimeTree 行程文字（TimeTree 不能自動寫入，產生可貼上的標題與內容） ----------
+  function buildTimeTreeText(){
+    var o = serializeCurrentOrder();
+    var name = o.custSourceName || o.contactName || '';
+    var mark = (o.custSource === 'FB' || o.custSource === 'IG') ? '（' + o.custSource + '）' : '';
+    var title = (o.driverName ? '[' + o.driverName + ']' : '') + (o.svcType || '') + ' ' + name + mark;
+    var lines = [
+      '標籤：機場接送',
+      (o.date ? fmtMD(o.date) : '日期未定') + ' ' + (o.pickupTime || '時間未定') + ' ' + (o.svcType || ''),
+      '上車：' + (o.pickupFullAddr || o.pickupAddr || ''),
+      '下車：' + (o.dropoffFullAddr || o.dropoffAddr || '') + (o.extraStopChk && o.extraStopAddr ? '（加點：' + o.extraStopAddr + '）' : ''),
+      o.flightNo ? '航班：' + [o.flightNo, o.terminal].filter(String).join(' ') : '',
+      '客人：' + [o.contactName, o.contactPhone].filter(String).join(' ') + (o.pax ? '｜' + o.pax + ' 人' : '') + (o.luggageCount ? '｜行李 ' + o.luggageCount : ''),
+      o.driverName ? '司機：' + [o.driverName, o.driverPhone, o.driverCar, o.driverPlate].filter(String).join(' ') : '司機：尚未指派',
+      (typeof o.amount === 'number') ? '金額：$' + fmtNum(o.amount) : '',
+      o.note ? '備註：' + o.note : ''
+    ].filter(String);
+    return { title: title.trim(), body: lines.join('\n') };
+  }
+  if (els.ttCopyTitleBtn) els.ttCopyTitleBtn.addEventListener('click', function(){ copyToClipboard(buildTimeTreeText().title, els.ttStatusMsg); });
+  if (els.ttCopyBodyBtn) els.ttCopyBodyBtn.addEventListener('click', function(){ copyToClipboard(buildTimeTreeText().body, els.ttStatusMsg); });
 
   function copyToClipboard(text, statusEl){
     function ok(){ setDispatchStatus(statusEl, '已複製到剪貼簿', 'ok'); }
@@ -6052,7 +6126,63 @@
     return '[' + src + '] ' + name;
   }
 
+  // ---------- 司機指派狀態（機場接送派車） ----------
+  // editingOrderId：從「最近訂單」載入的那一筆；儲存時直接更新它（不另外多出一筆）。
+  // keptDriverSnap：載入的訂單帶有司機，但這個瀏覽器的司機資料庫裡沒有這位司機
+  // （例如在別的裝置指派的）——先把雲端那份司機資料留著，避免一存檔就把司機洗掉。
+  var editingOrderId = null;
+  var keptDriverSnap = null;
+  function driverById(id){ return drivers.find(function(d){ return d.id === id; }) || null; }
+  function orderDriverSnap(){
+    var d = selectedDriver();
+    if (d) return { id: d.id, name: d.name || '', phone: d.phone || '', car: d.car || '', plate: d.plate || '' };
+    if (keptDriverSnap && els.dDriverSelect && !els.dDriverSelect.value) return keptDriverSnap;
+    return { id: '', name: '', phone: '', car: '', plate: '' };
+  }
+  function orderDriverLabel(o){
+    if (o && o.driverName) return o.driverName;
+    if (o && o.driverId){ var d = driverById(o.driverId); if (d) return d.name || ''; }
+    return '';
+  }
+  function daysUntilDate(ds){
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ds || ''));
+    if (!m) return null;
+    var now = new Date();
+    var a = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    var b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((a - b) / 864e5);
+  }
+  function orderAssignBadge(o){
+    var name = orderDriverLabel(o);
+    if (name) return '<span style="color:var(--ok);font-weight:700;">司機 ' + escapeHtml(name) + '</span>';
+    var n = daysUntilDate(o.date);
+    if (n === null || n < 0) return '<span style="color:var(--ink-faint);">未指派</span>';
+    var when = n === 0 ? '今天' : (n === 1 ? '明天' : n + ' 天後');
+    return '<span style="color:var(--danger);font-weight:700;">未指派（' + when + '）</span>';
+  }
+  function renderOrderAssignTag(){
+    if (!els.orderAssignTag) return;
+    var need = 0, soon = 0;
+    recentOrders.forEach(function(o){
+      var n = daysUntilDate(o.date);
+      if (n === null || n < 0 || orderDriverLabel(o)) return;
+      need++; if (n <= 2) soon++;
+    });
+    if (!need){ els.orderAssignTag.textContent = ''; return; }
+    els.orderAssignTag.style.color = soon ? 'var(--danger)' : 'var(--accent-strong)';
+    els.orderAssignTag.textContent = '待指派 ' + need + ' 筆' + (soon ? '（2 天內 ' + soon + ' 筆）' : '');
+  }
+  function updateOrderEditUI(){
+    var editing = !!editingOrderId && recentOrders.some(function(o){ return o.id === editingOrderId; });
+    if (!editing) editingOrderId = null;
+    if (els.saveOrderBtn) els.saveOrderBtn.textContent = editing ? '💾 更新這筆訂單' : '💾 儲存訂單';
+    if (els.saveOrderAsNewBtn) els.saveOrderAsNewBtn.style.display = editing ? '' : 'none';
+    if (els.orderEditNote) els.orderEditNote.style.display = editing ? '' : 'none';
+    if (els.saveAssignBtn) els.saveAssignBtn.textContent = editing ? '💾 儲存司機指派（更新這筆訂單）' : '💾 儲存司機指派';
+  }
+
   function renderRecentOrdersList(){
+    renderOrderAssignTag();
     if (els.recentOrderList){
       if (!recentOrders.length){
         els.recentOrderList.innerHTML = '<p class="list-empty">尚未儲存訂單</p>';
@@ -6061,7 +6191,7 @@
           var summary = fmtMD(o.date) + ' ' + o.svcType + (o.flightNo ? ' ' + o.flightNo : '');
           return '<div class="list-row" data-id="' + o.id + '">' +
             '<div class="li-main"><div class="li-name">' + escapeHtml(orderSourceLabel(o)) + '</div>' +
-            '<div class="li-sub">' + escapeHtml(summary) + '　存於 ' + fmtSavedAt(o.savedAt) + '</div></div>' +
+            '<div class="li-sub">' + escapeHtml(summary) + '　' + orderAssignBadge(o) + '　存於 ' + fmtSavedAt(o.savedAt) + '</div></div>' +
             '<button type="button" class="chip" data-load-order="' + o.id + '">載入</button>' +
             '<button type="button" class="del" data-del-order="' + o.id + '">✕</button>' +
             '</div>';
@@ -6100,6 +6230,10 @@
       luggageSize: els.dLuggageSize.value,
       note: els.dNote.value.trim(),
       driverId: els.dDriverSelect ? els.dDriverSelect.value : '',
+      driverName: orderDriverSnap().name,
+      driverPhone: orderDriverSnap().phone,
+      driverCar: orderDriverSnap().car,
+      driverPlate: orderDriverSnap().plate,
       amount: (els.dAmount && els.dAmount.value !== '') ? Number(els.dAmount.value) : lastImportedLegAmount,
       paymentMethod: currentPaymentMethod(),
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
@@ -6107,14 +6241,23 @@
     };
   }
 
-  function saveCurrentOrder(){
+  function saveCurrentOrder(asNew){
     var o = serializeCurrentOrder();
     if (!o.contactName && !o.pickupAddr && !o.dropoffAddr && !o.pickupFullAddr && !o.dropoffFullAddr){
       setDispatchStatus(els.dispatchStatusMsg, '請先填寫訂單資訊', 'err');
       return;
     }
-    recentOrders.unshift(o);
-    if (recentOrders.length > 50) recentOrders = recentOrders.slice(0, 50);
+    var updated = false;
+    if (!asNew && editingOrderId){
+      var idx = -1;
+      recentOrders.forEach(function(x, i){ if (x.id === editingOrderId) idx = i; });
+      if (idx >= 0){ o.id = editingOrderId; recentOrders[idx] = o; updated = true; }
+    }
+    if (!updated){
+      recentOrders.unshift(o);
+      if (recentOrders.length > 50) recentOrders = recentOrders.slice(0, 50);
+      editingOrderId = null;
+    }
     saveRecentOrdersList();
     var learnedAddress = false;
     if (o.isKnownCustomer){
@@ -6127,9 +6270,106 @@
     renderRecentOrdersList();
     renderReceiptOrderSelect();
     renderCustPickSelects();
-    setDispatchStatus(els.dispatchStatusMsg, learnedAddress ? '已儲存這筆訂單，並記住這位熟客的完整地址' : '已儲存這筆訂單', 'ok');
+    var assignNote = o.driverName ? '（司機：' + o.driverName + '）' : '（尚未指派司機）';
+    setDispatchStatus(els.dispatchStatusMsg, (updated ? '已更新這筆訂單' : '已儲存這筆訂單') + assignNote + (learnedAddress ? '，並記住這位熟客的完整地址' : ''), 'ok');
+    updateOrderEditUI();
     doFullSync(true);
+    scheduleBotPush();
   }
+
+  // =====================================================================
+  // 派車機器人（Google Apps Script）：把訂單＋已指派司機傳給機器人
+  //   - 未指派：用車日前 2 天起，每天早上 9 點在 LINE 提醒
+  //   - 已指派：接客前 18 小時再提醒一次；寫進 Google 日曆
+  // 網址／金鑰只存在這個瀏覽器（localStorage），不寫在程式碼裡。
+  // =====================================================================
+  var BOT_URL_KEY = 'hhlc_bot_url';
+  var BOT_TOKEN_KEY = 'hhlc_bot_token';
+  function cleanBotUrl(v){ return String(v || '').trim().split('?')[0].split('#')[0].trim(); }
+  function botConfig(){
+    var url = cleanBotUrl((els.botUrlInput && els.botUrlInput.value) || safeGet(BOT_URL_KEY) || '');
+    var token = ((els.botTokenInput && els.botTokenInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[^\/]+\/exec$/.test(url) || !token) return null;
+    return { url: url, token: token };
+  }
+  function botStatus(msg, kind){
+    if (!els.botStatusMsg) return;
+    els.botStatusMsg.textContent = msg;
+    els.botStatusMsg.className = 'status' + (kind ? ' ' + kind : '');
+  }
+  function botOrderPayload(o){
+    var d = (o.driverId && !o.driverName) ? driverById(o.driverId) : null;
+    return {
+      id: o.id, savedAt: o.savedAt, svcType: o.svcType || '', date: o.date || '', pickupTime: o.pickupTime || '',
+      flightNo: o.flightNo || '', terminal: o.terminal || '', flightDepTime: o.flightDepTime || '', flightArrTime: o.flightArrTime || '',
+      otherAirport: o.otherAirport || '', contactName: o.contactName || '', contactPhone: o.contactPhone || '',
+      pickupAddr: o.pickupAddr || '', dropoffAddr: o.dropoffAddr || '', pickupFullAddr: o.pickupFullAddr || '', dropoffFullAddr: o.dropoffFullAddr || '',
+      extraStopChk: !!o.extraStopChk, extraStopAddr: o.extraStopAddr || '', pax: o.pax || '', luggageCount: o.luggageCount || '',
+      note: o.note || '', custSource: o.custSource || '', custSourceName: o.custSourceName || '',
+      amount: (typeof o.amount === 'number') ? o.amount : null,
+      driverName: o.driverName || (d ? d.name : ''), driverPhone: o.driverPhone || (d ? d.phone : ''),
+      driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : '')
+    };
+  }
+  var botReadyUrl = '';
+  function botCheckReady(cfg){
+    if (botReadyUrl === cfg.url) return Promise.resolve(true);
+    return fetch(cfg.url + '?action=airVersion', { method: 'GET' }).then(function(r){ return r.json(); }).then(function(j){
+      if (j && j.ok && j.air){ botReadyUrl = cfg.url; return true; }
+      throw new Error('機器人程式還沒更新（Apps Script 要先貼入新的機場接送程式並重新部署）');
+    });
+  }
+  function botPost(cfg, body){
+    body.token = cfg.token;
+    return fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+      .then(function(r){ return r.json(); }).then(function(j){
+        if (!j || !j.ok) throw new Error((j && j.error) || '機器人回應異常');
+        return j;
+      });
+  }
+  var botPushBusy = false, botPushTimer = null;
+  function pushOrdersToBot(manual){
+    var cfg = botConfig();
+    if (!cfg){ if (manual) botStatus('請先貼上機器人程式網址（結尾是 /exec）和金鑰', 'err'); return Promise.resolve(false); }
+    if (botPushBusy) return Promise.resolve(false);
+    botPushBusy = true;
+    if (manual) botStatus('傳送中…', 'busy');
+    var yesterday = new Date(Date.now() - 864e5);
+    var cut = yesterday.getFullYear() + '-' + pad2(yesterday.getMonth() + 1) + '-' + pad2(yesterday.getDate());
+    var list = recentOrders.filter(function(o){ return o && o.date && o.date >= cut; }).map(botOrderPayload);
+    return botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'syncAir', orders: list }); }).then(function(j){
+      var now = new Date();
+      botStatus('已傳給機器人（' + list.length + ' 筆，' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + '）' + (j.msg ? '：' + j.msg : ''), 'ok');
+      return true;
+    }).catch(function(e){
+      botStatus('傳給機器人失敗：' + (e && e.message ? e.message : e), 'err');
+      return false;
+    }).then(function(ok){ botPushBusy = false; return ok; });
+  }
+  function scheduleBotPush(){
+    if (!botConfig()) return;
+    if (botPushTimer) clearTimeout(botPushTimer);
+    botPushTimer = setTimeout(function(){ botPushTimer = null; pushOrdersToBot(false); }, 1500);
+  }
+  function botDeleteOrder(id){
+    var cfg = botConfig();
+    if (!cfg) return;
+    botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airDelete', ids: [id] }); }).catch(function(){});
+  }
+  if (els.botUrlInput) els.botUrlInput.addEventListener('input', function(){
+    safeSet(BOT_URL_KEY, cleanBotUrl(els.botUrlInput.value));
+  });
+  if (els.botUrlInput) els.botUrlInput.addEventListener('change', function(){
+    // 如果貼的是帶 ?hook=…&k=… 的網址，只留 /exec 前面的部分，避免把通關密碼存下來
+    els.botUrlInput.value = cleanBotUrl(els.botUrlInput.value);
+    safeSet(BOT_URL_KEY, els.botUrlInput.value);
+  });
+  if (els.botTokenInput) els.botTokenInput.addEventListener('input', function(){
+    safeSet(BOT_TOKEN_KEY, els.botTokenInput.value.trim());
+  });
+  if (els.botSyncBtn) els.botSyncBtn.addEventListener('click', function(){ botReadyUrl = ''; pushOrdersToBot(true); });
+  if (els.botUrlInput) els.botUrlInput.value = safeGet(BOT_URL_KEY) || '';
+  if (els.botTokenInput) els.botTokenInput.value = safeGet(BOT_TOKEN_KEY) || '';
 
   // =====================================================================
   // 雲端同步（報價／訂單），跨裝置共用 — 需要先在畫面上方輸入同步密碼
@@ -6184,6 +6424,7 @@
       safeSet('hhlc_sync_passcode', passcode);
       var now = new Date();
       hhlcSyncStatus('已同步（' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + '）', 'ok');
+      scheduleBotPush();
     }).catch(function(){
       hhlcSyncStatus('同步失敗，請確認密碼或網路連線後再試一次', 'err');
     }).then(function(){
@@ -6250,13 +6491,21 @@
       els.dDriverSelect.value = o.driverId;
       updateDriverReadout();
     }
+    keptDriverSnap = (o.driverName && !(o.driverId && driverById(o.driverId)))
+      ? { id: '', name: o.driverName || '', phone: o.driverPhone || '', car: o.driverCar || '', plate: o.driverPlate || '' }
+      : null;
+    editingOrderId = o.id;
+    updateOrderEditUI();
     switchTab('dispatch');
     renderPassengerDoc();
     renderDispatchSheet();
-    setDispatchStatus(els.dispatchStatusMsg, '已載入訂單，可繼續編輯', 'ok');
+    setDispatchStatus(els.dispatchStatusMsg, '已載入訂單，可繼續編輯（按「更新這筆訂單」會改掉這一筆；要另外存請按「另存新單」）', 'ok');
   }
 
-  if (els.saveOrderBtn) els.saveOrderBtn.addEventListener('click', saveCurrentOrder);
+  if (els.saveOrderBtn) els.saveOrderBtn.addEventListener('click', function(){ saveCurrentOrder(false); });
+  if (els.saveAssignBtn) els.saveAssignBtn.addEventListener('click', function(){ saveCurrentOrder(false); });
+  if (els.saveOrderAsNewBtn) els.saveOrderAsNewBtn.addEventListener('click', function(){ saveCurrentOrder(true); });
+  if (els.dDriverSelect) els.dDriverSelect.addEventListener('change', function(){ keptDriverSnap = null; });
   if (els.recentOrderList){
     els.recentOrderList.addEventListener('click', function(e){
       var loadBtn = e.target.closest('[data-load-order]');
@@ -6266,9 +6515,12 @@
         var id = delBtn.getAttribute('data-del-order');
         recentOrders = recentOrders.filter(function(o){ return o.id !== id; });
         saveRecentOrdersList();
+        if (editingOrderId === id) editingOrderId = null;
+        updateOrderEditUI();
         renderRecentOrdersList();
         renderReceiptOrderSelect();
         renderCustPickSelects();
+        botDeleteOrder(id);
       }
     });
   }
@@ -6348,6 +6600,7 @@
     var legIdx = 0;
     if (q.legs && q.legs.length > 1 && els.dQuoteLegSelect.value !== '') legIdx = Number(els.dQuoteLegSelect.value);
     var leg = q.legs && q.legs[legIdx];
+    editingOrderId = null; keptDriverSnap = null; updateOrderEditUI();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.dCustSourceName.value = q.custSourceName || '';
