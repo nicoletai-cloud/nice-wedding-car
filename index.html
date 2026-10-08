@@ -3140,8 +3140,9 @@
   function drvInviteText(d){
     var b = drvBind[d.name]; if (!b) return '';
     return '好好禮車司機行程提醒：\n1. 請先加「好好禮車司機回報平台」為好友：' + (drvInfo.friend || '') +
-      '\n2. 加入後，把這組綁定碼傳給它：' + b.code +
-      '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。（綁定碼只能用一次，請不要轉給別人）';
+      '\n2. 加入後（已經是好友的不用重加），在聊天室傳「綁定」，再點選你自己的名字「' + d.name + '」就完成。' +
+      '\n（如果按鈕沒出現，也可以改傳這組綁定碼：' + b.code + '，只能用一次，請不要轉給別人）' +
+      '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。';
   }
   function drvBindStatus(msg, kind){
     var el = document.getElementById('drvBindMsg'); if (!el) return;
