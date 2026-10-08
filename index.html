@@ -6576,14 +6576,12 @@
   (function(){
     var FRIEND = 'https://line.me/R/ti/p/@930ztusf';
     var CARD_LINK = 'https://line.me/R/oaMessage/@930ztusf/?' + encodeURIComponent('車卡');
-    var tail = '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。車子或電話有變，傳「更新資料」即可。';
     var nb = document.getElementById('drvInviteNew'), ob = document.getElementById('drvInviteOld');
     if (nb) nb.addEventListener('click', function(){
-      copyToClipboard('好好禮車司機行程提醒：\n請點這個連結加「好好禮車司機回報平台」為好友：' + ((drvInfo && drvInfo.friend) || FRIEND) +
-        '\n加入後機器人會自動請你提供車卡（姓名／電話／車牌／車款／車色／座位數），照著回答就建檔完成了。' + tail, document.getElementById('drvBindMsg'));
+      copyToClipboard('請點選以下連結，加入好好禮車司機回報平台並完成司機帳號綁定：\n' + ((drvInfo && drvInfo.friend) || FRIEND), document.getElementById('drvBindMsg'));
     });
     if (ob) ob.addEventListener('click', function(){
-      copyToClipboard('好好禮車司機行程提醒：\n為完善系統建檔，請點這個連結，再按送出，依序提供車卡（姓名／電話／車牌／車款／車色／座位數）：' + CARD_LINK + tail, document.getElementById('drvBindMsg'));
+      copyToClipboard('為完善系統建檔，請點選以下連結完成司機帳號綁定：\n' + CARD_LINK, document.getElementById('drvBindMsg'));
     });
   })();
   (function(){ var b = document.getElementById('drvBindRefresh'); if (b) b.addEventListener('click', function(){ syncDriverBindings(true); }); })();
