@@ -1183,6 +1183,8 @@
               <p class="hint" style="margin-top:14px; margin-bottom:6px;">目前司機名單</p>
               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px;">
                 <button type="button" class="add-btn" id="drvBindRefresh">更新司機提醒綁定狀態</button>
+                <button type="button" class="add-btn" id="drvInviteNew">複製：新司機邀請文字</button>
+                <button type="button" class="add-btn" id="drvInviteOld">複製：舊好友補車卡文字</button>
               </div>
               <div class="status" id="drvBindMsg"></div>
               <div id="driverList"></div>
@@ -3140,9 +3142,8 @@
   function drvInviteText(d){
     var b = drvBind[d.name]; if (!b) return '';
     return '好好禮車司機行程提醒：\n1. 請先加「好好禮車司機回報平台」為好友：' + (drvInfo.friend || '') + '（已經是好友的不用重加）' +
-      '\n2. 在聊天室傳「綁定」，照機器人的問題回答（姓名、手機、車號、車款、車色），回答完按「確認」就建好資料並綁定了。' +
-      '\n之後接單不用再填資料；車子或電話有變，傳「更新資料」即可。' +
-      '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。';
+      '\n2. 在聊天室傳「綁定」，照機器人的問題回答（姓名、手機、車號、車款、車色、座位數），回答完按「確認」就建好資料並綁定了。' +
+      '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。車子或電話有變，傳「更新資料」即可。';
   }
   function drvBindStatus(msg, kind){
     var el = document.getElementById('drvBindMsg'); if (!el) return;
@@ -3157,10 +3158,10 @@
       var d = drivers.find(function(y){ return y.name === x.name; });
       if (!d){
         drivers.push({ id: 'drv_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), name: x.name, phone: x.phone || '',
-          car: car, plate: x.plate || '', size: x.size === 'large' ? 'large' : 'small', formalSheet: false, botAt: x.updatedAt || 0 });
+          car: car, plate: x.plate || '', seats: x.seats || '', size: x.size === 'large' ? 'large' : 'small', formalSheet: false, botAt: x.updatedAt || 0 });
         changed = true;
       } else if ((x.updatedAt || 0) > (d.botAt || 0)){
-        d.phone = x.phone || d.phone; d.car = car || d.car; d.plate = x.plate || d.plate;
+        d.phone = x.phone || d.phone; d.car = car || d.car; d.plate = x.plate || d.plate; d.seats = x.seats || d.seats || '';
         if (x.size) d.size = x.size === 'large' ? 'large' : 'small';
         d.botAt = x.updatedAt || 0; changed = true;
       }
@@ -3195,7 +3196,7 @@
         var formalTag = d.formalSheet ? '<span class="tag" style="background:color-mix(in srgb, var(--danger) 16%, transparent); color:var(--danger);">正式派車單</span>' : '';
         return '<div class="list-row" data-id="' + d.id + '">' +
           '<div class="li-main"><div class="li-name">' + escapeHtml(d.name) + '</div>' +
-          '<div class="li-sub">' + escapeHtml(d.phone) + '　' + escapeHtml(d.car) + '　' + escapeHtml(d.plate) + '</div>' + drvBindHtml(d) + '</div>' +
+          '<div class="li-sub">' + escapeHtml(d.phone) + '　' + escapeHtml(d.car) + '　' + escapeHtml(d.plate) + (d.seats ? '　' + escapeHtml(d.seats) + '人座' : '') + '</div>' + drvBindHtml(d) + '</div>' +
           '<span class="tag">' + sizeLabel + '</span>' + formalTag +
           '<button type="button" class="del" data-del-driver="' + d.id + '">✕</button>' +
           '</div>';
@@ -6572,6 +6573,19 @@
   if (els.botTokenInput) els.botTokenInput.value = safeGet(BOT_TOKEN_KEY) || '';
   setTimeout(function(){ try { openOrderFromHash(); } catch(e){} }, 300);
   setTimeout(function(){ pullOrdersFromBot(false); syncDriverBindings(false); }, 800);
+  (function(){
+    var FRIEND = 'https://line.me/R/ti/p/@930ztusf';
+    var CARD_LINK = 'https://line.me/R/oaMessage/@930ztusf/?' + encodeURIComponent('車卡');
+    var tail = '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。車子或電話有變，傳「更新資料」即可。';
+    var nb = document.getElementById('drvInviteNew'), ob = document.getElementById('drvInviteOld');
+    if (nb) nb.addEventListener('click', function(){
+      copyToClipboard('好好禮車司機行程提醒：\n請點這個連結加「好好禮車司機回報平台」為好友：' + ((drvInfo && drvInfo.friend) || FRIEND) +
+        '\n加入後機器人會自動請你提供車卡（姓名／電話／車牌／車款／車色／座位數），照著回答就建檔完成了。' + tail, document.getElementById('drvBindMsg'));
+    });
+    if (ob) ob.addEventListener('click', function(){
+      copyToClipboard('好好禮車司機行程提醒：\n為完善系統建檔，請點這個連結，再按送出，依序提供車卡（姓名／電話／車牌／車款／車色／座位數）：' + CARD_LINK + tail, document.getElementById('drvBindMsg'));
+    });
+  })();
   (function(){ var b = document.getElementById('drvBindRefresh'); if (b) b.addEventListener('click', function(){ syncDriverBindings(true); }); })();
   var lastBotPullAt = Date.now();
   document.addEventListener('visibilitychange', function(){
