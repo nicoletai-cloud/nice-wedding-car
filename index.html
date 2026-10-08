@@ -831,6 +831,59 @@
   .chip.active, .doc-mode-btn.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); box-shadow:none; }
   .doc-mode-btn{ border-radius:8px; }
   .lang-btn.active{ color:var(--accent-ink); }
+
+  /* ---- NWC UI v1：版面對齊禮車系統（header 訂單列、編號分頁、行事曆） ---- */
+  .nwc-top{ padding:18px 0 12px; }
+  .orderbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .orderbar select{ max-width:260px; width:auto; min-width:150px; font-size:.933rem; padding:7px 10px; }
+  .orderbar .btn{ font:500 .933rem var(--f-body,inherit); border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:7px 12px; cursor:pointer; white-space:nowrap; }
+  .orderbar .btn:hover{ border-color:var(--accent); }
+  .orderbar .btn.sm{ padding:4px 9px; font-size:.867rem; }
+  .sync-bar.inline{ display:flex; flex-wrap:nowrap; align-items:center; gap:6px; padding:0; margin:0; border:0; background:none; font-size:.8rem; }
+  .sync-bar.inline input[type="password"]{ width:110px; padding:5px 8px; }
+  .sync-bar.inline .add-btn{ padding:5px 10px; font-size:.867rem; font-weight:500; white-space:nowrap; border-radius:8px; }
+  .cal-ev .btn{ font:500 .867rem var(--f-body,inherit); border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:4px 10px; cursor:pointer; }
+  .cal-ev .btn:hover{ border-color:var(--accent); }
+  .cal-agenda h3, .wk-day h3{ font-family:inherit; }
+  .sync-bar.inline .sync-status{ flex:none; min-width:0; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tab-nav{ border-bottom:1px solid var(--line); overflow-x:auto; scrollbar-width:none; flex-wrap:nowrap; gap:2px; margin-bottom:16px; }
+  .tab-nav::-webkit-scrollbar{ display:none; }
+  .tab-btn{ flex:0 0 auto; white-space:nowrap; padding:12px 14px; font-size:.933rem; font-weight:500; }
+  .tab-btn .n{ font-family:var(--f-label); font-size:.733rem; margin-right:6px; opacity:.7; }
+  .web-tag{ display:inline-block; font-size:.72rem; font-weight:700; color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:0 7px; line-height:1.55; margin-right:4px; vertical-align:1px; }
+  .web-tag.cx{ color:var(--danger); border-color:var(--danger); }
+  .list-row.cx .li-name{ text-decoration:line-through; color:var(--ink-faint); }
+  .cal-bar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:12px; }
+  .cal-bar .ttl{ font-weight:700; font-size:1.1rem; min-width:9.5em; text-align:center; }
+  .cal-bar .btn, .vmode button{ font:500 .933rem var(--f-body,inherit); border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:6px 12px; cursor:pointer; }
+  .cal-bar .btn:hover{ border-color:var(--accent); }
+  .vmode{ display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; background:var(--surface); }
+  .vmode button{ border:0; border-radius:0; color:var(--ink-soft); }
+  .vmode button[aria-pressed="true"]{ background:var(--accent); color:var(--accent-ink); font-weight:700; }
+  .grid7{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
+  .grid7 .dow{ text-align:center; font-size:.8rem; color:var(--ink-faint); padding:2px 0; }
+  .grid7 .day{ min-height:84px; text-align:left; border:1px solid var(--line); background:var(--surface); border-radius:8px; padding:4px 5px; cursor:pointer; font:inherit; color:var(--ink); display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .grid7 .day.out{ opacity:.45; }
+  .grid7 .day.today{ border-color:var(--accent); }
+  .grid7 .day.sel{ outline:2px solid var(--accent); outline-offset:-1px; }
+  .grid7 .day .dn{ font-size:.8rem; font-weight:700; }
+  .grid7 .day .it{ font-size:.7rem; line-height:1.3; border-radius:4px; padding:0 4px; background:var(--surface-alt); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .grid7 .day .it.un{ background:#F4D9D0; color:#8A2F1A; }
+  .grid7 .day .it.ok{ background:#DCE8D3; color:#3C5A31; }
+  .grid7 .day .it.cx{ text-decoration:line-through; opacity:.6; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .grid7 .day .it.un{ background:#4A2A21; color:#F0B7A5; } :root:not([data-theme="light"]) .grid7 .day .it.ok{ background:#2C3B27; color:#B9D3AB; } }
+  :root[data-theme="dark"] .grid7 .day .it.un{ background:#4A2A21; color:#F0B7A5; } :root[data-theme="dark"] .grid7 .day .it.ok{ background:#2C3B27; color:#B9D3AB; }
+  .grid7 .day .more{ font-size:.7rem; color:var(--ink-faint); }
+  .cal-agenda h3{ margin:16px 0 8px; font-size:1.05rem; }
+  .cal-ev{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; display:grid; gap:3px; }
+  .cal-ev .tp{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .cal-ev .tm{ font-weight:700; font-variant-numeric:tabular-nums; }
+  .cal-ev .sb{ color:var(--ink-soft); font-size:.9rem; }
+  .cal-ev.cx{ opacity:.6; }
+  .cal-ev .go{ justify-self:start; margin-top:4px; }
+  .cal-empty{ color:var(--ink-faint); padding:8px 2px; }
+  .wk-day h3 span.tg{ background:var(--accent); color:var(--accent-ink); border-radius:999px; padding:1px 9px; font-size:.8rem; margin-left:6px; }
+  @media (max-width:640px){ .grid7 .day{ min-height:58px; } .grid7 .day .it{ font-size:0; height:6px; padding:0; } .sync-bar.inline .sync-status{ max-width:120px; } .orderbar select{ max-width:100%; } }
 </style>
 </head>
 <body>
@@ -840,21 +893,38 @@
     <img id="mastLogo" src="" alt="好好禮車 logo" hidden style="display:none">
     <div class="nwc-brand"><b>好好禮車</b><span>Airport Transfer</span></div>
     <a class="nwc-hub" id="nwcHubLink" href="https://nicoletai-cloud.github.io/nice-hub/">‹ 入口</a>
+    <a class="nwc-hub" id="nwcWedLink" href="https://nicoletai-cloud.github.io/nice-wedding-procession/">禮車系統 ›</a>
+    <a class="nwc-hub" id="nwcDrvLink" href="https://nicoletai-cloud.github.io/nice-hub/#drivers">司機 ›</a>
+    <div class="orderbar">
+      <select id="orderSel" aria-label="切換訂單"><option value="">切換訂單…</option></select>
+      <div class="sync-bar inline">
+        <input type="password" id="syncPasscodeInput" placeholder="同步密碼" autocomplete="off">
+        <button type="button" class="add-btn ghost" id="syncNowBtn">同步</button>
+        <span class="sync-status" id="syncStatusMsg">尚未設定同步</span>
+      </div>
+    </div>
   </header>
 
-  <div class="tab-nav" role="tablist" aria-label="功能分頁">
-    <button type="button" class="tab-btn active" id="tabBtnQuote" data-tab="quote">報價</button>
-    <button type="button" class="tab-btn" id="tabBtnCharter" data-tab="charter">包車報價</button>
-    <button type="button" class="tab-btn" id="tabBtnFindDriver" data-tab="findDriver">找司機</button>
-    <button type="button" class="tab-btn" id="tabBtnDispatch" data-tab="dispatch">訂單／派車</button>
-    <button type="button" class="tab-btn" id="tabBtnReceipt" data-tab="receipt">收據</button>
-  </div>
+  <nav class="tab-nav" role="tablist" aria-label="功能分頁">
+    <button type="button" class="tab-btn active" id="tabBtnQuote" data-tab="quote"><span class="n">1</span>報價</button>
+    <button type="button" class="tab-btn" id="tabBtnCharter" data-tab="charter"><span class="n">2</span>包車報價</button>
+    <button type="button" class="tab-btn" id="tabBtnFindDriver" data-tab="findDriver"><span class="n">3</span>找司機</button>
+    <button type="button" class="tab-btn" id="tabBtnDispatch" data-tab="dispatch"><span class="n">4</span>訂單／派車</button>
+    <button type="button" class="tab-btn" id="tabBtnCal" data-tab="cal"><span class="n">5</span>行事曆</button>
+    <button type="button" class="tab-btn" id="tabBtnReceipt" data-tab="receipt"><span class="n">6</span>收據</button>
+  </nav>
 
-  <div class="sync-bar">
-    <input type="password" id="syncPasscodeInput" placeholder="輸入同步密碼" autocomplete="off">
-    <button type="button" class="add-btn ghost" id="syncNowBtn">🔄 立即同步</button>
-    <span class="sync-status" id="syncStatusMsg">尚未設定同步</span>
-  </div>
+  <section id="tabPanelCal" class="tab-panel" hidden>
+    <div class="cal-bar">
+      <div class="vmode" id="calVmode" role="group" aria-label="檢視方式"><button type="button" data-m="month" aria-pressed="true">月</button><button type="button" data-m="week" aria-pressed="false">週</button></div>
+      <button type="button" class="btn" id="calPrev" aria-label="上個月">‹</button>
+      <div class="ttl" id="calTtl"></div>
+      <button type="button" class="btn" id="calNext" aria-label="下個月">›</button>
+      <button type="button" class="btn" id="calToday">今天</button>
+    </div>
+    <div class="grid7" id="calGrid" role="grid"></div>
+    <div class="cal-agenda" id="calAgenda"></div>
+  </section>
 
   <section id="tabPanelDispatch" class="tab-panel" hidden>
     <div class="layout">
@@ -1938,6 +2008,9 @@
     tabPanelQuote: document.getElementById('tabPanelQuote'),
     tabPanelCharter: document.getElementById('tabPanelCharter'),
     tabPanelReceipt: document.getElementById('tabPanelReceipt'),
+    tabPanelCal: document.getElementById('tabPanelCal'),
+    tabBtnCal: document.getElementById('tabBtnCal'),
+    orderSel: document.getElementById('orderSel'),
 
     // dispatch tab
     dUseDate: document.getElementById('dUseDate'),
@@ -3052,18 +3125,93 @@
   // =====================================================================
   // TAB NAVIGATION
   // =====================================================================
-  var TAB_PANELS = { dispatch: els.tabPanelDispatch, findDriver: els.tabPanelFindDriver, quote: els.tabPanelQuote, charter: els.tabPanelCharter, receipt: els.tabPanelReceipt };
-  var TAB_BTNS = { dispatch: els.tabBtnDispatch, findDriver: els.tabBtnFindDriver, quote: els.tabBtnQuote, charter: els.tabBtnCharter, receipt: els.tabBtnReceipt };
+  var TAB_PANELS = { dispatch: els.tabPanelDispatch, findDriver: els.tabPanelFindDriver, quote: els.tabPanelQuote, charter: els.tabPanelCharter, receipt: els.tabPanelReceipt, cal: els.tabPanelCal };
+  var TAB_BTNS = { dispatch: els.tabBtnDispatch, findDriver: els.tabBtnFindDriver, quote: els.tabBtnQuote, charter: els.tabBtnCharter, receipt: els.tabBtnReceipt, cal: els.tabBtnCal };
   function switchTab(name){
     Object.keys(TAB_PANELS).forEach(function(key){
       if (TAB_PANELS[key]) TAB_PANELS[key].hidden = (key !== name);
       if (TAB_BTNS[key]) TAB_BTNS[key].classList.toggle('active', key === name);
     });
     if (name === 'findDriver') renderFindDriverDoc();
+    if (name === 'cal') { try { renderCal(); } catch(e){} }
   }
-  [els.tabBtnDispatch, els.tabBtnFindDriver, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt].forEach(function(btn){
+  [els.tabBtnDispatch, els.tabBtnFindDriver, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt, els.tabBtnCal].forEach(function(btn){
     if (btn) btn.addEventListener('click', function(){ switchTab(btn.dataset.tab); });
   });
+
+
+  // =====================================================================
+  // 行事曆（機場接送：自己存的訂單＋官網確認的訂單＋從機器人讀回的單）
+  // =====================================================================
+  var calNow = new Date();
+  var calY = calNow.getFullYear(), calM = calNow.getMonth(), calMode = 'month';
+  function cp2(n){ return ('0' + n).slice(-2); }
+  function cds(d){ return d.getFullYear() + '-' + cp2(d.getMonth() + 1) + '-' + cp2(d.getDate()); }
+  var calToday = cds(new Date()), calSel = calToday;
+  function calOrdersOn(day){
+    return recentOrders.filter(function(o){ return o && o.date === day; }).sort(function(a, b){
+      return String(a.pickupTime || a.flightArrTime || '99:99').localeCompare(String(b.pickupTime || b.flightArrTime || '99:99'));
+    });
+  }
+  function calTime(o){ return o.pickupTime || (o.svcType === '接機' && o.flightArrTime ? o.flightArrTime + ' 降落' : '時間未定'); }
+  function calShort(o){ var t = o.pickupTime || o.flightArrTime || ''; return (t ? t + ' ' : '') + (o.svcType || '') + ' ' + (o.contactName || o.custSourceName || ''); }
+  function calEvHtml(o){
+    var drv = orderDriverLabel(o), cx = isWebCancelled(o);
+    return '<div class="cal-ev' + (cx ? ' cx' : '') + '"><div class="tp"><span class="tm">' + escapeHtml(calTime(o)) + '</span>' + webTagHtml(o) +
+      '<b>' + escapeHtml(o.svcType || '') + (o.flightNo ? ' ' + escapeHtml(o.flightNo) : '') + '</b>' + (cx ? '' : orderAssignBadge(o)) + '</div>' +
+      '<div class="sb">' + escapeHtml((o.pickupAddr || '') + ' → ' + (o.dropoffAddr || '')) + '</div>' +
+      '<div class="sb">' + escapeHtml([o.contactName || o.custSourceName, o.contactPhone, o.pax ? o.pax + ' 人' : ''].filter(String).join('　')) + '</div>' +
+      '<button type="button" class="btn sm go" data-cal-open="' + escapeHtml(o.id) + '">開啟這筆訂單</button></div>';
+  }
+  function renderCal(){
+    var grid = document.getElementById('calGrid'), ag = document.getElementById('calAgenda'), ttl = document.getElementById('calTtl');
+    if (!grid || !ag) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#calVmode button'), function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-m') === calMode ? 'true' : 'false'); });
+    var DOW = ['一','二','三','四','五','六','日'];
+    if (calMode === 'week'){
+      var ws = new Date(calSel + 'T00:00:00'); ws.setDate(ws.getDate() - ((ws.getDay() + 6) % 7));
+      var we = new Date(ws); we.setDate(we.getDate() + 6);
+      ttl.textContent = cds(ws).slice(5).replace('-', '/') + ' – ' + cds(we).slice(5).replace('-', '/');
+      grid.style.display = 'none';
+      var out = '';
+      for (var i = 0; i < 7; i++){
+        var d = new Date(ws); d.setDate(d.getDate() + i); var ds = cds(d), list = calOrdersOn(ds);
+        out += '<div class="wk-day"><h3>' + (d.getMonth() + 1) + '/' + d.getDate() + '（週' + DOW[i] + '）' + (ds === calToday ? '<span class="tg">今天</span>' : '') + '</h3>' +
+          (list.length ? list.map(calEvHtml).join('') : '<div class="cal-empty">沒有行程</div>') + '</div>';
+      }
+      ag.innerHTML = out; return;
+    }
+    grid.style.display = '';
+    ttl.textContent = calY + ' 年 ' + (calM + 1) + ' 月';
+    var first = new Date(calY, calM, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+    var h = DOW.map(function(x){ return '<div class="dow">' + x + '</div>'; }).join('');
+    for (var k = 0; k < 42; k++){
+      var c = new Date(start); c.setDate(start.getDate() + k);
+      if (k >= 35 && c.getMonth() !== calM) break;
+      var cs = cds(c), L = calOrdersOn(cs), cls = 'day' + (c.getMonth() !== calM ? ' out' : '') + (cs === calToday ? ' today' : '') + (cs === calSel ? ' sel' : '');
+      h += '<button type="button" class="' + cls + '" data-cal-day="' + cs + '"><span class="dn">' + c.getDate() + '</span>' +
+        L.slice(0, 3).map(function(o){ return '<span class="it ' + (isWebCancelled(o) ? 'cx' : (orderDriverLabel(o) ? 'ok' : 'un')) + '">' + escapeHtml(calShort(o)) + '</span>'; }).join('') +
+        (L.length > 3 ? '<span class="more">還有 ' + (L.length - 3) + ' 筆</span>' : '') + '</button>';
+    }
+    grid.innerHTML = h;
+    var sel = calOrdersOn(calSel), sd = new Date(calSel + 'T00:00:00');
+    ag.innerHTML = '<h3>' + (sd.getMonth() + 1) + '/' + sd.getDate() + '（週' + DOW[(sd.getDay() + 6) % 7] + '）' + (calSel === calToday ? '　今天' : '') + '</h3>' +
+      (sel.length ? sel.map(calEvHtml).join('') : '<div class="cal-empty">這天沒有行程</div>');
+  }
+  function calShift(dir){
+    if (calMode === 'week'){ var d = new Date(calSel + 'T00:00:00'); d.setDate(d.getDate() + 7 * dir); calSel = cds(d); calY = d.getFullYear(); calM = d.getMonth(); }
+    else { var m = new Date(calY, calM + dir, 1); calY = m.getFullYear(); calM = m.getMonth(); var sd = new Date(calSel + 'T00:00:00'); if (sd.getMonth() !== calM) calSel = cds(m); }
+    renderCal();
+  }
+  (function(){
+    var pv = document.getElementById('calPrev'), nx = document.getElementById('calNext'), td = document.getElementById('calToday'), vm = document.getElementById('calVmode'), gr = document.getElementById('calGrid'), ag = document.getElementById('calAgenda');
+    if (pv) pv.addEventListener('click', function(){ calShift(-1); });
+    if (nx) nx.addEventListener('click', function(){ calShift(1); });
+    if (td) td.addEventListener('click', function(){ var n = new Date(); calY = n.getFullYear(); calM = n.getMonth(); calSel = cds(n); renderCal(); });
+    if (vm) vm.addEventListener('click', function(e){ var b = e.target.closest('button[data-m]'); if (!b) return; calMode = b.getAttribute('data-m'); var d = new Date(calSel + 'T00:00:00'); calY = d.getFullYear(); calM = d.getMonth(); renderCal(); });
+    if (gr) gr.addEventListener('click', function(e){ var b = e.target.closest('[data-cal-day]'); if (!b) return; calSel = b.getAttribute('data-cal-day'); var d = new Date(calSel + 'T00:00:00'); if (d.getMonth() !== calM){ calY = d.getFullYear(); calM = d.getMonth(); } renderCal(); });
+    if (ag) ag.addEventListener('click', function(e){ var b = e.target.closest('[data-cal-open]'); if (!b) return; var id = b.getAttribute('data-cal-open'); switchTab('dispatch'); loadOrderIntoDispatchForm(id); try { window.scrollTo(0, 0); } catch(x){} });
+  })();
 
   // =====================================================================
   // DRIVER DATABASE
@@ -6259,6 +6407,32 @@
     var name = o.custSourceName || o.contactName || '未命名客戶';
     return '[' + src + '] ' + name;
   }
+  function isWebOrder(o){ return /^【官網 /.test(String((o && o.note) || '')); }
+  function isWebCancelled(o){ return /^【官網 已取消】/.test(String((o && o.note) || '')); }
+  function webTagHtml(o){
+    if (!isWebOrder(o)) return '';
+    return isWebCancelled(o) ? '<span class="web-tag cx">官網取消</span>' : '<span class="web-tag">官網</span>';
+  }
+  function renderOrderSwitcher(){
+    var sel = els.orderSel; if (!sel) return;
+    var keep = sel.value;
+    var list = recentOrders.slice().sort(function(a, b){ return String(b.date || '').localeCompare(String(a.date || '')); });
+    var today = new Date(); var t = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+    var up = list.filter(function(o){ return (o.date || '') >= t; }).reverse(), past = list.filter(function(o){ return (o.date || '') < t; });
+    function opt(o){
+      var nm = o.contactName || o.custSourceName || '未命名';
+      return '<option value="' + escapeHtml(o.id) + '">' + escapeHtml(fmtMD(o.date) + ' ' + (o.svcType || '') + ' ' + nm + (isWebOrder(o) ? (isWebCancelled(o) ? '（官網取消）' : '（官網）') : '') + (orderDriverLabel(o) || isWebCancelled(o) ? '' : ' ・未指派')) + '</option>';
+    }
+    sel.innerHTML = '<option value="">切換訂單…（' + recentOrders.length + ' 筆）</option>' +
+      (up.length ? '<optgroup label="今天起">' + up.map(opt).join('') + '</optgroup>' : '') +
+      (past.length ? '<optgroup label="過去">' + past.map(opt).join('') + '</optgroup>' : '');
+    if (keep && recentOrders.some(function(o){ return o.id === keep; })) sel.value = keep;
+  }
+  if (els.orderSel) els.orderSel.addEventListener('change', function(){
+    var id = els.orderSel.value; if (!id) return;
+    switchTab('dispatch'); loadOrderIntoDispatchForm(id);
+    try { window.scrollTo(0, 0); } catch(e){}
+  });
 
   // ---------- 司機指派狀態（機場接送派車） ----------
   // editingOrderId：從「最近訂單」載入的那一筆；儲存時直接更新它（不另外多出一筆）。
@@ -6317,14 +6491,16 @@
 
   function renderRecentOrdersList(){
     renderOrderAssignTag();
+    try { renderOrderSwitcher(); } catch(e){}
+    try { if (els.tabPanelCal && !els.tabPanelCal.hidden) renderCal(); } catch(e){}
     if (els.recentOrderList){
       if (!recentOrders.length){
         els.recentOrderList.innerHTML = '<p class="list-empty">尚未儲存訂單</p>';
       } else {
         els.recentOrderList.innerHTML = recentOrders.map(function(o){
           var summary = fmtMD(o.date) + ' ' + o.svcType + (o.flightNo ? ' ' + o.flightNo : '');
-          return '<div class="list-row" data-id="' + o.id + '">' +
-            '<div class="li-main"><div class="li-name">' + escapeHtml(orderSourceLabel(o)) + '</div>' +
+          return '<div class="list-row' + (isWebCancelled(o) ? ' cx' : '') + '" data-id="' + o.id + '">' +
+            '<div class="li-main"><div class="li-name">' + webTagHtml(o) + escapeHtml(orderSourceLabel(o)) + '</div>' +
             '<div class="li-sub">' + escapeHtml(summary) + '　' + orderAssignBadge(o) + '　存於 ' + fmtSavedAt(o.savedAt) + '</div></div>' +
             '<button type="button" class="chip" data-load-order="' + o.id + '">載入</button>' +
             '<button type="button" class="del" data-del-order="' + o.id + '">✕</button>' +
