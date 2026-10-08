@@ -3134,28 +3134,48 @@
         '　<button type="button" class="tag" data-drv-test="' + escapeHtml(d.name) + '">傳測試訊息</button>' +
         '　<button type="button" class="tag" data-drv-reset="' + escapeHtml(d.name) + '">重設綁定</button></div>';
     }
-    return '<div class="li-sub">司機提醒：未綁定　' + (b.hasPhone ? '司機傳手機號碼就會自動綁定' : '還沒填手機　綁定碼 <b>' + escapeHtml(b.code) + '</b>') +
+    return '<div class="li-sub">司機提醒：未綁定　司機傳「綁定」就會自己建檔　備用綁定碼 ' + escapeHtml(b.code) +
       '　<button type="button" class="tag" data-drv-copy="' + escapeHtml(d.name) + '">複製邀請文字</button></div>';
   }
   function drvInviteText(d){
     var b = drvBind[d.name]; if (!b) return '';
-    var head = '好好禮車司機行程提醒：\n1. 請先加「好好禮車司機回報平台」為好友：' + (drvInfo.friend || '') + '（已經是好友的不用重加）';
-    var step = b.hasPhone
-      ? '\n2. 在聊天室傳「綁定」，再傳你的手機號碼（和好好禮車登記的一樣），就會自動綁定完成。'
-      : '\n2. 把這組綁定碼傳給它：' + b.code + '（只能用一次，請不要轉給別人）';
-    return head + step + '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。';
+    return '好好禮車司機行程提醒：\n1. 請先加「好好禮車司機回報平台」為好友：' + (drvInfo.friend || '') + '（已經是好友的不用重加）' +
+      '\n2. 在聊天室傳「綁定」，照機器人的問題回答（姓名、手機、車號、車款、車色），回答完按「確認」就建好資料並綁定了。' +
+      '\n之後接單不用再填資料；車子或電話有變，傳「更新資料」即可。' +
+      '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。';
   }
   function drvBindStatus(msg, kind){
     var el = document.getElementById('drvBindMsg'); if (!el) return;
     el.textContent = msg || ''; el.className = 'status' + (kind ? ' ' + kind : '');
   }
+  // 司機自己在 LINE 建檔／更新的資料（車卡）→ 併進司機資料庫
+  function mergeBotDrivers(list){
+    var changed = false;
+    list.forEach(function(x){
+      if (!x || !x.self || !x.name) return;
+      var car = [x.car, x.color].filter(Boolean).join(' ');
+      var d = drivers.find(function(y){ return y.name === x.name; });
+      if (!d){
+        drivers.push({ id: 'drv_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), name: x.name, phone: x.phone || '',
+          car: car, plate: x.plate || '', size: x.size === 'large' ? 'large' : 'small', formalSheet: false, botAt: x.updatedAt || 0 });
+        changed = true;
+      } else if ((x.updatedAt || 0) > (d.botAt || 0)){
+        d.phone = x.phone || d.phone; d.car = car || d.car; d.plate = x.plate || d.plate;
+        if (x.size) d.size = x.size === 'large' ? 'large' : 'small';
+        d.botAt = x.updatedAt || 0; changed = true;
+      }
+    });
+    if (changed){ saveDrivers(); }
+    return changed;
+  }
   function syncDriverBindings(manual, extra){
     var cfg = botConfig();
     if (!cfg){ if (manual) drvBindStatus('還沒連線機器人，請先在「派車機器人連線」填網址與金鑰', 'err'); return Promise.resolve(null); }
-    if (!drivers.length){ drvBind = {}; if (manual) drvBindStatus('司機名單是空的', 'err'); return Promise.resolve(null); }
     var body = Object.assign({ action: 'airDrivers', drivers: drivers.map(function(d){ return { name: d.name, phone: d.phone || '' }; }) }, extra || {});
     return botCheckReady(cfg).then(function(){ return botPost(cfg, body); }).then(function(j){
       drvBind = {}; (j.drivers || []).forEach(function(x){ drvBind[x.name] = x; });
+      var added = mergeBotDrivers(j.drivers || []);
+      if (added && manual) j.msg = (j.msg ? j.msg + '；' : '') + '司機自己建檔的資料已同步進來';
       drvInfo = { ready: !!j.ready, friend: j.friend || '' };
       renderDriverList();
       if (manual || !j.ready){
@@ -3296,10 +3316,11 @@
       var btn = e.target.closest('[data-del-driver]');
       if (!btn) return;
       var id = btn.getAttribute('data-del-driver');
+      var gone = drivers.find(function(d){ return d.id === id; });
       drivers = drivers.filter(function(d){ return d.id !== id; });
       saveDrivers();
       renderDriverList();
-      syncDriverBindings(false);
+      syncDriverBindings(false, gone ? { drvForget: [gone.name] } : null);
     });
   }
 
