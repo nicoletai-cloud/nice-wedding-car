@@ -3134,15 +3134,16 @@
         '　<button type="button" class="tag" data-drv-test="' + escapeHtml(d.name) + '">傳測試訊息</button>' +
         '　<button type="button" class="tag" data-drv-reset="' + escapeHtml(d.name) + '">重設綁定</button></div>';
     }
-    return '<div class="li-sub">司機提醒：未綁定　綁定碼 <b>' + escapeHtml(b.code) + '</b>' +
+    return '<div class="li-sub">司機提醒：未綁定　' + (b.hasPhone ? '司機傳手機號碼就會自動綁定' : '還沒填手機　綁定碼 <b>' + escapeHtml(b.code) + '</b>') +
       '　<button type="button" class="tag" data-drv-copy="' + escapeHtml(d.name) + '">複製邀請文字</button></div>';
   }
   function drvInviteText(d){
     var b = drvBind[d.name]; if (!b) return '';
-    return '好好禮車司機行程提醒：\n1. 請先加「好好禮車司機回報平台」為好友：' + (drvInfo.friend || '') +
-      '\n2. 加入後（已經是好友的不用重加），在聊天室傳「綁定」，再點選你自己的名字「' + d.name + '」就完成。' +
-      '\n（如果按鈕沒出現，也可以改傳這組綁定碼：' + b.code + '，只能用一次，請不要轉給別人）' +
-      '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。';
+    var head = '好好禮車司機行程提醒：\n1. 請先加「好好禮車司機回報平台」為好友：' + (drvInfo.friend || '') + '（已經是好友的不用重加）';
+    var step = b.hasPhone
+      ? '\n2. 在聊天室傳「綁定」，再傳你的手機號碼（和好好禮車登記的一樣），就會自動綁定完成。'
+      : '\n2. 把這組綁定碼傳給它：' + b.code + '（只能用一次，請不要轉給別人）';
+    return head + step + '\n綁定後，每趟接客前 18 小時會收到行程提醒，收到請按「收到」。';
   }
   function drvBindStatus(msg, kind){
     var el = document.getElementById('drvBindMsg'); if (!el) return;
@@ -3152,7 +3153,7 @@
     var cfg = botConfig();
     if (!cfg){ if (manual) drvBindStatus('還沒連線機器人，請先在「派車機器人連線」填網址與金鑰', 'err'); return Promise.resolve(null); }
     if (!drivers.length){ drvBind = {}; if (manual) drvBindStatus('司機名單是空的', 'err'); return Promise.resolve(null); }
-    var body = Object.assign({ action: 'airDrivers', drivers: drivers.map(function(d){ return { name: d.name }; }) }, extra || {});
+    var body = Object.assign({ action: 'airDrivers', drivers: drivers.map(function(d){ return { name: d.name, phone: d.phone || '' }; }) }, extra || {});
     return botCheckReady(cfg).then(function(){ return botPost(cfg, body); }).then(function(j){
       drvBind = {}; (j.drivers || []).forEach(function(x){ drvBind[x.name] = x; });
       drvInfo = { ready: !!j.ready, friend: j.friend || '' };
