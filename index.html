@@ -1547,11 +1547,12 @@
 
         <div class="card">
           <h2><span class="dot"></span>收款帳號</h2>
-          <p class="hint">選擇這筆報價要用哪個帳號，預設將來銀行</p>
+          <p class="hint">選擇這筆報價要用哪個帳號，預設將來銀行；月結客人會自動選「月結」</p>
           <div class="field" style="margin-bottom:14px;">
             <div class="radio-row">
               <label><input type="radio" name="qBankChoice" value="future" checked> 將來銀行</label>
               <label><input type="radio" name="qBankChoice" value="jindachun"> 金大春</label>
+              <label><input type="radio" name="qBankChoice" value="monthly"> 月結</label>
             </div>
           </div>
           <p class="hint">這筆報價要附上哪些付款方式——刷卡連結有手續費，客人習慣匯款的話可以取消勾選</p>
@@ -1573,6 +1574,11 @@
               <div class="field">
                 <label for="qBankBlockJindachun">金大春匯款資訊</label>
                 <textarea id="qBankBlockJindachun" rows="5"></textarea>
+              </div>
+              <div class="field">
+                <label for="qMonthlyCust">月結客人</label>
+                <textarea id="qMonthlyCust" rows="3" placeholder="一行一位，填 LINE／FB 名稱或客戶姓名"></textarea>
+                <p class="hint" style="margin:4px 0 0">報價的客戶名稱符合這裡的名字，收款自動選「月結」</p>
               </div>
               <div class="field">
                 <label for="qPayLink">刷卡付款連結</label>
@@ -2207,6 +2213,7 @@
     qBankBlockFuture: document.getElementById('qBankBlockFuture'),
     qBankBlockJindachun: document.getElementById('qBankBlockJindachun'),
     qNoticeBlock: document.getElementById('qNoticeBlock'),
+    qMonthlyCust: document.getElementById('qMonthlyCust'),
     quoteDocBody: document.getElementById('quoteDocBody'),
     copyQuoteBtn: document.getElementById('copyQuoteBtn'),
     printQuoteBtn: document.getElementById('printQuoteBtn'),
@@ -5811,11 +5818,28 @@
   // 報價／包車文件共用：是否附上匯款資訊、是否附上刷卡付款連結——checkbox
   // 元素預設都是勾選（維持原本一律附上的行為），只有使用者自己取消勾選才會
   // 不附上。
+  function isMonthlyChoice(){ var el = document.querySelector('input[name="qBankChoice"]:checked'); return !!el && el.value === 'monthly'; }
   function shouldShowBankInfo(){
+    if (isMonthlyChoice()) return true;
     return !els.qShowBankInfo || els.qShowBankInfo.checked;
   }
   function shouldShowCardLink(){
+    if (isMonthlyChoice()) return false;
     return !els.qShowCardLink || els.qShowCardLink.checked;
+  }
+  // 月結：不附匯款資訊、刷卡連結，改成一行月結說明
+  var MONTHLY_LINE = { 'zh-TW': '付款方式：月結（月底統一請款）', 'zh-CN': '付款方式：月结（月底统一请款）', en: 'Payment: monthly billing (invoiced at month end)', ja: 'お支払い：月締め請求（月末にまとめてご請求）', ko: '결제 방식: 월 정산 (월말 일괄 청구)' };
+  function monthlyCustList(){ return String((els.qMonthlyCust && els.qMonthlyCust.value) || '').split(/\n/).map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean); }
+  function isMonthlyCustomer(){
+    var L = monthlyCustList(); if (!L.length) return false;
+    var names = [els.qCustSourceName && els.qCustSourceName.value, els.qCustName && els.qCustName.value].map(function(x){ return String(x || '').trim().toLowerCase(); }).filter(Boolean);
+    return names.some(function(n){ return L.some(function(m){ return n === m || n.indexOf(m) >= 0; }); });
+  }
+  var monthlyAuto = false;
+  function applyMonthlyAuto(){
+    var cur = document.querySelector('input[name="qBankChoice"]:checked'), want = isMonthlyCustomer(), r;
+    if (want && (!cur || cur.value !== 'monthly')){ r = document.querySelector('input[name="qBankChoice"][value="monthly"]'); if (r){ r.checked = true; monthlyAuto = true; renderQuoteDoc(); renderCharterQuoteDoc(); } }
+    else if (!want && monthlyAuto && cur && cur.value === 'monthly'){ r = document.querySelector('input[name="qBankChoice"][value="' + (safeGet('hhlc_bank_choice') || 'future') + '"]') || document.querySelector('input[name="qBankChoice"][value="future"]'); if (r){ r.checked = true; monthlyAuto = false; renderQuoteDoc(); renderCharterQuoteDoc(); } }
   }
 
   // lang 省略、或傳 'zh-TW' 時維持原本行為：使用者在「報價固定文字」自己編輯
@@ -5826,6 +5850,7 @@
   function selectedBankBlockText(lang){
     var el = document.querySelector('input[name="qBankChoice"]:checked');
     var choice = el ? el.value : 'future';
+    if (choice === 'monthly') return MONTHLY_LINE[lang || 'zh-TW'] || MONTHLY_LINE['zh-TW'];
     var block = (choice === 'jindachun' ? els.qBankBlockJindachun.value : els.qBankBlockFuture.value).trim();
     if (lang && lang !== 'zh-TW' && BANK_BLOCK_I18N[lang]) return localizeBankBlock(block, lang);
     return block;
@@ -5851,7 +5876,7 @@
       n: els.qCustName.value.trim(),
       no: currentPaymentReceiptNo || '',
       d: currentPaymentConfirmedAt || todayStr(),
-      m: els.qPayLink.value.trim() ? '信用卡' : '銀行轉帳',
+      m: isMonthlyChoice() ? '月結' : els.qPayLink.value.trim() ? '信用卡' : '銀行轉帳',
       t: legs.map(function(leg){
         return [leg.date, leg.subtotal, leg.pickupArea, leg.dropoffArea];
       })
@@ -6282,7 +6307,9 @@
   });
   document.querySelectorAll('input[name="qBankChoice"]').forEach(function(r){
     r.addEventListener('change', function(){
-      safeSet('hhlc_bank_choice', document.querySelector('input[name="qBankChoice"]:checked').value);
+      var bc = document.querySelector('input[name="qBankChoice"]:checked').value;
+      if (bc !== 'monthly') safeSet('hhlc_bank_choice', bc);
+      monthlyAuto = false;
       renderQuoteDoc();
       renderCharterQuoteDoc();
     });
@@ -6306,6 +6333,13 @@
   if (els.qBankBlockJindachun) els.qBankBlockJindachun.addEventListener('input', function(){
     safeSet('hhlc_bank_block_jindachun', els.qBankBlockJindachun.value); renderQuoteDoc();
   });
+  if (els.qMonthlyCust){
+    var mcStored = safeGet('hhlc_monthly_cust');
+    els.qMonthlyCust.value = mcStored != null ? mcStored : 'Rainy\nJeff Chen';
+    els.qMonthlyCust.addEventListener('input', function(){ safeSet('hhlc_monthly_cust', els.qMonthlyCust.value); applyMonthlyAuto(); });
+  }
+  [els.qCustName, els.qCustSourceName].forEach(function(x){ if (x){ x.addEventListener('input', applyMonthlyAuto); x.addEventListener('change', applyMonthlyAuto); } });
+  document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('#qCustResults, #qCustPickBtn')) setTimeout(applyMonthlyAuto, 0); });
   if (els.qNoticeBlock) els.qNoticeBlock.addEventListener('input', function(){
     safeSet('hhlc_notice_block', els.qNoticeBlock.value); renderQuoteDoc();
   });
