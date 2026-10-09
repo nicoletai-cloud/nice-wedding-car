@@ -905,6 +905,30 @@
   .cust-results button:hover, .cust-results button.on{ background:color-mix(in srgb, var(--accent, #8a6d43) 10%, transparent); }
   .cust-results .tag-kc{ font-size:.72rem; color:var(--accent, #8a6d43); border:1px solid currentColor; border-radius:999px; padding:0 6px; margin-left:6px; }
   .cust-results .empty{ padding:10px 12px; color:var(--ink-soft, #888); font-size:.9rem; }
+  /* 待辦（機場系統） */
+  #todoBtn b{ display:inline-block; min-width:1.4em; margin-left:6px; padding:0 6px; border-radius:999px; background:var(--danger, #B3492F); color:#fff; font-size:.75rem; line-height:1.5; }
+  .no-line{ margin:-4px 0 12px; font-family:var(--f-label, inherit); font-size:.85rem; color:var(--accent-strong, #8A5F2C); letter-spacing:.02em; }
+  .todo-modal{ position:fixed; inset:0; z-index:80; background:rgba(30,30,35,.45); overflow:auto; padding:24px 14px; }
+  .todo-box{ max-width:980px; margin:0 auto; background:var(--bg); border-radius:14px; padding:16px; }
+  .todo-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
+  .todo-head h3{ margin:0; font-size:1.1rem; } .todo-head small{ font-weight:400; color:var(--ink-soft); font-size:.75rem; }
+  .todo-chips, .todo-batch{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .todo-chips button, .todo-batch button{ font:inherit; font-size:.8rem; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:999px; padding:6px 12px; cursor:pointer; }
+  .todo-chips button.on{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink, #fff); }
+  .todo-chips .late, .todo-tag.late{ background:var(--danger, #B3492F); color:#fff; border-radius:999px; padding:0 6px; margin-left:4px; font-size:.7rem; }
+  .todo-tools{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+  .todo-tools input[type=text]{ flex:1; min-width:180px; }
+  .todo-tools label{ display:flex; align-items:center; gap:4px; font-size:.85rem; white-space:nowrap; }
+  .todo-row{ display:flex; gap:10px; align-items:center; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); margin-bottom:8px; cursor:pointer; }
+  .todo-row input{ width:auto; flex:0 0 auto; }
+  .todo-row .m{ flex:1; min-width:0; } .todo-row .m b{ margin-right:6px; } .todo-row .sub{ font-size:.78rem; color:var(--ink-soft); margin-top:2px; }
+  .todo-row .tg{ display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; max-width:45%; }
+  .todo-tag{ font-size:.72rem; border:1px solid var(--line); border-radius:999px; padding:1px 8px; white-space:nowrap; background:var(--surface-alt); }
+  @media (max-width:640px){ .todo-row{ flex-wrap:wrap; } .todo-row .tg{ order:3; flex:1 1 100%; max-width:none; justify-content:flex-start; } }
+  .kw-search{ position:relative; flex:1 1 260px; min-width:220px; }
+  .kw-search input{ width:100%; }
+  .kw-results{ max-height:420px; }
+  .kw-results .hit{ color:var(--accent-strong, #8A5F2C); font-weight:600; }
 </style>
 </head>
 <body>
@@ -921,7 +945,12 @@
       <div class="sync-bar inline">
         <input type="password" id="syncPasscodeInput" placeholder="同步密碼" autocomplete="off">
         <button type="button" class="add-btn ghost" id="syncNowBtn">同步</button>
+        <button type="button" class="add-btn ghost" id="todoBtn">待辦</button>
         <span class="sync-status" id="syncStatusMsg">尚未設定同步</span>
+      </div>
+      <div class="kw-search">
+        <input type="text" id="kwQ" placeholder="🔍 搜尋編號、客人、電話、地址、航班" autocomplete="off">
+        <div class="cust-results kw-results" id="kwResults" hidden></div>
       </div>
     </div>
   </header>
@@ -980,6 +1009,7 @@
         <div class="card">
           <h2><span class="dot"></span>訂單資訊</h2>
           <p class="hint">填寫客人的行程需求</p>
+          <p class="no-line" id="dNoLine" hidden></p>
 
           <div class="field">
             <label for="dCustSearch">找熟客（打姓名、暱稱或電話）</label>
@@ -1385,6 +1415,7 @@
 
         <div class="card">
           <h2><span class="dot"></span>客戶資訊</h2>
+          <p class="no-line" id="qNoLine" hidden></p>
           <div class="field">
             <label for="qCustSearch">找熟客（打姓名、暱稱或電話）</label>
             <div class="cust-search">
@@ -2980,6 +3011,7 @@
     if (!els.receiptNo.value.trim()){
       els.receiptNo.value = peekNextNumber(els.issueDate.value);
     }
+    if (receiptFromOrderId){ try { markOrders([receiptFromOrderId], { receiptAt: Date.now() }); } catch(e){} }
     return true;
   }
 
@@ -3774,6 +3806,7 @@
     var driverInfoHeader = opts.driverInfoHeader || L.driverInfo;
     var lines = [];
     var svcVal = currentSvcType();
+    if (currentOrderNos && currentOrderNos.formalNo) lines.push(({ 'en': 'Booking No.: ', 'ja': '予約番号：' }[lang] || '訂單編號：') + currentOrderNos.formalNo);
     lines.push('☑️ ' + (L.svc[svcVal] || svcVal));
     lines.push(L.useDate + fmtDateWeekday(els.dUseDate.value, lang));
     var fixedPk = !!(document.getElementById('dFixedPickup') && document.getElementById('dFixedPickup').checked);
@@ -4167,7 +4200,7 @@
     return { title: title.trim(), body: lines.join('\n') };
   }
   if (els.ttCopyTitleBtn) els.ttCopyTitleBtn.addEventListener('click', function(){ copyToClipboard(buildTimeTreeText().title, els.ttStatusMsg); });
-  if (els.ttCopyBodyBtn) els.ttCopyBodyBtn.addEventListener('click', function(){ copyToClipboard(buildTimeTreeText().body, els.ttStatusMsg); });
+  if (els.ttCopyBodyBtn) els.ttCopyBodyBtn.addEventListener('click', function(){ copyToClipboard(buildTimeTreeText().body, els.ttStatusMsg); if (editingOrderId) markOrders([editingOrderId], { ttAt: Date.now() }); });
 
   function copyToClipboard(text, statusEl){
     function ok(){ setDispatchStatus(statusEl, '已複製到剪貼簿', 'ok'); }
@@ -4215,6 +4248,7 @@
   }
 
   if (els.copyPassengerBtn) els.copyPassengerBtn.addEventListener('click', function(){
+    if (editingOrderId) markOrders([editingOrderId], { paxSentAt: Date.now() });
     setPreviewMode('passenger');
     copyToClipboard(buildPassengerDocText(), els.dispatchDocStatusMsg);
   });
@@ -5619,6 +5653,10 @@
     var L = ql();
     var legs = readQuoteLegs();
     var lines = [];
+    if (currentQuoteNo && quoteSameCustomer()){
+      lines.push(({ 'en': 'Quote No.: ', 'ja': '見積番号：' }[currentQuoteLang] || '報價編號：') + currentQuoteNo);
+      lines.push('');
+    }
     var rawTotal = 0;
     legs.forEach(function(leg){
       rawTotal += leg.subtotal;
@@ -6507,7 +6545,7 @@
           var legSummary = firstLeg ? (fmtMD(firstLeg.date) + ' ' + firstLeg.svc) : '';
           return '<div class="list-row" data-id="' + q.id + '">' +
             '<div class="li-main"><div class="li-name">' + escapeHtml(quoteSourceLabel(q)) + '　NT$ ' + fmtNum(q.finalTotal) + '</div>' +
-            '<div class="li-sub">' + escapeHtml(legSummary) + '　存於 ' + fmtSavedAt(q.savedAt) + '</div></div>' +
+            '<div class="li-sub">' + (q.quoteNo ? escapeHtml(q.quoteNo) + (q.formalNo ? '→' + escapeHtml(q.formalNo) : '') + '　' : '') + escapeHtml(legSummary) + '　存於 ' + fmtSavedAt(q.savedAt) + '</div></div>' +
             '<button type="button" class="chip" data-load-quote="' + q.id + '">載入</button>' +
             '<button type="button" class="del" data-del-quote="' + q.id + '">✕</button>' +
             '</div>';
@@ -6552,6 +6590,10 @@
       rawTotal: rawTotal,
       finalTotal: finalTotal,
       isKnownCustomer: !!(els.qIsKnownCustomer && els.qIsKnownCustomer.checked),
+      quoteNo: quoteSameCustomer() ? currentQuoteNo : '',
+      formalNo: quoteSameCustomer() ? currentQuoteFormalNo : '',
+      followN: quoteSameCustomer() ? (currentQuoteFlags.followN || 0) : 0,
+      followAt: quoteSameCustomer() ? (currentQuoteFlags.followAt || 0) : 0,
       paymentConfirmed: !!(els.qPaymentConfirmed && els.qPaymentConfirmed.checked),
       paymentReceiptNo: currentPaymentReceiptNo || '',
       paymentConfirmedAt: currentPaymentConfirmedAt || ''
@@ -6564,6 +6606,8 @@
       setDispatchStatus(els.quoteStatusMsg, '請先填寫行程', 'err');
       return;
     }
+    // 同一張報價（同編號）再存一次就是更新，不另外多一筆
+    if (q.quoteNo) recentQuotes = recentQuotes.filter(function(x){ return x.quoteNo !== q.quoteNo; });
     recentQuotes.unshift(q);
     if (recentQuotes.length > 50) recentQuotes = recentQuotes.slice(0, 50);
     saveRecentQuotesList();
@@ -6575,11 +6619,15 @@
     renderCustPickSelects();
     setDispatchStatus(els.quoteStatusMsg, '已儲存這筆報價', 'ok');
     doFullSync(true);
+    ensureQuoteNumbers(q);
   }
 
   function loadQuoteIntoForm(id){
     var q = recentQuotes.find(function(x){ return x.id === id; });
     if (!q) return;
+    currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || '';
+    currentQuoteFlags = { followN: q.followN || 0, followAt: q.followAt || 0 };
+    currentQuoteKey = friendCustomerKey(q.custPhone, q.custSourceName, q.custName);
     roundTripManual = true; // 載入已存報價：優惠勾選以當時存的為準，不被自動判斷改掉
     var srcInput = document.querySelector('input[name="qCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
@@ -6682,7 +6730,7 @@
     var up = list.filter(function(o){ return (o.date || '') >= t; }).reverse(), past = list.filter(function(o){ return (o.date || '') < t; });
     function opt(o){
       var nm = o.contactName || o.custSourceName || '未命名';
-      return '<option value="' + escapeHtml(o.id) + '">' + escapeHtml(fmtMD(o.date) + ' ' + (o.svcType || '') + ' ' + nm + (isWebOrder(o) ? (isWebCancelled(o) ? '（官網取消）' : '（官網）') : '') + (orderDriverLabel(o) || isWebCancelled(o) ? '' : ' ・未指派')) + '</option>';
+      return '<option value="' + escapeHtml(o.id) + '">' + escapeHtml((o.formalNo ? o.formalNo + ' ' : '') + fmtMD(o.date) + ' ' + (o.svcType || '') + ' ' + nm + (isWebOrder(o) ? (isWebCancelled(o) ? '（官網取消）' : '（官網）') : '') + (orderDriverLabel(o) || isWebCancelled(o) ? '' : ' ・未指派')) + '</option>';
     }
     sel.innerHTML = '<option value="">切換訂單…（' + recentOrders.length + ' 筆）</option>' +
       (up.length ? '<optgroup label="今天起">' + up.map(opt).join('') + '</optgroup>' : '') +
@@ -6808,6 +6856,8 @@
       driverPlate: orderDriverSnap().plate,
       amount: (els.dAmount && els.dAmount.value !== '') ? Number(els.dAmount.value) : lastImportedLegAmount,
       paymentMethod: currentPaymentMethod(),
+      quoteNo: currentOrderNos.quoteNo || '',
+      formalNo: currentOrderNos.formalNo || '',
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
       isKnownCustomer: !!(els.dIsKnownCustomer && els.dIsKnownCustomer.checked)
     };
@@ -6823,7 +6873,7 @@
     if (!asNew && editingOrderId){
       var idx = -1;
       recentOrders.forEach(function(x, i){ if (x.id === editingOrderId) idx = i; });
-      if (idx >= 0){ o.id = editingOrderId; recentOrders[idx] = o; updated = true; }
+      if (idx >= 0){ o.id = editingOrderId; carryOrderFlags(recentOrders[idx], o); recentOrders[idx] = o; updated = true; }
     }
     if (!updated){
       recentOrders.unshift(o);
@@ -6847,6 +6897,7 @@
     updateOrderEditUI();
     doFullSync(true);
     scheduleBotPush();
+    ensureOrderNumber(o.id);
   }
 
   // =====================================================================
@@ -6873,6 +6924,7 @@
     var d = (o.driverId && !o.driverName) ? driverById(o.driverId) : null;
     return {
       id: o.id, savedAt: o.savedAt, svcType: o.svcType || '', date: o.date || '', pickupTime: o.pickupTime || '', fixedPickup: !!o.fixedPickup,
+      formalNo: o.formalNo || '', quoteNo: o.quoteNo || '',
       flightNo: o.flightNo || '', terminal: o.terminal || '', flightDepTime: o.flightDepTime || '', flightArrTime: o.flightArrTime || '',
       otherAirport: o.otherAirport || '', contactName: o.contactName || '', contactPhone: o.contactPhone || '',
       pickupAddr: o.pickupAddr || '', dropoffAddr: o.dropoffAddr || '', pickupFullAddr: o.pickupFullAddr || '', dropoffFullAddr: o.dropoffFullAddr || '',
@@ -7153,6 +7205,8 @@
       ? { id: '', name: o.driverName || '', phone: o.driverPhone || '', car: o.driverCar || '', plate: o.driverPlate || '' }
       : null;
     editingOrderId = o.id;
+    currentOrderNos = { quoteNo: o.quoteNo || '', formalNo: o.formalNo || '' };
+    renderNoLines();
     updateOrderEditUI();
     switchTab('dispatch');
     renderPassengerDoc();
@@ -7259,6 +7313,8 @@
     if (q.legs && q.legs.length > 1 && els.dQuoteLegSelect.value !== '') legIdx = Number(els.dQuoteLegSelect.value);
     var leg = q.legs && q.legs[legIdx];
     editingOrderId = null; keptDriverSnap = null; updateOrderEditUI();
+    currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
+    renderNoLines();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.dCustSourceName.value = q.custSourceName || '';
@@ -7336,6 +7392,7 @@
       dropoff: o.dropoffFullAddr || o.dropoffAddr || ''
     });
     render();
+    receiptFromOrderId = o.id;
     setDispatchStatus(els.rImportStatusMsg, '已帶入訂單資料', 'ok');
   });
 
@@ -7428,6 +7485,247 @@
     return '[' + c.source + '] ' + name + (extra.length ? '　' + extra.join(' ') : '');
   }
 
+
+
+  // =====================================================================
+  // 編號：報價 Q＋報價日、正式 A（機場）／C（包車）＋用車日，各自當天流水號（由機器人統一發號）
+  // =====================================================================
+  var currentQuoteNo = '', currentQuoteFormalNo = '', currentQuoteKey = '', currentQuoteFlags = {};
+  var currentOrderNos = { quoteNo: '', formalNo: '' };
+  var receiptFromOrderId = '';
+  function quoteCustKeyNow(){ return friendCustomerKey(els.qCustPhone && els.qCustPhone.value, els.qCustSourceName && els.qCustSourceName.value, els.qCustName && els.qCustName.value); }
+  function quoteSameCustomer(){ return !!currentQuoteKey && currentQuoteKey === quoteCustKeyNow(); }
+  function requestNo(kind, date, ref){
+    var cfg = botConfig();
+    if (!cfg) return Promise.reject(new Error('還沒連線機器人，暫時無法給編號'));
+    return botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airNo', kind: kind, date: date, ref: ref }); }).then(function(j){ return j.no; });
+  }
+  function firstLegDate(q){ return ((q.legs || []).map(function(l){ return l.date; }).filter(Boolean).sort()[0]) || ''; }
+  function renderNoLines(){
+    var ql2 = document.getElementById('qNoLine'), dl = document.getElementById('dNoLine');
+    if (ql2){
+      var same = quoteSameCustomer();
+      ql2.hidden = !(same && currentQuoteNo);
+      ql2.textContent = same && currentQuoteNo ? '報價編號 ' + currentQuoteNo + (currentQuoteFormalNo ? '　正式訂單 ' + currentQuoteFormalNo : '') : '';
+    }
+    if (dl){
+      dl.hidden = !(currentOrderNos.formalNo || currentOrderNos.quoteNo);
+      dl.textContent = (currentOrderNos.formalNo ? '訂單編號 ' + currentOrderNos.formalNo : '訂單編號：儲存後產生') + (currentOrderNos.quoteNo ? '　（報價 ' + currentOrderNos.quoteNo + '）' : '');
+    }
+  }
+  function ensureQuoteNumbers(q){
+    var stored = function(){ return recentQuotes.find(function(x){ return x.id === q.id; }); };
+    var p = q.quoteNo ? Promise.resolve(q.quoteNo) : requestNo('Q', todayStr(), 'q:' + q.id);
+    p.then(function(no){
+      var r = stored(); if (!r || !no) return null;
+      r.quoteNo = no; currentQuoteNo = no; currentQuoteKey = friendCustomerKey(r.custPhone, r.custSourceName, r.custName);
+      if (!r.paymentConfirmed || r.formalNo) return null;
+      var d = firstLegDate(r); if (!d) return null;
+      return requestNo('A', d, 'quote:' + no).then(function(fno){ r.formalNo = fno; currentQuoteFormalNo = fno; });
+    }).then(function(){
+      saveRecentQuotesList(); renderRecentQuotesList(); renderNoLines(); try { renderQuoteDoc(); } catch(e){} renderTodoBadge();
+      doFullSync(true);
+    }).catch(function(e){ setDispatchStatus(els.quoteStatusMsg, '報價已儲存，但編號還沒產生：' + (e && e.message ? e.message : e) + '（下次儲存會再試）', 'err'); });
+  }
+  function ensureOrderNumber(id){
+    var o = recentOrders.find(function(x){ return x.id === id; });
+    if (!o || o.formalNo || !o.date || isWebCancelled(o)) { renderNoLines(); return; }
+    requestNo(/包車/.test(o.svcType || '') ? 'C' : 'A', o.date, 'order:' + o.id).then(function(no){
+      o.formalNo = no; o.savedAt = new Date().toISOString();
+      if (editingOrderId === o.id || !editingOrderId) currentOrderNos.formalNo = no;
+      saveRecentOrdersList(); renderRecentOrdersList(); renderNoLines(); renderPassengerDoc(); renderDispatchSheet();
+      doFullSync(true); scheduleBotPush(); renderTodoBadge();
+    }).catch(function(e){ setDispatchStatus(els.dispatchStatusMsg, '訂單已儲存，但訂單編號還沒產生：' + (e && e.message ? e.message : e), 'err'); });
+  }
+  var ORDER_FLAGS = ['ttAt', 'paxSentAt', 'receiptAt', 'revAskAt', 'revSkip', 'formalNo', 'quoteNo'];
+  function carryOrderFlags(from, to){ ORDER_FLAGS.forEach(function(k){ if (from[k] && !to[k]) to[k] = from[k]; }); }
+  function markOrders(ids, patch){
+    var n = 0;
+    recentOrders.forEach(function(o){ if (ids.indexOf(o.id) !== -1){ Object.assign(o, patch); n++; } });
+    if (n){ saveRecentOrdersList(); doFullSync(true); renderTodoBadge(); }
+    return n;
+  }
+  function markQuotes(ids, fn){
+    var n = 0;
+    recentQuotes.forEach(function(q){ if (ids.indexOf(q.id) !== -1){ fn(q); n++; } });
+    if (n){ saveRecentQuotesList(); renderRecentQuotesList(); doFullSync(true); renderTodoBadge(); }
+    return n;
+  }
+
+  // =====================================================================
+  // 待辦（比照禮車系統）：報價追蹤、未指派司機、未記 TimeTree、未傳乘客資訊、用車後開收據、追評價
+  // TimeTree／乘客資訊／收據／評價只追蹤 2026/10/9 之後存的訂單（之前的單當作已處理）
+  // =====================================================================
+  var TODO_SINCE = Date.parse('2026-10-09T00:00:00+08:00');
+  var TODO_ST = { quote: '報價追蹤', nodrv: '未指派司機', tt: '未記 TimeTree', pax: '未傳乘客資訊', receipt: '用車後未開收據', rev: '用車後追評價' };
+  var REV_ASK_AIR = '請問這次的接送服務還滿意嗎？\n\n如果您對我們的服務感到滿意，誠摯邀請您抽空寫幾句話留下寶貴評價，或是對司機的鼓勵，這會是我們最大的動力 🙏\n\n👉 Google 評價：https://goo.gl/maps/WsAvwhXy1eQPqk5f6';
+  var todoF = 'all', todoSel = {};
+  function dayDiff(date){
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date || ''); if (!m) return null;
+    var t = new Date(); t.setHours(0, 0, 0, 0);
+    return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 864e5);
+  }
+  function daysAgo(ts){ var v = typeof ts === 'number' ? ts : Date.parse(ts || ''); return v ? (Date.now() - v) / 864e5 : 999; }
+  function quoteTasks(q){
+    if (!q || q.lost || q.paymentConfirmed) return [];
+    var d = dayDiff(firstLegDate(q)); if (d !== null && d < 0) return [];
+    var fn = +q.followN || 0; if (fn >= 3) return [];
+    var soon = d !== null && d <= 7, gap = soon ? [1, 2, 2][fn] : [2, 5, 14][fn];
+    var base = Math.max(Date.parse(q.savedAt || '') || 0, +q.followAt || 0);
+    var ago = base ? (Date.now() - base) / 864e5 : 0;
+    return [{ k: 'quote', late: ago >= gap, why: fn ? '已追 ' + fn + ' 次' : '' }];
+  }
+  function orderTasks(o){
+    if (!o || isWebCancelled(o)) return [];
+    var d = dayDiff(o.date); if (d === null) return [];
+    var T = [], recent = (Date.parse(o.savedAt || '') || 0) >= TODO_SINCE || !!o.formalNo;
+    if (d >= 0){
+      if (!o.driverName){
+        var cl = (claimList || []).filter(function(c){ return String(c.ref || '').split('|')[0] === o.id || (c.date === o.date && (o.svcType === '接送' || c.svc === o.svcType)); }).reduce(function(a, c){ return a + (c.claims || []).length; }, 0);
+        T.push({ k: 'nodrv', late: d <= 2, why: cl ? cl + ' 人喊單' : '' });
+      }
+      if (recent && !o.ttAt) T.push({ k: 'tt', late: daysAgo(o.savedAt) >= 1 });
+      if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
+    } else if (d >= -30 && recent){
+      if (!o.receiptAt) T.push({ k: 'receipt', late: d <= -3 });
+      if (!o.revAskAt && !o.revSkip) T.push({ k: 'rev', late: d <= -2 });
+    }
+    return T;
+  }
+  function todoAll(){
+    var rows = [];
+    recentQuotes.forEach(function(q){ rows.push({ type: 'q', id: q.id, x: q, T: quoteTasks(q), date: firstLegDate(q),
+      no: q.quoteNo || '', name: quoteSourceLabel(q), phone: q.custPhone || '',
+      sub: (q.legs || []).map(function(l){ return fmtMD(l.date) + ' ' + (l.svc || ''); }).join('、') + '　NT$ ' + fmtNum(q.finalTotal) }); });
+    recentOrders.forEach(function(o){ rows.push({ type: 'o', id: o.id, x: o, T: orderTasks(o), date: o.date || '',
+      no: o.formalNo || '', name: orderSourceLabel(o), phone: o.contactPhone || '',
+      sub: fmtMD(o.date) + ' ' + (o.pickupTime || '') + ' ' + (o.svcType || '') + (o.flightNo ? ' ' + o.flightNo : '') + (o.driverName ? '　司機 ' + o.driverName : '') + (isWebOrder(o) ? '　官網' : '') }); });
+    return rows;
+  }
+  function todoRows(){
+    var q = String((document.getElementById('todoQ') || {}).value || '').trim().toLowerCase(), late = !!(document.getElementById('todoLate') || {}).checked;
+    return todoAll().filter(function(r){
+      if (!r.T.length) return false;
+      if (todoF !== 'all' && !r.T.some(function(t){ return t.k === todoF; })) return false;
+      if (late && !r.T.some(function(t){ return t.late && (todoF === 'all' || t.k === todoF); })) return false;
+      if (q && (r.no + ' ' + r.name + ' ' + r.phone).toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    }).sort(function(a, b){ return (a.date || '9').localeCompare(b.date || '9'); });
+  }
+  function renderTodoBadge(){
+    var b = document.getElementById('todoBtn'); if (!b) return;
+    var n = 0; try { todoAll().forEach(function(r){ if (r.T.some(function(t){ return t.late; })) n++; }); } catch(e){}
+    b.innerHTML = '待辦' + (n ? '<b>' + n + '</b>' : '');
+  }
+  function renderTodo(){
+    var all = todoAll();
+    var cnt = function(k){ return all.filter(function(r){ return r.T.some(function(t){ return k === 'all' || t.k === k; }); }).length; };
+    var lc = function(k){ return all.filter(function(r){ return r.T.some(function(t){ return t.late && (k === 'all' || t.k === k); }); }).length; };
+    var chip = function(k, l){ var n = cnt(k), ln = lc(k); return '<button type="button" data-tf="' + k + '"' + (todoF === k ? ' class="on"' : '') + '>' + l + ' ' + n + (ln ? '<span class="late">' + ln + ' 逾期</span>' : '') + '</button>'; };
+    document.getElementById('todoChips').innerHTML = chip('all', '全部待辦') + Object.keys(TODO_ST).map(function(k){ return chip(k, TODO_ST[k]); }).join('');
+    var rows = todoRows();
+    Object.keys(todoSel).forEach(function(id){ if (!rows.some(function(r){ return r.id === id; })) delete todoSel[id]; });
+    var nSel = Object.keys(todoSel).length;
+    var B = [['all', nSel && nSel === rows.length ? '取消全選' : '全選'], ['names', '複製客人名稱']];
+    if (todoF === 'quote') B.push(['follow', '標記已追蹤'], ['lost', '標記失單']);
+    if (todoF === 'tt') B.push(['tt', '標記已記 TimeTree']);
+    if (todoF === 'pax') B.push(['pax', '標記已傳乘客資訊']);
+    if (todoF === 'receipt') B.push(['receipt', '標記已開收據']);
+    if (todoF === 'rev') B.push(['revCopy', '複製評價詢問＋標記已問'], ['revAsked', '標記已問'], ['revSkip', '不需要問']);
+    document.getElementById('todoBatch').innerHTML = B.map(function(b){ return '<button type="button" data-tb="' + b[0] + '">' + b[1] + (b[0] !== 'all' && b[0] !== 'names' && nSel ? '（' + nSel + '）' : '') + '</button>'; }).join('');
+    document.getElementById('todoList').innerHTML = rows.length ? rows.map(function(r){
+      var tags = r.T.filter(function(t){ return todoF === 'all' || t.k === todoF; }).map(function(t){ return '<span class="todo-tag' + (t.late ? ' late' : '') + '">' + TODO_ST[t.k] + (t.why ? '・' + escapeHtml(t.why) : '') + '</span>'; }).join('');
+      return '<div class="todo-row" data-open="' + r.type + ':' + escapeHtml(r.id) + '"><input type="checkbox" data-sel="' + escapeHtml(r.id) + '"' + (todoSel[r.id] ? ' checked' : '') + '>' +
+        '<div class="m"><div>' + (r.no ? '<b>' + escapeHtml(r.no) + '</b>' : '') + escapeHtml(r.name) + '</div><div class="sub">' + escapeHtml(r.sub) + '</div></div><div class="tg">' + tags + '</div></div>';
+    }).join('') : '<p class="list-empty">這個類別目前沒有待辦 🎉</p>';
+    renderTodoBadge();
+  }
+  function todoAct(kind){
+    var st = document.getElementById('todoStatus'), rows = todoRows();
+    var ids = Object.keys(todoSel);
+    if (kind === 'all'){ if (ids.length === rows.length) todoSel = {}; else rows.forEach(function(r){ todoSel[r.id] = 1; }); renderTodo(); return; }
+    var pick = (ids.length ? rows.filter(function(r){ return todoSel[r.id]; }) : rows);
+    if (kind === 'names'){ copyToClipboard(pick.map(function(r){ return r.name + (r.phone ? ' ' + r.phone : ''); }).join('\n'), st); return; }
+    if (!ids.length){ setDispatchStatus(st, '請先勾選要處理的項目', 'err'); return; }
+    var qIds = pick.filter(function(r){ return r.type === 'q'; }).map(function(r){ return r.id; });
+    var oIds = pick.filter(function(r){ return r.type === 'o'; }).map(function(r){ return r.id; });
+    var now = Date.now(), n = 0;
+    if (kind === 'follow') n = markQuotes(qIds, function(q){ q.followN = (+q.followN || 0) + 1; q.followAt = now; });
+    if (kind === 'lost') n = markQuotes(qIds, function(q){ q.lost = true; });
+    if (kind === 'tt') n = markOrders(oIds, { ttAt: now });
+    if (kind === 'pax') n = markOrders(oIds, { paxSentAt: now });
+    if (kind === 'receipt') n = markOrders(oIds, { receiptAt: now });
+    if (kind === 'revAsked' || kind === 'revCopy') n = markOrders(oIds, { revAskAt: now });
+    if (kind === 'revSkip') n = markOrders(oIds, { revSkip: true });
+    if (kind === 'revCopy') copyToClipboard(REV_ASK_AIR, st);
+    todoSel = {}; renderTodo();
+    if (kind !== 'revCopy') setDispatchStatus(st, '已處理 ' + n + ' 筆', 'ok');
+  }
+  function bindTodoModal(){
+    var btn = document.getElementById('todoBtn'), modal = document.getElementById('todoModal');
+    if (!btn || !modal || modal.dataset.bound) return;
+    modal.dataset.bound = '1';
+    btn.addEventListener('click', function(){ modal.hidden = false; renderTodo(); fetchClaims().then(renderTodo); });
+    document.getElementById('todoClose').addEventListener('click', function(){ modal.hidden = true; });
+    modal.addEventListener('click', function(e){
+      if (e.target === modal){ modal.hidden = true; return; }
+      var c = e.target.closest('[data-tf]'); if (c){ todoF = c.getAttribute('data-tf'); todoSel = {}; renderTodo(); return; }
+      var b = e.target.closest('[data-tb]'); if (b){ todoAct(b.getAttribute('data-tb')); return; }
+      var sel = e.target.closest('[data-sel]'); if (sel){ if (sel.checked) todoSel[sel.getAttribute('data-sel')] = 1; else delete todoSel[sel.getAttribute('data-sel')]; renderTodo(); return; }
+      var row = e.target.closest('[data-open]'); if (row){
+        var v = row.getAttribute('data-open'), type = v.slice(0, 1), id = v.slice(2);
+        modal.hidden = true;
+        if (type === 'q'){ switchTab('quote'); loadQuoteIntoForm(id); } else { loadOrderIntoDispatchForm(id); }
+        try { window.scrollTo(0, 0); } catch(x){}
+      }
+    });
+    ['todoQ', 'todoLate'].forEach(function(id){ var el = document.getElementById(id); el.addEventListener(id === 'todoQ' ? 'input' : 'change', renderTodo); });
+    ['qCustPhone', 'qCustSourceName', 'qCustName'].forEach(function(k){ if (els[k]) els[k].addEventListener('input', renderNoLines); });
+    setTimeout(renderTodoBadge, 500);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindTodoModal); else bindTodoModal();
+
+
+  // ---------- 關鍵字搜尋：報價＋訂單所有欄位（編號、客人、電話、地址、航班、備註…），空白分開可多個關鍵字 ----------
+  function bindKwSearch(){
+    var input = document.getElementById('kwQ'), box = document.getElementById('kwResults');
+    if (!input || !box || input.dataset.bound) return;
+    input.dataset.bound = '1';
+    var shown = [], active = -1;
+    function hay(r){
+      var x = r.x || {};
+      return (r.no + ' ' + r.name + ' ' + r.phone + ' ' + JSON.stringify(x)).toLowerCase();
+    }
+    function render(){
+      var terms = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.length){ box.hidden = true; return; }
+      var digits = input.value.replace(/\D/g, '');
+      shown = todoAll().filter(function(r){
+        var h = hay(r), hd = h.replace(/[\s-]/g, '');
+        return terms.every(function(t){ var td = t.replace(/[\s-]/g, ''); return h.indexOf(t) !== -1 || (/^\d{3,}$/.test(td) && hd.indexOf(td) !== -1); });
+      }).sort(function(a, b){ return String(b.date || '').localeCompare(String(a.date || '')); }).slice(0, 20);
+      box.innerHTML = shown.length ? shown.map(function(r, i){
+        return '<button type="button" data-i="' + i + '"' + (i === active ? ' class="on"' : '') + '>' + (r.type === 'q' ? '📝 報價 ' : '🚗 ') + (r.no ? '<span class="hit">' + escapeHtml(r.no) + '</span> ' : '') + escapeHtml(r.name) + '<small>' + escapeHtml(r.sub) + '</small></button>';
+      }).join('') : '<div class="empty">找不到相關的報價或訂單</div>';
+      box.hidden = false;
+    }
+    function open(r){
+      box.hidden = true; input.blur();
+      if (r.type === 'q'){ switchTab('quote'); loadQuoteIntoForm(r.id); } else { loadOrderIntoDispatchForm(r.id); }
+      try { window.scrollTo(0, 0); } catch(e){}
+    }
+    input.addEventListener('input', function(){ active = -1; render(); });
+    input.addEventListener('focus', function(){ if (input.value.trim()) render(); });
+    input.addEventListener('blur', function(){ setTimeout(function(){ box.hidden = true; }, 200); });
+    input.addEventListener('keydown', function(e){
+      if (box.hidden || !shown.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); active = (active + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length; render(); }
+      else if (e.key === 'Enter'){ e.preventDefault(); open(shown[active >= 0 ? active : 0]); }
+      else if (e.key === 'Escape'){ box.hidden = true; }
+    });
+    box.addEventListener('mousedown', function(e){ var b = e.target.closest('button[data-i]'); if (!b) return; e.preventDefault(); open(shown[Number(b.getAttribute('data-i'))]); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindKwSearch); else bindKwSearch();
 
   // ---------- 找熟客：從熟客名單＋所有存過的報價、訂單彙整客人，打字篩選後點一下帶入 ----------
   function custDirectory(){
@@ -7878,5 +8176,16 @@
 })();
 </script>
 
+
+<div id="todoModal" class="todo-modal" hidden>
+  <div class="todo-box">
+    <div class="todo-head"><h3>待辦 <small>選類別篩選，勾選後可一起處理；點列可開啟</small></h3><button type="button" class="add-btn ghost" id="todoClose">關閉</button></div>
+    <div class="todo-chips" id="todoChips"></div>
+    <div class="todo-tools"><input type="text" id="todoQ" placeholder="搜尋編號、客人名稱、電話"><label><input type="checkbox" id="todoLate"> 只看逾期</label></div>
+    <div class="todo-batch" id="todoBatch"></div>
+    <p class="status" id="todoStatus"></p>
+    <div id="todoList"></div>
+  </div>
+</div>
 </body>
 </html>
