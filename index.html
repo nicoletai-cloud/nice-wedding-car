@@ -1643,6 +1643,20 @@
             <div class="status" id="paymentNoticeStatusMsg"></div>
           </div>
         </div>
+
+        <div class="card" id="paylinkCard" style="margin-top:18px;">
+          <h2><span class="dot"></span>PayPal 付款連結（私 LINE 客人）</h2>
+          <p class="hint">按下後會在官網建立一筆待付款訂單，產生 niceweddingcar.com 的付款頁給客人，客人可用 PayPal 或直接刷卡；付款後官網自動核帳，這裡會顯示已付款並自動勾「已完成付款」。金額改了再按一次就會更新同一個連結</p>
+          <div class="actions" style="margin-top:6px;">
+            <button type="button" class="primary" id="paylinkBtn">產生 PayPal 付款連結</button>
+            <button type="button" class="secondary" id="paylinkCheckBtn" hidden>檢查付款狀態</button>
+          </div>
+          <div id="paylinkBox" hidden style="margin-top:12px;">
+            <div class="doc-card"><div class="doc-title">💳 付款訊息（貼給客人）</div><div id="paylinkMsg" style="white-space:pre-wrap;word-break:break-all"></div></div>
+            <div class="actions"><button type="button" class="secondary" id="paylinkCopyBtn">📋 複製付款訊息</button></div>
+          </div>
+          <div class="status" id="paylinkStatus"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -5873,6 +5887,7 @@
     if (els.quoteLegsContainer) els.quoteLegsContainer.querySelectorAll('.trip-row').forEach(updateMidnightWarn);
     els.quoteDocBody.textContent = buildQuoteText();
     renderPaymentNotice();
+    try { renderPaylink(); } catch (e) {}
   }
 
   // ---------- payment confirmation → customer notice + shareable e-receipt link ----------
@@ -5977,6 +5992,89 @@
     });
   }
 
+
+  // ---------- PayPal 付款連結（官網代客付款頁） ----------
+  var PAYLINK_KEY = 'hhlc_paylinks';
+  function wpBase(){ return (safeGet('hhlc_wp_base') || 'https://niceweddingcar.com').replace(/\/+$/, ''); }
+  function paylinkMap(){ try { return JSON.parse(safeGet(PAYLINK_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function paylinkSave(m){ safeSet(PAYLINK_KEY, JSON.stringify(m)); }
+  function paylinkRef(){
+    if (currentQuoteNo) return String(currentQuoteNo).replace(/[^A-Za-z0-9_.:-]/g, '');
+    var legs = readQuoteLegs(), k = [els.qCustName.value.trim(), els.qCustPhone.value.trim()].concat(legs.map(function(l){ return l.date + l.svc; })).join('|');
+    var h = 0; for (var i = 0; i < k.length; i++){ h = (h * 31 + k.charCodeAt(i)) | 0; }
+    return 'q' + (h >>> 0).toString(36);
+  }
+  function paylinkTotal(){
+    var legs = readQuoteLegs(), f = (els.qRoundTrip.checked || els.qFriends.checked || els.qWedding.checked || els.qManager.checked) ? 0.95 : 1;
+    var raw = legs.reduce(function(s, l){ return s + l.subtotal; }, 0), a = quoteAfterDiscount(raw, f);
+    return els.qInvoice.checked ? Math.round(a * 1.05) : a;
+  }
+  function paylinkEn(){ return currentLang && currentLang.indexOf('zh') !== 0; }
+  function paylinkSummary(){
+    var en = paylinkEn();
+    return readQuoteLegs().map(function(l){
+      var tm = l.pickupTime || (l.svc === '接機' ? l.arr : l.dep) || '';
+      var area = l.svc === '接機' ? (l.dropoffArea || l.pickupArea) : (l.pickupArea || l.dropoffArea);
+      var svc = en ? ({'送機':'Airport drop-off','接機':'Airport pickup'}[l.svc] || l.svc) : l.svc;
+      return [fmtMD(l.date), tm, (en ? svc + ' · ' + area : (l.svc === '接機' ? svc + area : area + svc)), l.modelLabel, l.flight].filter(Boolean).join(' ');
+    }).join('\n');
+  }
+  function paylinkPickup(){
+    var l = readQuoteLegs()[0]; if (!l || !l.date) return '';
+    var tm = l.pickupTime || (l.svc === '接機' ? l.arr : l.dep) || '23:59';
+    return l.date + 'T' + tm + ':00+08:00';
+  }
+  function paylinkMsgText(r){
+    var en = paylinkEn(), dl = r.deadline ? new Date(r.deadline * 1000) : null;
+    var d = dl ? (dl.getMonth() + 1) + '/' + dl.getDate() + ' ' + String(dl.getHours()).padStart(2, '0') + ':' + String(dl.getMinutes()).padStart(2, '0') : '';
+    return en
+      ? 'Please complete your payment of NT$' + fmtNum(r.amount) + ' via PayPal (credit/debit cards accepted, no PayPal account needed):\n' + r.url + (d ? '\nPay by: ' + d + ' (Taiwan time)' : '') + '\nYour booking is confirmed once the payment goes through.'
+      : '以下是付款連結，金額 NT$' + fmtNum(r.amount) + '，可用 PayPal 或直接刷卡（不需要 PayPal 帳號）：\n' + r.url + (d ? '\n付款期限：' + d : '') + '\n付款完成即預訂成立，謝謝！';
+  }
+  function paylinkApi(path, body){
+    var token = ((els.botTokenInput && els.botTokenInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
+    if (!token) return Promise.reject(new Error('請先在「派車機器人連線」填好機器人金鑰'));
+    body.token = token;
+    return fetch(wpBase() + '/wp-json/nwc/v1/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' })
+      .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error((j && j.message) || '官網回應錯誤'); return j; }); });
+  }
+  function paylinkMarkPaid(r){
+    setDispatchStatus(els.paylinkStatus, '✅ 客人已用 ' + (r.paidBy === 'paypal' ? 'PayPal' : r.paidBy || '線上') + ' 付款 NT$' + fmtNum(r.amount) + (r.test ? '（測試付款）' : ''), 'ok');
+    if (!r.test && els.qPaymentConfirmed && !els.qPaymentConfirmed.checked){ els.qPaymentConfirmed.checked = true; els.qPaymentConfirmed.dispatchEvent(new Event('change')); }
+  }
+  function renderPaylink(){
+    if (!els.paylinkCard) return;
+    var r = paylinkMap()[paylinkRef()];
+    els.paylinkBox.hidden = !r; els.paylinkCheckBtn.hidden = !r;
+    els.paylinkBtn.textContent = r ? '更新 PayPal 付款連結' : '產生 PayPal 付款連結';
+    if (r){ els.paylinkMsg.textContent = paylinkMsgText(r); if (r.amount !== paylinkTotal()) setDispatchStatus(els.paylinkStatus, '⚠️ 報價金額已變更（連結是 NT$' + fmtNum(r.amount) + '），請按「更新 PayPal 付款連結」', 'err'); }
+  }
+  function paylinkCheck(quiet){
+    var ref = paylinkRef(), r = paylinkMap()[ref]; if (!r) return;
+    paylinkApi('paylink-status', { ids: [r.id] }).then(function(j){
+      var x = j.orders && j.orders[r.id]; if (!x) return;
+      if (x.paid) paylinkMarkPaid(x);
+      else if (!quiet) setDispatchStatus(els.paylinkStatus, x.state === 'expired' ? '連結已過期，請按「更新 PayPal 付款連結」重新開放' : '客人尚未付款', x.state === 'expired' ? 'err' : 'ok');
+    }).catch(function(e){ if (!quiet) setDispatchStatus(els.paylinkStatus, e.message, 'err'); });
+  }
+  els.paylinkCard = document.getElementById('paylinkCard'); els.paylinkBtn = document.getElementById('paylinkBtn'); els.paylinkCheckBtn = document.getElementById('paylinkCheckBtn');
+  els.paylinkBox = document.getElementById('paylinkBox'); els.paylinkMsg = document.getElementById('paylinkMsg'); els.paylinkStatus = document.getElementById('paylinkStatus');
+  if (els.paylinkBtn) els.paylinkBtn.addEventListener('click', function(){
+    var legs = readQuoteLegs(), amount = paylinkTotal(), name = els.qCustName.value.trim() || els.qCustSourceName.value.trim();
+    if (!legs.length || !amount){ setDispatchStatus(els.paylinkStatus, '請先填好行程與金額', 'err'); return; }
+    if (!name){ setDispatchStatus(els.paylinkStatus, '請先填客戶姓名', 'err'); return; }
+    var ref = paylinkRef(), b = els.paylinkBtn; b.disabled = true; setDispatchStatus(els.paylinkStatus, '正在建立付款連結…', 'ok');
+    paylinkApi('paylink', { amount: amount, name: name, phone: els.qCustPhone.value.trim(), lang: paylinkEn() ? 'en' : 'zh', ref: ref, summary: paylinkSummary(), pickup: paylinkPickup() })
+      .then(function(j){
+        var m = paylinkMap(); m[ref] = { id: j.id, url: j.url, amount: j.amount, deadline: j.deadline, at: Date.now() }; paylinkSave(m);
+        renderPaylink();
+        if (j.paid) paylinkMarkPaid(j); else setDispatchStatus(els.paylinkStatus, '已產生付款連結' + (j.paypal === 'sandbox' ? '（官網目前是 PayPal 測試模式）' : '') + '，按「複製付款訊息」貼給客人', 'ok');
+      })
+      .catch(function(e){ setDispatchStatus(els.paylinkStatus, e.message === 'Failed to fetch' ? '連不到官網，請檢查網路後再試' : e.message, 'err'); })
+      .then(function(){ b.disabled = false; });
+  });
+  if (els.paylinkCheckBtn) els.paylinkCheckBtn.addEventListener('click', function(){ paylinkCheck(false); });
+  if (document.getElementById('paylinkCopyBtn')) document.getElementById('paylinkCopyBtn').addEventListener('click', function(){ copyToClipboard(els.paylinkMsg.textContent, els.paylinkStatus); });
   if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(){
     if (els.qPaymentConfirmed.checked && !currentPaymentReceiptNo){
       var d = todayStr();
@@ -6713,6 +6811,7 @@
   function loadQuoteIntoForm(id){
     var q = recentQuotes.find(function(x){ return x.id === id; });
     if (!q) return;
+    setTimeout(function(){ try { renderPaylink(); paylinkCheck(true); } catch (e) {} }, 300);
     currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || '';
     currentQuoteFlags = { followN: q.followN || 0, followAt: q.followAt || 0 };
     currentQuoteKey = friendCustomerKey(q.custPhone, q.custSourceName, q.custName);
