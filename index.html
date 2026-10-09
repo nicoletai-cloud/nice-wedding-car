@@ -884,6 +884,15 @@
   .cal-empty{ color:var(--ink-faint); padding:8px 2px; }
   .wk-day h3 span.tg{ background:var(--accent); color:var(--accent-ink); border-radius:999px; padding:1px 9px; font-size:.8rem; margin-left:6px; }
   @media (max-width:640px){ .grid7 .day{ min-height:58px; } .grid7 .day .it{ font-size:0; height:6px; padding:0; } .sync-bar.inline .sync-status{ max-width:120px; } .orderbar select{ max-width:100%; } }
+  /* 喊單：司機在司機回報平台傳喊單碼 */
+  .claim-box{ margin:0 0 16px; padding:12px 14px; border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:10px; background:color-mix(in srgb, var(--accent) 7%, transparent); }
+  .claim-title{ font-weight:600; margin-bottom:8px; }
+  .claim-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px; }
+  .claim-sum{ flex:1 1 100%; font-size:.86rem; color:var(--ink-soft); }
+  .claim-chip{ display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px; padding:8px 12px; min-height:44px; border:1px solid var(--accent); border-radius:8px; background:var(--card, #fff); color:var(--ink); font:inherit; cursor:pointer; }
+  .claim-chip small{ font-size:.75rem; color:var(--ink-soft); }
+  .claim-chip:hover{ background:color-mix(in srgb, var(--accent) 14%, transparent); }
+  .claim-box .status{ margin-top:8px; }
 </style>
 </head>
 <body>
@@ -987,6 +996,7 @@
             <div class="field">
               <label for="dPickupTime">上車時間（請再次確認，報價時間如有異動請在此調整）</label>
               <input type="time" id="dPickupTime">
+              <label class="check-row" style="margin-top:6px;"><input type="checkbox" id="dFixedPickup"> 客人指定上車時間（司機不用追蹤航班，準時到機場待命）</label>
             </div>
           </div>
 
@@ -1208,6 +1218,7 @@
             <label for="dDriverSelect">指派司機</label>
             <select id="dDriverSelect"><option value="">－未指派－</option></select>
           </div>
+          <div class="claim-box" id="dClaimBox" hidden></div>
           <div class="field" style="margin-bottom:0;">
             <label>司機資訊預覽</label>
             <div class="driver-readout" id="dDriverReadout"><span class="empty">尚未選擇司機</span></div>
@@ -3133,6 +3144,7 @@
       if (TAB_BTNS[key]) TAB_BTNS[key].classList.toggle('active', key === name);
     });
     if (name === 'findDriver') renderFindDriverDoc();
+    if (name === 'dispatch') { renderClaimBox(); fetchClaims(); }
     if (name === 'cal') { try { renderCal(); } catch(e){} }
   }
   [els.tabBtnDispatch, els.tabBtnFindDriver, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt, els.tabBtnCal].forEach(function(btn){
@@ -3477,6 +3489,8 @@
     r.addEventListener('change', populateDriverSelect);
   });
   if (els.dDriverSelect) els.dDriverSelect.addEventListener('change', updateDriverReadout);
+  (function(){ var f = document.getElementById('dFixedPickup'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); }); })();
+  ['dUseDate'].forEach(function(k){ if (els[k]) els[k].addEventListener('change', function(){ try { renderClaimBox(); } catch(e){} }); });
 
   // 收款方式 (payment method / 回金)
   document.querySelectorAll('input[name="dPaymentMethod"]').forEach(function(r){
@@ -3683,7 +3697,8 @@
     var svcVal = currentSvcType();
     lines.push('☑️ ' + (L.svc[svcVal] || svcVal));
     lines.push(L.useDate + fmtDateWeekday(els.dUseDate.value, lang));
-    lines.push(L.pickupTime + (fmtTime24(els.dPickupTime.value) || '—'));
+    var fixedPk = !!(document.getElementById('dFixedPickup') && document.getElementById('dFixedPickup').checked);
+    lines.push(L.pickupTime + (fmtTime24(els.dPickupTime.value) || '—') + (fixedPk ? (opts.driverInfoHeader ? '（客人指定上車時間：不用追蹤航班，請準時抵達機場待命）' : ({ 'en': ' (as you requested)', 'ja': '（ご指定の時刻）' }[lang] || '（依您指定的上車時間）')) : ''));
     if (els.dFlightNo.value || els.dTerminal.value || (els.dFlightDepTime && els.dFlightDepTime.value) || (els.dFlightArrTime && els.dFlightArrTime.value)){
       lines.push(L.flightInfo);
       // 航廈已經改成標在上／下車地址後面（桃園機場那一端），這裡班機航班號
@@ -3832,6 +3847,7 @@
       pickupAddr: leg.pickupArea || '',
       dropoffAddr: leg.dropoffArea || '',
       pickupTime: leg.pickupTime || '',
+      fixedPickup: !!leg.fixedPickup,
       custSource: q.custSource,
       custSourceName: q.custSourceName,
       contactName: q.custName,
@@ -3882,6 +3898,7 @@
     // 送機司機不需要知道客人的班機（司機只要準時到府接客人去機場）；接機才
     // 要看班機號，才能配合航班狀況調整到場時間，所以只有接機才顯示班機號。
     var flight = direction === '接機' ? (o.flightNo || '').trim() : '';
+    if (direction === '接機' && o.fixedPickup) flight = (flight ? flight + ' ' : '') + '指定上車免追航班';
     // 訂單／派車現在轉入報價時直接帶完整地址（見 dImportQuoteBtn），簡易地址
     // 欄位常常是空的——找司機需要的簡易地區直接從完整地址自動抓，兩邊都
     // 沒填才會是空字串。
@@ -3916,16 +3933,18 @@
     var entries = [];
     if (wantArrival){
       var arrivalOrder = findOrderById(els.fdArrivalOrderSelect && els.fdArrivalOrderSelect.value);
-      entries.push({ date: (arrivalOrder && arrivalOrder.date) || '', line: buildFindDriverLegLine(arrivalOrder, '接機', carStr, amountVal) });
+      entries.push({ date: (arrivalOrder && arrivalOrder.date) || '', line: buildFindDriverLegLine(arrivalOrder, '接機', carStr, amountVal), code: arrivalOrder ? ((claimCodes || {})[arrivalOrder.id + '|接機'] || '') : '' });
     }
     if (wantDeparture){
       var departureOrder = findOrderById(els.fdDepartureOrderSelect && els.fdDepartureOrderSelect.value);
-      entries.push({ date: (departureOrder && departureOrder.date) || '', line: buildFindDriverLegLine(departureOrder, '送機', carStr, amountVal) });
+      entries.push({ date: (departureOrder && departureOrder.date) || '', line: buildFindDriverLegLine(departureOrder, '送機', carStr, amountVal), code: departureOrder ? ((claimCodes || {})[departureOrder.id + '|送機'] || '') : '' });
     }
     if (entries.length > 1 && entries[0].date && entries[1].date){
       entries.sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
     }
-    var lines = entries.map(function(e){ return e.line; });
+    var lines = entries.map(function(e){ return e.line + (e.code ? ' 【喊單碼 ' + e.code + '】' : ''); });
+    var firstCode = entries.map(function(e){ return e.code; }).filter(String)[0];
+    if (firstCode) lines.push('要接的司機請到「好好禮車司機回報平台」傳喊單碼（例：' + firstCode + '）');
     return lines.join('\n');
   }
 
@@ -3953,7 +3972,95 @@
   function renderFindDriverDoc(){
     if (!els.findDriverPreviewBody) return;
     els.findDriverPreviewBody.textContent = buildFindDriverText();
+    ensureClaimCodes();
   }
+
+  // ---------- 喊單碼（找司機訊息每趟附一組 4 位數；司機在「司機回報平台」傳喊單碼，
+  // 機器人用他綁定的 LINE 認出是哪位司機，通知你；你在「訂單／派車」點名字確認指派） ----------
+  var CLAIM_CODES_KEY = 'hhlc_claim_codes';
+  var claimCodes = (function(){ try { return JSON.parse(safeGet(CLAIM_CODES_KEY) || '{}') || {}; } catch(e){ return {}; } })();
+  var claimFetchBusy = {};
+  function wantedFindDriverLegs(){
+    var out = [];
+    [['接機', els.fdSvcArrival, els.fdArrivalOrderSelect], ['送機', els.fdSvcDeparture, els.fdDepartureOrderSelect]].forEach(function(x){
+      if (!x[1] || !x[1].checked || !x[2]) return;
+      var o = findOrderById(x[2].value);
+      if (o) out.push({ ref: o.id + '|' + x[0], order: o, svc: x[0] });
+    });
+    return out;
+  }
+  function ensureClaimCodes(){
+    if (!claimCodes || !claimFetchBusy) return;
+    var cfg = botConfig();
+    if (!cfg) return;
+    var items = [];
+    wantedFindDriverLegs().forEach(function(x){
+      if (claimCodes[x.ref] || claimFetchBusy[x.ref]) return;
+      claimFetchBusy[x.ref] = true;
+      items.push({ ref: x.ref, date: x.order.date || '', svc: x.svc, sum: buildFindDriverLegLine(x.order, x.svc, '', null) });
+    });
+    if (!items.length) return;
+    botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airClaimCode', items: items }); }).then(function(j){
+      Object.keys(j.codes || {}).forEach(function(k){ claimCodes[k] = j.codes[k]; });
+      safeSet(CLAIM_CODES_KEY, JSON.stringify(claimCodes));
+      items.forEach(function(it){ delete claimFetchBusy[it.ref]; });
+      renderFindDriverDoc();
+    }).catch(function(e){
+      items.forEach(function(it){ claimFetchBusy[it.ref] = 'err'; });
+      setDispatchStatus(els.findDriverStatusMsg, '喊單碼產生失敗（訊息先不附喊單碼）：' + (e && e.message ? e.message : e), 'err');
+    });
+  }
+  function claimCodesPending(){
+    if (!botConfig() || !claimCodes || !claimFetchBusy) return false;
+    return wantedFindDriverLegs().some(function(x){ return !claimCodes[x.ref] && claimFetchBusy[x.ref] === true; });
+  }
+
+  var claimList = [];
+  function fetchClaims(){
+    var cfg = botConfig();
+    if (!cfg) return Promise.resolve();
+    return botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airClaims' }); })
+      .then(function(j){ claimList = j.claims || []; renderClaimBox(); })
+      .catch(function(){});
+  }
+  function renderClaimBox(){
+    var box = document.getElementById('dClaimBox');
+    if (!box) return;
+    var o = serializeCurrentOrder();
+    var hits = (claimList || []).filter(function(c){
+      if (!c || !(c.claims || []).length) return false;
+      var refId = String(c.ref || '').split('|')[0];
+      if (editingOrderId && refId === editingOrderId) return true;
+      return !!o.date && c.date === o.date && (o.svcType === '接送' || c.svc === o.svcType);
+    });
+    if (!hits.length){ box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    box.innerHTML = '<div class="claim-title">🙋 司機喊單（點名字帶入，確認後按「💾 儲存司機指派」）</div>' + hits.map(function(c){
+      return '<div class="claim-row"><span class="claim-sum">喊單碼 ' + escapeHtml(c.code) + '　' + escapeHtml(c.sum || '') + '</span>' + c.claims.map(function(x){
+        var t = new Date(x.at);
+        return '<button type="button" class="claim-chip" data-claim-name="' + escapeHtml(x.name) + '">' + escapeHtml(x.name) +
+          '<small>' + (t.getMonth() + 1) + '/' + t.getDate() + ' ' + pad2(t.getHours()) + ':' + pad2(t.getMinutes()) + ' 喊單</small></button>';
+      }).join('') + '</div>';
+    }).join('') + '<p class="status" id="dClaimStatus"></p>';
+  }
+  function pickClaimDriver(name, retried){
+    var st = document.getElementById('dClaimStatus');
+    var d = drivers.find(function(x){ return x.name === name; });
+    if (!d){
+      if (!retried){ syncDriverBindings(false).then(function(){ pickClaimDriver(name, true); }); return; }
+      setDispatchStatus(st, '司機資料庫找不到「' + name + '」，請到下方「司機資料庫」新增後再點一次', 'err');
+      return;
+    }
+    var all = document.querySelector('input[name="dCarFilter"][value="all"]');
+    if (all && !all.checked){ all.checked = true; populateDriverSelect(); }
+    els.dDriverSelect.value = d.id;
+    updateDriverReadout();
+    setDispatchStatus(document.getElementById('dClaimStatus'), '已帶入「' + name + '」，確認後請按「💾 儲存司機指派」', 'ok');
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest ? e.target.closest('[data-claim-name]') : null;
+    if (b) pickClaimDriver(b.getAttribute('data-claim-name'), false);
+  });
 
   function setDispatchStatus(el, msg, kind){
     if (!el) return;
@@ -4038,6 +4145,7 @@
   });
   if (els.copyFindDriverBtn) els.copyFindDriverBtn.addEventListener('click', function(){
     renderFindDriverDoc();
+    if (claimCodesPending()){ setDispatchStatus(els.findDriverStatusMsg, '喊單碼產生中，請 1～2 秒後再按一次', 'err'); return; }
     copyToClipboard(buildFindDriverText(), els.findDriverStatusMsg);
   });
   // 接機／送機勾選才顯示對應的「選擇訂單」欄位，兩個都勾就兩個欄位都顯示，
@@ -4276,9 +4384,10 @@
       '<button type="button" class="secondary q-flight-lookup-btn">🔍 查詢起降時間</button>' +
       '</div>' +
       '<p class="hint q-flight-lookup-status" style="margin-top:-6px;"></p>' +
-      '<div class="field"><label>上車時間（送機提前3小時／接機以航班為準）</label><input type="time" class="q-pickup-time">' +
+      '<div class="field"><label>上車時間（送機提前3小時／接機＝落地時間）</label><input type="time" class="q-pickup-time">' +
       '<div class="quick-picks"><button type="button" class="chip q-pickup-auto-btn">依航班時間自動計算</button></div>' +
       '<p class="hint q-midnight-warn" style="display:none; color:#b45309; font-weight:600; margin-top:6px;"></p></div>' +
+      '<div class="check-row" style="margin-top:-6px;"><input type="checkbox" class="q-fixed-pickup"><label style="margin:0;">客人指定上車時間（司機不用追蹤航班，準時到機場待命）</label></div>' +
       '<div class="row2">' +
       '<div class="field"><label>上車地區</label><input type="text" class="q-pickup-area" placeholder="例如：台北信義">' +
       '<div class="quick-picks"><button type="button" class="chip" data-target=".q-pickup-area" data-fill="桃園國際機場">桃園國際機場</button></div>' +
@@ -4297,6 +4406,8 @@
       '<div class="field"><label>行李件數</label><input type="number" class="q-luggage" min="0" placeholder="選填"></div></div>' +
       '<div class="field"><label>車型</label><select class="q-model"></select></div>' +
       '<div class="field"><label>基本價格（可手動調整）</label><input type="number" class="q-base" min="0"></div>' +
+      '<div class="check-row"><input type="checkbox" class="q-friend-chk"><label style="margin:0;">親友一口價（不加接機、夜間加成）</label></div>' +
+      '<div class="hint q-friend-note" style="display:none; margin:-4px 0 10px;"></div>' +
       '<div class="check-row"><input type="checkbox" class="q-air-chk"><label style="margin:0;">接機加成</label>' +
       '<span class="amt-inline"><input type="number" class="q-air-amt" value="200" min="0"></span></div>' +
       '<div class="check-row"><input type="checkbox" class="q-night-chk"><label style="margin:0;">夜間加成（上車時間 22:00–07:59）</label>' +
@@ -4359,6 +4470,8 @@
       row.dataset.nightManual = 'true';
     }
     if (prefill.nightAmt != null) row.querySelector('.q-night-amt').value = prefill.nightAmt;
+    if (prefill.fixedPickup){ row.querySelector('.q-fixed-pickup').checked = true; row.dataset.pickupTimeManual = 'true'; }
+    if (prefill.friendChk){ row.querySelector('.q-friend-chk').checked = true; setFriendLock(row, true); }
     if (prefill.signChk) row.querySelector('.q-sign-chk').checked = true;
     if (prefill.signAmt != null) row.querySelector('.q-sign-amt').value = prefill.signAmt;
     if (prefill.seatChk) row.querySelector('.q-seat-chk').checked = true;
@@ -4482,7 +4595,7 @@
     totalMin = ((totalMin % 1440) + 1440) % 1440;
     return pad2(Math.floor(totalMin / 60)) + ':' + pad2(totalMin % 60);
   }
-  var ARRIVAL_PICKUP_BUFFER_MIN = 30; // 接機：預設落地後 30 分鐘為上車時間
+  var ARRIVAL_PICKUP_BUFFER_MIN = 0; // 接機：上車時間直接用飛機落地時間（每位客人出關時間不同，不另外加時間）
 
   function autoPickupTime(row){
     if (row.dataset.pickupTimeManual === 'true') return;
@@ -4493,11 +4606,55 @@
       if (!dep) return;
       row.querySelector('.q-pickup-time').value = subtractHours(dep, 3);
     } else if (svc === '接機'){
-      // 接機：以飛機「落地」桃園機場的時間（抵達時間）+ 30 分鐘作為預設上車時間
+      // 接機：上車時間直接用飛機「落地」桃園機場的時間（抵達時間）
       var arr = row.querySelector('.q-arr').value;
       if (!arr) return;
       row.querySelector('.q-pickup-time').value = addMinutes(arr, ARRIVAL_PICKUP_BUFFER_MIN);
     }
+  }
+
+  // ---------- 親友一口價：不加接機、夜間加成；金額自己輸入，
+  // 同一位親友（電話優先，否則 LINE／FB 名稱、姓名）同車型下次自動帶入上次報的親友價 ----------
+  function isFriendRow(row){ var c = row && row.querySelector('.q-friend-chk'); return !!(c && c.checked); }
+  function setFriendLock(row, on){
+    ['.q-air-chk', '.q-night-chk'].forEach(function(sel){
+      var c = row.querySelector(sel);
+      if (on) c.checked = false;
+      c.disabled = !!on;
+    });
+    if (on){ row.dataset.airManual = 'true'; row.dataset.nightManual = 'true'; }
+    var note = row.querySelector('.q-friend-note');
+    if (note && !on){ note.style.display = 'none'; note.textContent = ''; }
+  }
+  function friendCustomerKey(phone, sourceName, name){
+    var p = String(phone || '').replace(/\D/g, '');
+    if (p) return 'p:' + p;
+    var n = String(sourceName || '').trim() || String(name || '').trim();
+    return n ? 'n:' + n : '';
+  }
+  function lastFriendPrice(modelId){
+    var key = friendCustomerKey(els.qCustPhone && els.qCustPhone.value, els.qCustSourceName && els.qCustSourceName.value, els.qCustName && els.qCustName.value);
+    if (!key || !modelId) return null;
+    for (var i = 0; i < recentQuotes.length; i++){
+      var q = recentQuotes[i];
+      if (friendCustomerKey(q.custPhone, q.custSourceName, q.custName) !== key) continue;
+      var legs = q.legs || [];
+      for (var j = 0; j < legs.length; j++){
+        if (legs[j].friendChk && legs[j].modelId === modelId && legs[j].base) return { base: legs[j].base, date: q.savedAt || '' };
+      }
+    }
+    return null;
+  }
+  function applyFriendPrice(row){
+    var note = row.querySelector('.q-friend-note');
+    var hit = lastFriendPrice(row.querySelector('.q-model').value);
+    if (hit){
+      row.querySelector('.q-base').value = hit.base;
+      note.textContent = '已帶入這位親友同車型上次的親友價 $' + fmtNum(hit.base) + (hit.date ? '（' + String(hit.date).slice(0, 10) + ' 報價）' : '') + '，可再修改';
+    } else {
+      note.textContent = '沒有這位親友同車型的紀錄，請在「基本價格」輸入親友價；存報價後，下次同一位親友同車型會自動帶入';
+    }
+    note.style.display = '';
   }
 
   function updateQuoteModelBase(row){
@@ -4720,6 +4877,22 @@
     });
     row.querySelector('.q-model').addEventListener('change', function(){
       updateQuoteModelBase(row);
+      if (isFriendRow(row)) applyFriendPrice(row);
+      renderQuoteDoc();
+    });
+    row.querySelector('.q-fixed-pickup').addEventListener('change', function(){
+      if (row.querySelector('.q-fixed-pickup').checked) row.dataset.pickupTimeManual = 'true';
+      else { delete row.dataset.pickupTimeManual; autoPickupTime(row); autoNight(row); }
+      renderQuoteDoc();
+    });
+    row.querySelector('.q-friend-chk').addEventListener('change', function(){
+      var on = row.querySelector('.q-friend-chk').checked;
+      setFriendLock(row, on);
+      if (on) applyFriendPrice(row);
+      else {
+        delete row.dataset.airManual; delete row.dataset.nightManual;
+        updateQuoteModelBase(row); autoAirSurcharge(row); autoNight(row);
+      }
       renderQuoteDoc();
     });
     row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); autoNight(row); autoAirSurcharge(row); autoRoundTrip(); renderQuoteDoc(); }); });
@@ -4757,6 +4930,7 @@
     if (pickupAutoBtn){
       pickupAutoBtn.addEventListener('click', function(){
         row.dataset.pickupTimeManual = 'false';
+        var fx = row.querySelector('.q-fixed-pickup'); if (fx) fx.checked = false;
         autoPickupTime(row);
         autoNight(row);
         renderQuoteDoc();
@@ -5202,7 +5376,7 @@
   // 接機加成 +200：服務類型選「接機」就自動勾選（送機／接送則取消）；
   // 使用者手動勾選／取消之後（row.dataset.airManual）就以手動為準。
   function autoAirSurcharge(row){
-    if (row.dataset.airManual === 'true') return;
+    if (row.dataset.airManual === 'true' || isFriendRow(row)) return;
     var svcInput = row.querySelector('.q-svc:checked');
     row.querySelector('.q-air-chk').checked = !!(svcInput && svcInput.value === '接機');
   }
@@ -5245,7 +5419,7 @@
   }
 
   function autoNight(row){
-    if (row.dataset.nightManual === 'true') return;
+    if (row.dataset.nightManual === 'true' || isFriendRow(row)) return;
     var pickup = row.querySelector('.q-pickup-time').value;
     if (!pickup) return;
     row.querySelector('.q-night-chk').checked = isNightTime(pickup);
@@ -5276,6 +5450,8 @@
       var seatChk = row.querySelector('.q-seat-chk').checked;
       var extraChk = row.querySelector('.q-extra-chk').checked;
       var remoteChk = row.querySelector('.q-remote-chk').checked;
+      var friendChk = isFriendRow(row);
+      if (friendChk){ airChk = false; nightChk = false; }
       var airAmt = Number(row.querySelector('.q-air-amt').value) || 0;
       var nightAmt = Number(row.querySelector('.q-night-amt').value) || 0;
       var signAmt = Number(row.querySelector('.q-sign-amt').value) || 0;
@@ -5292,6 +5468,7 @@
         dep: row.querySelector('.q-dep').value,
         arr: row.querySelector('.q-arr').value,
         pickupTime: row.querySelector('.q-pickup-time').value,
+        fixedPickup: !!(row.querySelector('.q-fixed-pickup') && row.querySelector('.q-fixed-pickup').checked),
         flight: row.querySelector('.q-flight').value.trim(),
         terminal: row.querySelector('.q-terminal').value.trim(),
         pickupArea: row.querySelector('.q-pickup-area').value.trim(),
@@ -5302,7 +5479,7 @@
         luggageCount: row.querySelector('.q-luggage').value,
         modelId: modelSel.value,
         modelLabel: modelOpt ? modelOpt.textContent.split('　')[0] : '',
-        base: base, airChk: airChk, nightChk: nightChk, signChk: signChk, seatChk: seatChk, extraChk: extraChk, remoteChk: remoteChk,
+        base: base, friendChk: friendChk, airChk: airChk, nightChk: nightChk, signChk: signChk, seatChk: seatChk, extraChk: extraChk, remoteChk: remoteChk,
         airAmt: airAmt, nightAmt: nightAmt, signAmt: signAmt, seatAmt: seatAmt, extraAmt: extraAmt, remoteAmt: remoteAmt, subtotal: subtotal
       });
     });
@@ -5639,6 +5816,8 @@
       if (pax !== '') prefill.pax = pax;
       if (luggage !== '') prefill.luggageCount = luggage;
       prefill.modelId = last.querySelector('.q-model').value;
+      // 親友一口價：回程同樣是一口價、同金額
+      if (isFriendRow(last)){ prefill.friendChk = true; prefill.base = last.querySelector('.q-base').value; }
       // 接機加成不複製：回程服務類型已對調，依新的服務類型自動判斷
       prefill.airAmt = last.querySelector('.q-air-amt').value;
       // 夜間加成不複製：回程的上車時間不同，等填入航班後依上車時間自動判斷
@@ -5898,9 +6077,10 @@
       var svcEl = document.querySelector('input[name="dSvcType"]:checked');
       var svc = svcEl ? svcEl.value : '送機';
       // 送機：以起飛時間往前推 3 小時（無條件捨去至最近 10 分鐘）作為上車時間
-      // 接機：以「落地」桃園機場的時間（抵達時間）+ 30 分鐘作為預設上車時間，而非起飛時間
+      // 接機：上車時間直接用「落地」桃園機場的時間（抵達時間），不是起飛時間；客人指定上車時間就不覆蓋
       var t = svc === '接機' ? (times.arr ? addMinutes(times.arr, ARRIVAL_PICKUP_BUFFER_MIN) : times.dep) : (times.dep ? subtractHours(times.dep, 3) : times.arr);
-      if (t){
+      var fixedEl = document.getElementById('dFixedPickup');
+      if (t && !(fixedEl && fixedEl.checked)){
         els.dPickupTime.value = t;
         els.dPickupTime.dispatchEvent(new Event('input'));
       }
@@ -6329,9 +6509,9 @@
     els.quoteLegsContainer.innerHTML = '';
     (q.legs || []).forEach(function(leg){
       addQuoteLegRow({
-        svc: leg.svc, date: leg.date, dep: leg.dep, arr: leg.arr, pickupTime: leg.pickupTime, flight: leg.flight, terminal: leg.terminal,
+        svc: leg.svc, date: leg.date, dep: leg.dep, arr: leg.arr, pickupTime: leg.pickupTime, fixedPickup: !!leg.fixedPickup, flight: leg.flight, terminal: leg.terminal,
         pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pax: leg.pax, luggageCount: leg.luggageCount,
-        modelId: leg.modelId, base: leg.base,
+        modelId: leg.modelId, base: leg.base, friendChk: !!leg.friendChk,
         airChk: leg.airChk, airAmt: leg.airAmt,
         nightChk: leg.nightChk, nightAmt: leg.nightAmt,
         signChk: leg.signChk, signAmt: leg.signAmt,
@@ -6522,6 +6702,7 @@
       svcType: svcEl ? svcEl.value : '送機',
       date: els.dUseDate.value,
       pickupTime: els.dPickupTime.value,
+      fixedPickup: !!(document.getElementById('dFixedPickup') && document.getElementById('dFixedPickup').checked),
       flightNo: els.dFlightNo.value.trim(),
       terminal: els.dTerminal.value.trim(),
       flightDepTime: els.dFlightDepTime ? els.dFlightDepTime.value : '',
@@ -6610,7 +6791,7 @@
   function botOrderPayload(o){
     var d = (o.driverId && !o.driverName) ? driverById(o.driverId) : null;
     return {
-      id: o.id, savedAt: o.savedAt, svcType: o.svcType || '', date: o.date || '', pickupTime: o.pickupTime || '',
+      id: o.id, savedAt: o.savedAt, svcType: o.svcType || '', date: o.date || '', pickupTime: o.pickupTime || '', fixedPickup: !!o.fixedPickup,
       flightNo: o.flightNo || '', terminal: o.terminal || '', flightDepTime: o.flightDepTime || '', flightArrTime: o.flightArrTime || '',
       otherAirport: o.otherAirport || '', contactName: o.contactName || '', contactPhone: o.contactPhone || '',
       pickupAddr: o.pickupAddr || '', dropoffAddr: o.dropoffAddr || '', pickupFullAddr: o.pickupFullAddr || '', dropoffFullAddr: o.dropoffFullAddr || '',
@@ -6853,6 +7034,7 @@
     if (svcInput) svcInput.checked = true;
     els.dUseDate.value = o.date || '';
     els.dPickupTime.value = o.pickupTime || '';
+    if (document.getElementById('dFixedPickup')) document.getElementById('dFixedPickup').checked = !!o.fixedPickup;
     els.dFlightNo.value = o.flightNo || '';
     els.dTerminal.value = o.terminal || '';
     if (els.dFlightDepTime) els.dFlightDepTime.value = o.flightDepTime || '';
@@ -7009,6 +7191,7 @@
       if (leg.date) els.dUseDate.value = leg.date;
       var t = leg.pickupTime || leg.dep || leg.arr;
       if (t) els.dPickupTime.value = t;
+      if (document.getElementById('dFixedPickup')) document.getElementById('dFixedPickup').checked = !!leg.fixedPickup;
       if (leg.flight) els.dFlightNo.value = leg.flight;
       if (leg.terminal) els.dTerminal.value = leg.terminal;
       if (leg.dep && els.dFlightDepTime) els.dFlightDepTime.value = leg.dep;
