@@ -2918,6 +2918,7 @@
       if (!ok) return;
       if (els.dPickupFullAddr) bindAddressAutocomplete(els.dPickupFullAddr);
       if (els.dDropoffFullAddr) bindAddressAutocomplete(els.dDropoffFullAddr);
+      if (document.getElementById('qAddrInput')) bindAddressAutocomplete(document.getElementById('qAddrInput'));
       document.querySelectorAll('#quoteLegsContainer .trip-row').forEach(function(row){
         bindQuoteLegAddressAutocomplete(row);
       });
