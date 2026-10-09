@@ -1412,13 +1412,9 @@
       <!-- LEFT: FORM -->
       <div class="form-col">
         <div class="card">
-          <details class="settings">
-            <summary><span class="dot"></span>最近報價（點選載入）<span class="chev">▾</span></summary>
-            <p class="hint">儲存過的報價會列在這裡，載入後可繼續編輯或重新複製；訂單／派車分頁也能從這裡帶入資料</p>
-            <div class="settings-body">
-              <div id="recentQuoteList"></div>
-            </div>
-          </details>
+          <h2><span class="dot"></span>最近報價</h2>
+          <p class="hint" style="margin-bottom:8px">從下拉選單選一筆就會直接載入；同一個報價編號只顯示最新存的那一版</p>
+          <div id="recentQuoteList"></div>
         </div>
 
         <div class="card">
@@ -6745,16 +6741,12 @@
       if (!recentQuotes.length){
         els.recentQuoteList.innerHTML = '<p class="list-empty">尚未儲存報價</p>';
       } else {
-        els.recentQuoteList.innerHTML = recentQuotes.map(function(q){
+        var seenNo = {}, shown = recentQuotes.filter(function(q){ if (!q.quoteNo) return true; if (seenNo[q.quoteNo]) return false; seenNo[q.quoteNo] = 1; return true; });
+        els.recentQuoteList.innerHTML = '<div style="display:flex;gap:8px;align-items:center"><select id="recentQuoteSel" style="flex:1;min-width:0"><option value="">－選擇報價（共 ' + shown.length + ' 筆）－</option>' + shown.map(function(q){
           var firstLeg = q.legs && q.legs[0];
           var legSummary = firstLeg ? (fmtMD(firstLeg.date) + ' ' + firstLeg.svc) : '';
-          return '<div class="list-row" data-id="' + q.id + '">' +
-            '<div class="li-main"><div class="li-name">' + escapeHtml(quoteSourceLabel(q)) + '　NT$ ' + fmtNum(q.finalTotal) + '</div>' +
-            '<div class="li-sub">' + (q.quoteNo ? escapeHtml(q.quoteNo) + (q.formalNo ? '→' + escapeHtml(q.formalNo) : '') + '　' : '') + escapeHtml(legSummary) + '　存於 ' + fmtSavedAt(q.savedAt) + '</div></div>' +
-            '<button type="button" class="chip" data-load-quote="' + q.id + '">載入</button>' +
-            '<button type="button" class="del" data-del-quote="' + q.id + '">✕</button>' +
-            '</div>';
-        }).join('');
+          return '<option value="' + q.id + '">' + escapeHtml([q.quoteNo || '', legSummary, quoteSourceLabel(q), 'NT$' + fmtNum(q.finalTotal)].filter(Boolean).join('　')) + '</option>';
+        }).join('') + '</select><button type="button" class="del" id="recentQuoteDel" title="刪除選取的報價" style="flex:none">✕</button></div>';
       }
     }
     // 報價存的每一段行程也是找司機的候選訂單來源，報價列表更新時要一併刷新
@@ -6889,7 +6881,12 @@
 
   if (els.saveQuoteBtn) els.saveQuoteBtn.addEventListener('click', saveCurrentQuote);
   if (els.recentQuoteList){
+    els.recentQuoteList.addEventListener('change', function(e){
+      if (e.target.id !== 'recentQuoteSel' || !e.target.value) return;
+      loadQuoteIntoForm(e.target.value);
+    });
     els.recentQuoteList.addEventListener('click', function(e){
+      if (e.target.id === 'recentQuoteDel'){ var sel = document.getElementById('recentQuoteSel'); if (!sel || !sel.value){ setDispatchStatus(els.quoteStatusMsg, '請先在下拉選單選一筆報價', 'err'); return; } if (!confirm('刪除這筆報價？')) return; var fake = document.createElement('button'); fake.setAttribute('data-del-quote', sel.value); els.recentQuoteList.appendChild(fake); fake.click(); fake.remove(); return; }
       var loadBtn = e.target.closest('[data-load-quote]');
       if (loadBtn){ loadQuoteIntoForm(loadBtn.getAttribute('data-load-quote')); return; }
       var delBtn = e.target.closest('[data-del-quote]');
