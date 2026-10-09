@@ -1094,6 +1094,10 @@
             <input type="text" id="dCustSourceName" placeholder="貼上 LINE/FB 顯示名稱，或私客自訂稱呼">
           </div>
           <div class="field">
+            <label for="dFoundVia">客人怎麼找到我們<small style="font-weight:400;color:#888">　統計廣告和口碑效果用</small></label>
+            <select id="dFoundVia"><option value="">（還不知道，問到再選）</option><option>Google 搜尋／地圖</option><option>IG</option><option>FB</option><option>FB/IG 廣告</option><option>Google 廣告</option><option>婚顧／廠商介紹</option><option>朋友介紹</option><option>老客回購</option><option>官網</option><option>其他</option></select>
+          </div>
+          <div class="field">
             <label for="dCustNote">客人備註（只有自己看得到，不會出現在行程單）</label>
             <input type="text" id="dCustNote" placeholder="例如：王經理的朋友、阿明介紹、台積電">
           </div>
@@ -1444,6 +1448,10 @@
           <div class="field">
             <label for="qCustSourceName">客戶暱稱／來源名稱</label>
             <input type="text" id="qCustSourceName" placeholder="貼上 LINE/FB 顯示名稱，或私客自訂稱呼">
+          </div>
+          <div class="field">
+            <label for="qFoundVia">客人怎麼找到我們<small style="font-weight:400;color:#888">　統計廣告和口碑效果用</small></label>
+            <select id="qFoundVia"><option value="">（還不知道，問到再選）</option><option>Google 搜尋／地圖</option><option>IG</option><option>FB</option><option>FB/IG 廣告</option><option>Google 廣告</option><option>婚顧／廠商介紹</option><option>朋友介紹</option><option>老客回購</option><option>官網</option><option>其他</option></select>
           </div>
           <div class="row2">
             <div class="field">
@@ -6859,6 +6867,7 @@
       savedAt: new Date().toISOString(),
       custSource: sourceEl ? sourceEl.value : 'LINE',
       custSourceName: els.qCustSourceName.value.trim(),
+      foundVia: (document.getElementById('qFoundVia') || {}).value || '',
       custNote: els.qCustNote ? els.qCustNote.value.trim() : '',
       custName: els.qCustName.value.trim(),
       custPhone: els.qCustPhone.value.trim(),
@@ -6925,6 +6934,7 @@
     var srcInput = document.querySelector('input[name="qCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.qCustSourceName.value = q.custSourceName || '';
+    if (document.getElementById('qFoundVia')) document.getElementById('qFoundVia').value = q.foundVia || '';
     if (els.qCustNote) els.qCustNote.value = q.custNote || '';
     els.qCustName.value = q.custName || '';
     els.qCustPhone.value = q.custPhone || '';
@@ -7129,6 +7139,7 @@
       savedAt: new Date().toISOString(),
       custSource: srcEl ? srcEl.value : 'LINE',
       custSourceName: els.dCustSourceName.value.trim(),
+      foundVia: (document.getElementById('dFoundVia') || {}).value || '',
       custNote: els.dCustNote ? els.dCustNote.value.trim() : '',
       svcType: svcEl ? svcEl.value : '送機',
       date: els.dUseDate.value,
@@ -7468,6 +7479,7 @@
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (o.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.dCustSourceName.value = o.custSourceName || '';
+    if (document.getElementById('dFoundVia')) document.getElementById('dFoundVia').value = o.foundVia || '';
     if (els.dCustNote) els.dCustNote.value = o.custNote || '';
     var svcInput = document.querySelector('input[name="dSvcType"][value="' + (o.svcType || '送機') + '"]');
     if (svcInput) svcInput.checked = true;
@@ -7645,6 +7657,7 @@
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.dCustSourceName.value = q.custSourceName || '';
+    if (document.getElementById('dFoundVia')) document.getElementById('dFoundVia').value = q.foundVia || '';
     if (els.dCustNote) els.dCustNote.value = q.custNote || custNoteLookup(q.custPhone, q.custSourceName, q.custName);
     if (q.custName) els.dContactName.value = q.custName;
     if (q.custPhone) els.dContactPhone.value = q.custPhone;
