@@ -6551,11 +6551,18 @@
   // 客人有疑慮或要修改：改完按這顆，下次複製／儲存會給一個新的報價編號（舊的那版保留在最近報價裡）
   if (document.getElementById('requoteBtn')) document.getElementById('requoteBtn').addEventListener('click', function(){
     if (!currentQuoteNo){ setDispatchStatus(els.quoteStatusMsg, '這張還沒有報價編號，直接修改後複製就好', 'ok'); return; }
-    var old = currentQuoteNo;
+    var old = currentQuoteNo, oldLink = null; try { oldLink = paylinkMap()[paylinkRef()]; } catch (e) {}
+    if (oldLink && !oldLink.paidAuto){
+      paylinkApi('paylink-cancel', { ids: [oldLink.id] }).then(function(j){
+        var st = j.results && j.results[oldLink.id];
+        if (st === 'paid'){ alert('注意：' + old + ' 的舊付款連結客人已經付款了，舊連結沒有取消，請確認是否要退款或改用舊報價。'); return; }
+        var m = paylinkMap(); Object.keys(m).forEach(function(k){ if (m[k].id === oldLink.id) m[k].cancelled = true; }); paylinkSave(m);
+      }).catch(function(e){ setDispatchStatus(els.quoteStatusMsg, '舊付款連結取消失敗：' + e.message + '（請再按一次「重新報價」或聯絡我）', 'err'); });
+    }
     currentQuoteNo = ''; currentQuoteFormalNo = ''; currentQuoteFlags = {};
     var pc = document.getElementById('qPaymentConfirmed'); if (pc) pc.checked = false;
     try { renderQuoteDoc(); renderNoLines(); } catch (e) {}
-    setDispatchStatus(els.quoteStatusMsg, '已改成新報價（' + old + ' 保留在最近報價）。修改完按「複製文字」會給新的報價編號；有付款連結的話請重新產生', 'ok');
+    setDispatchStatus(els.quoteStatusMsg, '已改成新報價（' + old + ' 保留在最近報價）' + (oldLink ? '，舊付款連結已取消，客人點開會看到「連結已失效」' : '') + '。修改完按「複製文字」會給新的報價編號' + (oldLink ? '，再按「產生付款連結」產生新連結' : ''), 'ok');
   });
   if (els.printQuoteBtn) els.printQuoteBtn.addEventListener('click', function(){
     printDoc('print-quote', '好好禮車_報價_' + todayStr(), els.quoteStatusMsg);
@@ -7610,6 +7617,7 @@
   if (document.getElementById('quoteToOrderBtn')) document.getElementById('quoteToOrderBtn').addEventListener('click', function(){
     var plr = null; try { plr = paylinkMap()[paylinkRef()]; } catch (e) {}
     if (plr && plr.paidAuto){ if (!confirm('這張報價的客人已線上付款，系統已自動建立訂單。還要再手動建一筆嗎？')) return; }
+    else if (!qCash() && !isMonthlyChoice() && !(els.qPaymentConfirmed && els.qPaymentConfirmed.checked)){ if (!confirm(plr ? '客人還沒付款。付款完成後系統會自動轉成訂單；只有熟客先出車後付款才需要現在轉。確定要現在轉成訂單嗎？' : '這張還沒產生付款連結、也不是收現。確定要現在轉成訂單嗎？')) return; }
     else if (plr){ paylinkApi('paylink-manual', { ids: [plr.id] }).catch(function(){}); }
     var before = recentQuotes[0] && recentQuotes[0].savedAt;
     saveCurrentQuote();
