@@ -1575,18 +1575,19 @@
               <label><input type="radio" name="qBankChoice" value="monthly"> 月結</label>
             </div>
           </div>
-          <p class="hint">這筆報價要附上哪些付款方式——接送機刷卡不加收手續費，客人習慣匯款的話可以取消勾選刷卡</p>
+          <p class="hint">一般客人不用勾：付款連結會給綠界 ATM 轉帳或綠界刷卡兩種。客人用國外信用卡就勾「海外付款」，連結只給 PayPal。收現金的客人勾「收現」，就不產生付款連結（接送機刷卡不加收手續費）</p>
           <div class="field" style="margin-bottom:0;">
-            <div class="check-row"><input type="checkbox" id="qShowBankInfo" checked><label for="qShowBankInfo" style="margin:0;">附上匯款資訊</label></div>
-            <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qShowCardLink" checked><label for="qShowCardLink" style="margin:0;">附上刷卡付款連結</label></div>
+            <div class="check-row"><input type="checkbox" id="qCashPay"><label for="qCashPay" style="margin:0;">收現（司機現場收現金，不給付款連結）</label></div>
+            <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qOverseasPay"><label for="qOverseasPay" style="margin:0;">海外付款（只給 PayPal）</label></div>
+            <div hidden><input type="checkbox" id="qShowBankInfo" checked><input type="checkbox" id="qShowCardLink" checked></div>
           </div>
         </div>
 
         <div class="card" id="paylinkCard" >
-          <h2><span class="dot"></span>PayPal 付款連結（私 LINE 客人）</h2>
-          <p class="hint">按下後會在官網建立一筆待付款訂單，產生 niceweddingcar.com 的付款頁給客人，客人可用 PayPal 或直接刷卡；付款後官網自動核帳，這裡會顯示已付款並自動勾「已完成付款」。金額改了再按一次就會更新同一個連結</p>
+          <h2><span class="dot"></span>線上付款連結</h2>
+          <p class="hint">依上方勾的付款方式，在官網建立一筆待付款訂單、產生 niceweddingcar.com 的付款頁，報價文字會自動換成這個付款連結。客人付款後官網自動核帳，這裡會顯示已付款並自動勾「已完成付款」。金額或付款方式改了，再按一次就會更新同一個連結</p>
           <div class="actions" style="margin-top:6px;">
-            <button type="button" class="primary" id="paylinkBtn">產生 PayPal 付款連結</button>
+            <button type="button" class="primary" id="paylinkBtn">產生付款連結</button>
             <button type="button" class="secondary" id="paylinkCheckBtn" hidden>檢查付款狀態</button>
           </div>
           <div id="paylinkBox" hidden style="margin-top:12px;">
@@ -5839,11 +5840,22 @@
     // 匯款資訊、刷卡連結是否附上，看這筆報價自己勾選的「附上匯款資訊」／
     // 「附上刷卡付款連結」——刷卡有手續費，客人習慣匯款的話可以只附匯款資訊，
     // 不用把刷卡連結也貼給客人。
-    if (shouldShowBankInfo()){
+    var plk = null, cashq = false; try { cashq = !isMonthlyChoice() && qCash(); if (!isMonthlyChoice() && !cashq && els.paylinkCard) plk = paylinkMap()[paylinkRef()]; } catch (e) {}
+    if (cashq){
+      var enc = currentQuoteLang && currentQuoteLang.indexOf('zh') !== 0;
+      lines.push(enc ? 'Payment: cash to the driver on the day.' : '付款方式：當天以現金支付給司機');
+    }
+    if (plk){
+      var enq = currentQuoteLang && currentQuoteLang.indexOf('zh') !== 0;
+      lines.push((enq ? 'Payment (' : '付款方式：') + paylinkMethodText(plk.methods, enq) + (enq ? '):' : ''));
+      lines.push(plk.url);
+      lines.push(enq ? 'Your booking is confirmed automatically once paid.' : '付款完成後系統自動確認，不需回傳截圖。');
+    }
+    if (!plk && !cashq && shouldShowBankInfo()){
       var bankText = selectedBankBlockText(currentQuoteLang);
       if (bankText) lines.push(bankText);
     }
-    if (shouldShowCardLink() && els.qPayLink.value.trim()){
+    if (!plk && !cashq && shouldShowCardLink() && els.qPayLink.value.trim()){
       lines.push('');
       lines.push(L.creditCard + els.qPayLink.value.trim());
       lines.push(L.creditCardNote);
@@ -6026,7 +6038,15 @@
     var raw = legs.reduce(function(s, l){ return s + l.subtotal; }, 0), a = quoteAfterDiscount(raw, f);
     return els.qInvoice.checked ? Math.round(a * 1.05) : a;
   }
-  function paylinkEn(){ return currentLang && currentLang.indexOf('zh') !== 0; }
+  function paylinkEn(){ var l = (typeof currentQuoteLang !== 'undefined' && currentQuoteLang) || currentLang; return l && l.indexOf('zh') !== 0; }
+  function paylinkMethods(){
+    var o = document.getElementById('qOverseasPay');
+    return o && o.checked ? ['paypal'] : ['atm', 'card'];
+  }
+  function paylinkMethodText(methods, en){
+    var t = { atm: en ? 'bank transfer (ATM)' : 'ATM 轉帳', card: en ? 'credit card' : '信用卡', paypal: en ? 'PayPal / credit card' : 'PayPal（可刷卡）' };
+    return (methods || []).map(function(x){ return t[x]; }).filter(Boolean).join(en ? ' or ' : '、');
+  }
   function paylinkSummary(){
     var en = paylinkEn();
     return readQuoteLegs().map(function(l){
@@ -6045,8 +6065,8 @@
     var en = paylinkEn(), dl = r.deadline ? new Date(r.deadline * 1000) : null;
     var d = dl ? (dl.getMonth() + 1) + '/' + dl.getDate() + ' ' + String(dl.getHours()).padStart(2, '0') + ':' + String(dl.getMinutes()).padStart(2, '0') : '';
     return en
-      ? 'Please complete your payment of NT$' + fmtNum(r.amount) + ' via PayPal (credit/debit cards accepted, no PayPal account needed):\n' + r.url + (d ? '\nPay by: ' + d + ' (Taiwan time)' : '') + '\nYour booking is confirmed once the payment goes through.'
-      : '以下是付款連結，金額 NT$' + fmtNum(r.amount) + '，可用 PayPal 或直接刷卡（不需要 PayPal 帳號）：\n' + r.url + (d ? '\n付款期限：' + d : '') + '\n付款完成即預訂成立，謝謝！';
+      ? 'Please complete your payment of NT$' + fmtNum(r.amount) + ' (' + paylinkMethodText(r.methods, true) + '):\n' + r.url + (d ? '\nPay by: ' + d + ' (Taiwan time)' : '') + '\nYour booking is confirmed once the payment goes through.'
+      : '以下是付款連結，金額 NT$' + fmtNum(r.amount) + '，付款方式：' + paylinkMethodText(r.methods, false) + '\n' + r.url + (d ? '\n付款期限：' + d : '') + '\n付款完成即預訂成立，謝謝！';
   }
   function paylinkApi(path, body){
     var token = ((els.botTokenInput && els.botTokenInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
@@ -6062,16 +6082,17 @@
   function renderPaylink(){
     if (!els.paylinkCard) return;
     var r = paylinkMap()[paylinkRef()];
+    els.paylinkCard.style.opacity = qCash() ? '.5' : '';
     els.paylinkBox.hidden = !r; els.paylinkCheckBtn.hidden = !r;
-    els.paylinkBtn.textContent = r ? '更新 PayPal 付款連結' : '產生 PayPal 付款連結';
-    if (r){ els.paylinkMsg.textContent = paylinkMsgText(r); if (r.amount !== paylinkTotal()) setDispatchStatus(els.paylinkStatus, '⚠️ 報價金額已變更（連結是 NT$' + fmtNum(r.amount) + '），請按「更新 PayPal 付款連結」', 'err'); }
+    els.paylinkBtn.textContent = r ? '更新付款連結' : '產生付款連結';
+    if (r){ els.paylinkMsg.textContent = paylinkMsgText(r); if (r.amount !== paylinkTotal()) setDispatchStatus(els.paylinkStatus, '⚠️ 報價金額已變更（連結是 NT$' + fmtNum(r.amount) + '），請按「更新付款連結」', 'err'); }
   }
   function paylinkCheck(quiet){
     var ref = paylinkRef(), r = paylinkMap()[ref]; if (!r) return;
     paylinkApi('paylink-status', { ids: [r.id] }).then(function(j){
       var x = j.orders && j.orders[r.id]; if (!x) return;
       if (x.paid) paylinkMarkPaid(x);
-      else if (!quiet) setDispatchStatus(els.paylinkStatus, x.state === 'expired' ? '連結已過期，請按「更新 PayPal 付款連結」重新開放' : '客人尚未付款', x.state === 'expired' ? 'err' : 'ok');
+      else if (!quiet) setDispatchStatus(els.paylinkStatus, x.state === 'expired' ? '連結已過期，請按「更新付款連結」重新開放' : '客人尚未付款', x.state === 'expired' ? 'err' : 'ok');
     }).catch(function(e){ if (!quiet) setDispatchStatus(els.paylinkStatus, e.message, 'err'); });
   }
   els.paylinkCard = document.getElementById('paylinkCard'); els.paylinkBtn = document.getElementById('paylinkBtn'); els.paylinkCheckBtn = document.getElementById('paylinkCheckBtn');
@@ -6081,16 +6102,25 @@
     if (!legs.length || !amount){ setDispatchStatus(els.paylinkStatus, '請先填好行程與金額', 'err'); return; }
     if (!name){ setDispatchStatus(els.paylinkStatus, '請先填客戶姓名', 'err'); return; }
     var ref = paylinkRef(), b = els.paylinkBtn; b.disabled = true; setDispatchStatus(els.paylinkStatus, '正在建立付款連結…', 'ok');
-    paylinkApi('paylink', { amount: amount, name: name, phone: els.qCustPhone.value.trim(), lang: paylinkEn() ? 'en' : 'zh', ref: ref, summary: paylinkSummary(), pickup: paylinkPickup() })
+    if (qCash()){ b.disabled = false; setDispatchStatus(els.paylinkStatus, '這筆勾了「收現」，不需要付款連結', 'err'); return; }
+    var methods = paylinkMethods();
+    paylinkApi('paylink', { methods: methods, amount: amount, name: name, phone: els.qCustPhone.value.trim(), lang: paylinkEn() ? 'en' : 'zh', ref: ref, summary: paylinkSummary(), pickup: paylinkPickup() })
       .then(function(j){
-        var m = paylinkMap(); m[ref] = { id: j.id, url: j.url, amount: j.amount, deadline: j.deadline, at: Date.now() }; paylinkSave(m);
+        var m = paylinkMap(); m[ref] = { id: j.id, url: j.url, amount: j.amount, deadline: j.deadline, methods: j.methods || methods, at: Date.now() }; paylinkSave(m);
         renderPaylink();
-        if (j.paid) paylinkMarkPaid(j); else setDispatchStatus(els.paylinkStatus, '已產生付款連結' + (j.paypal === 'sandbox' ? '（官網目前是 PayPal 測試模式）' : '') + '，按「複製付款訊息」貼給客人', 'ok');
+        if (j.paid) paylinkMarkPaid(j); else setDispatchStatus(els.paylinkStatus, '已產生付款連結，報價文字已換成這個連結；也可以按「複製付款訊息」單獨貼給客人' + (methods.indexOf('atm') >= 0 && j.atmOn === false ? '（⚠️ 官網目前沒開綠界 ATM，客人只會看到刷卡）' : ''), 'ok'); renderQuoteDoc();
       })
       .catch(function(e){ setDispatchStatus(els.paylinkStatus, e.message === 'Failed to fetch' ? '連不到官網，請檢查網路後再試' : e.message, 'err'); })
       .then(function(){ b.disabled = false; });
   });
   if (els.paylinkCheckBtn) els.paylinkCheckBtn.addEventListener('click', function(){ paylinkCheck(false); });
+  function qCash(){ var c = document.getElementById('qCashPay'); return !!(c && c.checked); }
+  ['qCashPay', 'qOverseasPay'].forEach(function(id){ var x = document.getElementById(id); if (!x) return; x.addEventListener('change', function(){
+    if (id === 'qCashPay' && x.checked){ var o = document.getElementById('qOverseasPay'); if (o) o.checked = false; }
+    if (id === 'qOverseasPay' && x.checked){ var c = document.getElementById('qCashPay'); if (c) c.checked = false; }
+    var r = paylinkMap()[paylinkRef()]; if (r && id === 'qOverseasPay') setDispatchStatus(els.paylinkStatus, '付款方式已改，請按「更新付款連結」', 'err');
+    renderQuoteDoc();
+  }); });
   if (document.getElementById('paylinkCopyBtn')) document.getElementById('paylinkCopyBtn').addEventListener('click', function(){ copyToClipboard(els.paylinkMsg.textContent, els.paylinkStatus); });
   if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(){
     if (els.qPaymentConfirmed.checked && !currentPaymentReceiptNo){
@@ -6786,6 +6816,8 @@
       bankChoice: bankChoiceEl ? bankChoiceEl.value : 'future',
       showBankInfo: shouldShowBankInfo(),
       showCardLink: shouldShowCardLink(),
+      cashPay: !!(document.getElementById('qCashPay') && document.getElementById('qCashPay').checked),
+      overseasPay: !!(document.getElementById('qOverseasPay') && document.getElementById('qOverseasPay').checked),
       rawTotal: rawTotal,
       finalTotal: finalTotal,
       isKnownCustomer: !!(els.qIsKnownCustomer && els.qIsKnownCustomer.checked),
@@ -6872,6 +6904,8 @@
     // 舊資料沒存過這兩個欄位時，維持「一律附上」的舊行為（跟改版前一樣）
     if (els.qShowBankInfo) els.qShowBankInfo.checked = q.showBankInfo !== false;
     if (els.qShowCardLink) els.qShowCardLink.checked = q.showCardLink !== false;
+    if (document.getElementById('qCashPay')) document.getElementById('qCashPay').checked = !!q.cashPay;
+    if (document.getElementById('qOverseasPay')) document.getElementById('qOverseasPay').checked = !!q.overseasPay;
     currentPaymentReceiptNo = q.paymentReceiptNo || '';
     currentPaymentConfirmedAt = q.paymentConfirmedAt || '';
     if (els.qPaymentConfirmed) els.qPaymentConfirmed.checked = !!q.paymentConfirmed;
@@ -7529,6 +7563,7 @@
     els.dQuoteSelect.value = q.id; updateDispatchLegSelect();
     if (els.dQuoteLegSelect && els.dQuoteLegSelect.options.length) els.dQuoteLegSelect.value = '0';
     els.dImportQuoteBtn.click();
+    if (q.cashPay){ var cr = document.querySelector('input[name="dPaymentMethod"][value="cash"]'); if (cr){ cr.checked = true; cr.dispatchEvent(new Event('change', { bubbles: true })); } }
     var n = (q.legs || []).length;
     setDispatchStatus(els.dispatchStatusMsg, n > 1 ? '已帶入第 1 段行程。存好這筆訂單後，到上方「從報價單帶入」選第 2 段再帶入一次' : '已從報價帶入，確認地址、司機後按「💾 儲存訂單」', 'ok');
     window.scrollTo({ top: 0, behavior: 'smooth' });
