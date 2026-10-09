@@ -1106,7 +1106,7 @@
             </div>
             <div class="field">
               <label for="dLuggageCount">行李箱數量</label>
-              <input type="number" id="dLuggageCount" min="0" value="0">
+              <input type="number" id="dLuggageCount" min="0" placeholder="待確認">
             </div>
           </div>
           <div class="field">
@@ -3732,7 +3732,7 @@
     }
     if (!compact) lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
-    lines.push(L.luggageCount + (els.dLuggageCount.value || '0'));
+    lines.push(L.luggageCount + (els.dLuggageCount.value !== '' ? els.dLuggageCount.value : L.tbd));
     lines.push(L.luggageSize + (els.dLuggageSize.value || L.tbd));
     if (els.dNote.value.trim()) lines.push(L.note + els.dNote.value.trim());
     var d = selectedDriver();
@@ -7203,7 +7203,7 @@
       if (leg.pickupArea) els.dPickupFullAddr.value = leg.pickupArea;
       if (leg.dropoffArea) els.dDropoffFullAddr.value = leg.dropoffArea;
       if (leg.pax) els.dPax.value = leg.pax;
-      if (leg.luggageCount) els.dLuggageCount.value = leg.luggageCount;
+      els.dLuggageCount.value = (leg.luggageCount != null && leg.luggageCount !== '') ? leg.luggageCount : '';
       // 訂單金額要帶「這一段行程實際該收的金額」，不是折扣前的小計：
       // 來回優惠等 95 折與營業稅依各段小計比例分攤；指定 eSIM 的 NT$30 整張報價只
       // 折一次，固定算在報價的第一段行程上。各段加總一定等於報價的總金額。
