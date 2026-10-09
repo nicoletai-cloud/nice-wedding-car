@@ -3405,10 +3405,18 @@
     if (b.bound){
       return '<div class="li-sub">司機提醒：<b>已綁定</b>' + (b.disp ? '（LINE：' + escapeHtml(b.disp) + '）' : '') +
         '　<button type="button" class="tag" data-drv-test="' + escapeHtml(d.name) + '">傳測試訊息</button>' +
-        '　<button type="button" class="tag" data-drv-reset="' + escapeHtml(d.name) + '">重設綁定</button></div>';
+        '　<button type="button" class="tag" data-drv-reset="' + escapeHtml(d.name) + '">重設綁定</button></div>' + drvBankHtml(d);
     }
     return '<div class="li-sub">司機提醒：未綁定　司機傳「綁定」就會自己建檔　備用綁定碼 ' + escapeHtml(b.code) +
       '　<button type="button" class="tag" data-drv-copy="' + escapeHtml(d.name) + '">複製邀請文字</button></div>';
+  }
+  // 匯款帳號只從機器人讀到記憶體顯示，不存進這台裝置
+  function drvBankText(bk){ return bk && bk.acct ? [bk.bank, bk.acct, bk.holder ? '戶名 ' + bk.holder : ''].filter(Boolean).join('　') : ''; }
+  function drvBankHtml(d){
+    var b = drvBind[d.name], t = drvBankText(b && b.bank);
+    var em = b && b.em && b.em.phone ? '<div class="li-sub">緊急聯絡：' + escapeHtml(b.em.phone) + (b.em.rel ? '（' + escapeHtml(b.em.rel) + '）' : '') + '</div>' : '';
+    if (!t) return '<div class="li-sub">匯款帳號：司機尚未填寫（請他從 LINE 開車卡表單補上）</div>' + em;
+    return '<div class="li-sub">匯款帳號：' + escapeHtml(t) + '　<button type="button" class="tag" data-drv-bank="' + escapeHtml(d.name) + '">複製帳號</button></div>' + em;
   }
   function drvInviteText(d){
     var b = drvBind[d.name]; if (!b) return '';
@@ -3567,6 +3575,12 @@
       if (cp){
         var dd = drivers.find(function(x){ return x.name === cp.getAttribute('data-drv-copy'); });
         if (dd) copyToClipboard(drvInviteText(dd), document.getElementById('drvBindMsg'));
+        return;
+      }
+      var bkb = e.target.closest('[data-drv-bank]');
+      if (bkb){
+        var bk = (drvBind[bkb.getAttribute('data-drv-bank')] || {}).bank;
+        if (bk && bk.acct) copyToClipboard([bk.bank, bk.acct, bk.holder].filter(Boolean).join(' '), document.getElementById('drvBindMsg'));
         return;
       }
       var ts = e.target.closest('[data-drv-test]');
