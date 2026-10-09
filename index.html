@@ -1648,11 +1648,13 @@
         <div class="status" id="quoteStatusMsg"></div>
 
         <div class="card" id="paymentConfirmCard" style="margin-top:18px;">
-          <h2><span class="dot"></span>付款確認</h2>
-          <p class="hint">自行對帳完成後勾選，會自動產生一組收據編號，並產生「付款完成通知」可直接複製貼給客人；電子收據請至「收據」頁籤產生 PDF 後自行傳送</p>
-          <div class="check-row" style="margin-bottom:0;">
+          <h2><span class="dot"></span>付款狀態</h2>
+          <p class="hint">客人用付款連結付款後，綠界／PayPal 會自動對帳，這裡自動顯示已付款，並產生收據編號和「付款完成通知」</p>
+          <div id="payStateLine" style="font-weight:600;margin:4px 0 6px">尚未產生付款連結</div>
+          <button type="button" class="chip" id="manualPaidToggle" style="font-size:13px">收現／月結等線下收款，手動標記已收款</button>
+          <div class="check-row" id="manualPaidRow" style="margin:8px 0 0;" hidden>
             <input type="checkbox" id="qPaymentConfirmed">
-            <label for="qPaymentConfirmed" style="margin:0;">✅ 已完成付款（對帳完成後勾選）</label>
+            <label for="qPaymentConfirmed" style="margin:0;">✅ 已收款（線下收款手動標記）</label>
           </div>
           <div id="paymentNoticeBlock" hidden style="margin-top:14px;">
             <div class="field" style="margin-bottom:10px;">
@@ -5904,6 +5906,7 @@
     renderPaymentNotice();
     try { renderPaylink(); } catch (e) {}
     try { renderQuoteAddresses(); } catch (e) {}
+    try { renderPayState(); } catch (e) {}
   }
 
   // ---------- payment confirmation → customer notice + shareable e-receipt link ----------
@@ -6130,7 +6133,18 @@
     renderQuoteDoc();
   }); });
   if (document.getElementById('paylinkCopyBtn')) document.getElementById('paylinkCopyBtn').addEventListener('click', function(){ previewAndCopy(els.paylinkMsg.textContent, els.paylinkStatus, '預覽付款訊息'); });
+
+  function renderPayState(){
+    var el = document.getElementById('payStateLine'); if (!el) return;
+    var r = null; try { r = paylinkMap()[paylinkRef()]; } catch (e) {}
+    var paid = els.qPaymentConfirmed && els.qPaymentConfirmed.checked;
+    var cash = false; try { cash = qCash(); } catch (e) {}
+    el.textContent = paid ? '✅ 已付款' + (r && r.paidAuto ? '（線上付款，已自動對帳）' : '') : (cash ? '收現：司機當天收現金' : (isMonthlyChoice() ? '月結客戶' : (r ? '⏳ 已傳付款連結，等待客人付款' : '尚未產生付款連結')));
+    var row = document.getElementById('manualPaidRow'); if (row && paid) row.hidden = false;
+  }
+  if (document.getElementById('manualPaidToggle')) document.getElementById('manualPaidToggle').addEventListener('click', function(){ var row = document.getElementById('manualPaidRow'); row.hidden = !row.hidden; });
   if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(){
+    try { renderPayState(); } catch (e) {}
     if (els.qPaymentConfirmed.checked && !currentPaymentReceiptNo){
       var d = todayStr();
       currentPaymentReceiptNo = peekNextNumber(d);
