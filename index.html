@@ -1586,6 +1586,20 @@
           </div>
         </div>
 
+        <div class="card" id="paylinkCard" >
+          <h2><span class="dot"></span>PayPal 付款連結（私 LINE 客人）</h2>
+          <p class="hint">按下後會在官網建立一筆待付款訂單，產生 niceweddingcar.com 的付款頁給客人，客人可用 PayPal 或直接刷卡；付款後官網自動核帳，這裡會顯示已付款並自動勾「已完成付款」。金額改了再按一次就會更新同一個連結</p>
+          <div class="actions" style="margin-top:6px;">
+            <button type="button" class="primary" id="paylinkBtn">產生 PayPal 付款連結</button>
+            <button type="button" class="secondary" id="paylinkCheckBtn" hidden>檢查付款狀態</button>
+          </div>
+          <div id="paylinkBox" hidden style="margin-top:12px;">
+            <div class="doc-card"><div class="doc-title">💳 付款訊息（貼給客人）</div><div id="paylinkMsg" style="white-space:pre-wrap;word-break:break-all"></div></div>
+            <div class="actions"><button type="button" class="secondary" id="paylinkCopyBtn">📋 複製付款訊息</button></div>
+          </div>
+          <div class="status" id="paylinkStatus"></div>
+        </div>
+
         <div class="card">
           <details class="settings">
             <summary><span class="dot"></span>報價固定文字<span class="chev">▾</span></summary>
@@ -1659,19 +1673,6 @@
           </div>
         </div>
 
-        <div class="card" id="paylinkCard" style="margin-top:18px;">
-          <h2><span class="dot"></span>PayPal 付款連結（私 LINE 客人）</h2>
-          <p class="hint">按下後會在官網建立一筆待付款訂單，產生 niceweddingcar.com 的付款頁給客人，客人可用 PayPal 或直接刷卡；付款後官網自動核帳，這裡會顯示已付款並自動勾「已完成付款」。金額改了再按一次就會更新同一個連結</p>
-          <div class="actions" style="margin-top:6px;">
-            <button type="button" class="primary" id="paylinkBtn">產生 PayPal 付款連結</button>
-            <button type="button" class="secondary" id="paylinkCheckBtn" hidden>檢查付款狀態</button>
-          </div>
-          <div id="paylinkBox" hidden style="margin-top:12px;">
-            <div class="doc-card"><div class="doc-title">💳 付款訊息（貼給客人）</div><div id="paylinkMsg" style="white-space:pre-wrap;word-break:break-all"></div></div>
-            <div class="actions"><button type="button" class="secondary" id="paylinkCopyBtn">📋 複製付款訊息</button></div>
-          </div>
-          <div class="status" id="paylinkStatus"></div>
-        </div>
       </div>
     </div>
   </section>
