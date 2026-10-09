@@ -793,8 +793,8 @@
      只統一配色、標題列、分頁、卡片、按鈕；機場工具的大字級保留。
      收據、報價單等「紙本文件」維持原本的固定樣式。 */
   :root{
-    --bg:#FBF6F1;
-    --surface-alt:#F6ECE1;
+    --bg:#EEEFF1; /* 機場系統：淺灰背景，和禮車系統（淺粉）區分 */
+    --surface-alt:#E6E7EA;
     --ink:#3A2E24;
     --ink-soft:#75665A;
     --ink-faint:#98887A;
@@ -984,13 +984,13 @@
           <div class="field">
             <label for="dCustSearch">找熟客（打姓名、暱稱或電話）</label>
             <div class="cust-search">
-              <input type="search" id="dCustSearch" placeholder="例如：Jack、田志超、0900" autocomplete="off">
+              <input type="text" id="dCustSearch" placeholder="例如：Jack、田志超、0900" autocomplete="off">
               <div class="cust-results" id="dCustResults" hidden></div>
             </div>
             <p class="hint" style="margin-top:4px;">會從熟客名單和所有存過的報價、訂單裡找，點一下直接帶入</p>
             <select id="dCustPick" hidden><option value="">－選擇熟客－</option></select>
           </div>
-          <div class="trip-add-row" style="margin-bottom:14px;" hidden>
+          <div class="trip-add-row" style="margin-bottom:14px; display:none;">
             <button type="button" class="add-btn" id="dCustPickBtn">帶入這位客戶資料</button>
           </div>
 
@@ -1388,13 +1388,13 @@
           <div class="field">
             <label for="qCustSearch">找熟客（打姓名、暱稱或電話）</label>
             <div class="cust-search">
-              <input type="search" id="qCustSearch" placeholder="例如：Jack、田志超、0900" autocomplete="off">
+              <input type="text" id="qCustSearch" placeholder="例如：Jack、田志超、0900" autocomplete="off">
               <div class="cust-results" id="qCustResults" hidden></div>
             </div>
             <p class="hint" style="margin-top:4px;">會從熟客名單和所有存過的報價、訂單裡找，點一下直接帶入</p>
             <select id="qCustPick" hidden><option value="">－選擇熟客－</option></select>
           </div>
-          <div class="trip-add-row" style="margin-bottom:14px;" hidden>
+          <div class="trip-add-row" style="margin-bottom:14px; display:none;">
             <button type="button" class="add-btn" id="qCustPickBtn">帶入這位客戶資料</button>
           </div>
 
