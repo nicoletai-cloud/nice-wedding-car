@@ -898,6 +898,13 @@
   .addr-suggest .addr-opt small{ display:block; color:var(--ink-soft, #888); font-size:.8rem; }
   .addr-suggest .addr-opt.on, .addr-suggest .addr-opt:hover{ background:color-mix(in srgb, var(--accent, #8a6d43) 10%, transparent); }
   .addr-suggest .addr-by{ text-align:right; font-size:.7rem; color:var(--ink-soft, #999); padding:4px 10px; }
+  .cust-search{ position:relative; }
+  .cust-results{ position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:60; background:var(--card, #fff); border:1px solid var(--line, #e4dbce); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.12); max-height:340px; overflow:auto; }
+  .cust-results button{ display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line, #eee); padding:10px 12px; font:inherit; color:var(--ink, #333); cursor:pointer; }
+  .cust-results button small{ display:block; color:var(--ink-soft, #888); font-size:.8rem; }
+  .cust-results button:hover, .cust-results button.on{ background:color-mix(in srgb, var(--accent, #8a6d43) 10%, transparent); }
+  .cust-results .tag-kc{ font-size:.72rem; color:var(--accent, #8a6d43); border:1px solid currentColor; border-radius:999px; padding:0 6px; margin-left:6px; }
+  .cust-results .empty{ padding:10px 12px; color:var(--ink-soft, #888); font-size:.9rem; }
 </style>
 </head>
 <body>
@@ -975,10 +982,15 @@
           <p class="hint">填寫客人的行程需求</p>
 
           <div class="field">
-            <label for="dCustPick">熟客建議（依歷史報價／訂單）</label>
-            <select id="dCustPick"><option value="">－選擇熟客－</option></select>
+            <label for="dCustSearch">找熟客（打姓名、暱稱或電話）</label>
+            <div class="cust-search">
+              <input type="search" id="dCustSearch" placeholder="例如：Jack、田志超、0900" autocomplete="off">
+              <div class="cust-results" id="dCustResults" hidden></div>
+            </div>
+            <p class="hint" style="margin-top:4px;">會從熟客名單和所有存過的報價、訂單裡找，點一下直接帶入</p>
+            <select id="dCustPick" hidden><option value="">－選擇熟客－</option></select>
           </div>
-          <div class="trip-add-row" style="margin-bottom:14px;">
+          <div class="trip-add-row" style="margin-bottom:14px;" hidden>
             <button type="button" class="add-btn" id="dCustPickBtn">帶入這位客戶資料</button>
           </div>
 
@@ -1374,10 +1386,15 @@
         <div class="card">
           <h2><span class="dot"></span>客戶資訊</h2>
           <div class="field">
-            <label for="qCustPick">熟客建議（依歷史報價／訂單）</label>
-            <select id="qCustPick"><option value="">－選擇熟客－</option></select>
+            <label for="qCustSearch">找熟客（打姓名、暱稱或電話）</label>
+            <div class="cust-search">
+              <input type="search" id="qCustSearch" placeholder="例如：Jack、田志超、0900" autocomplete="off">
+              <div class="cust-results" id="qCustResults" hidden></div>
+            </div>
+            <p class="hint" style="margin-top:4px;">會從熟客名單和所有存過的報價、訂單裡找，點一下直接帶入</p>
+            <select id="qCustPick" hidden><option value="">－選擇熟客－</option></select>
           </div>
-          <div class="trip-add-row" style="margin-bottom:14px;">
+          <div class="trip-add-row" style="margin-bottom:14px;" hidden>
             <button type="button" class="add-btn" id="qCustPickBtn">帶入這位客戶資料</button>
           </div>
 
@@ -7410,6 +7427,91 @@
     if (c.phone) extra.push(c.phone);
     return '[' + c.source + '] ' + name + (extra.length ? '　' + extra.join(' ') : '');
   }
+
+
+  // ---------- 找熟客：從熟客名單＋所有存過的報價、訂單彙整客人，打字篩選後點一下帶入 ----------
+  function custDirectory(){
+    var map = {}, list = [];
+    function key(phone, sname, name){
+      var p = String(phone || '').replace(/\D/g, '');
+      if (p) return 'p:' + p;
+      var n = String(sname || '').trim() || String(name || '').trim();
+      return n ? 'n:' + n : '';
+    }
+    function add(e){
+      var k = key(e.phone, e.sourceName, e.name);
+      if (!k) return;
+      var cur = map[k];
+      if (!cur){ map[k] = e; list.push(e); return; }
+      ['source', 'sourceName', 'name', 'phone'].forEach(function(f){ if (!cur[f] && e[f]) cur[f] = e[f]; });
+      if ((e.at || '') > (cur.at || '')) cur.at = e.at;
+      cur.count = (cur.count || 1) + 1;
+    }
+    knownCustomers.forEach(function(c){ add({ kc: c, source: c.source || 'LINE', sourceName: c.sourceName || '', name: c.name || '', phone: c.phone || '', at: c.updatedAt || '' }); });
+    recentQuotes.forEach(function(q){ add({ source: q.custSource || 'LINE', sourceName: q.custSourceName || '', name: q.custName || '', phone: q.custPhone || '', at: q.savedAt || '' }); });
+    recentOrders.forEach(function(o){ add({ source: o.custSource || 'LINE', sourceName: o.custSourceName || '', name: o.contactName || '', phone: o.contactPhone || '', at: o.savedAt || '' }); });
+    list.sort(function(a, b){ return (b.kc ? 1 : 0) - (a.kc ? 1 : 0) || String(b.at || '').localeCompare(String(a.at || '')); });
+    return list;
+  }
+  function custSearch(q){
+    var t = String(q || '').trim().toLowerCase(), digits = t.replace(/\D/g, '');
+    var all = custDirectory();
+    if (!t) return all.slice(0, 8);
+    return all.filter(function(e){
+      var hay = (e.sourceName + ' ' + e.name).toLowerCase();
+      if (hay.indexOf(t) !== -1) return true;
+      return digits.length >= 3 && String(e.phone || '').replace(/\D/g, '').indexOf(digits) !== -1;
+    }).slice(0, 12);
+  }
+  function bindCustSearch(prefix){
+    var input = document.getElementById(prefix + 'CustSearch'), box = document.getElementById(prefix + 'CustResults');
+    if (!input || !box) return;
+    var shown = [], active = -1;
+    function hide(){ box.hidden = true; active = -1; }
+    function render(){
+      shown = custSearch(input.value);
+      box.innerHTML = shown.length ? shown.map(function(e, i){
+        var title = e.sourceName || e.name || '未命名客戶';
+        var sub = ['[' + (e.source || 'LINE') + ']', (e.name && e.name !== title) ? e.name : '', e.phone].filter(String).join(' ');
+        return '<button type="button" data-i="' + i + '"' + (i === active ? ' class="on"' : '') + '>' + escapeHtml(title) + (e.kc ? '<span class="tag-kc">熟客</span>' : '') + '<small>' + escapeHtml(sub) + '</small></button>';
+      }).join('') : '<div class="empty">找不到，請直接在下方填客戶資料</div>';
+      box.hidden = false;
+    }
+    function pick(e){
+      hide();
+      input.value = '';
+      if (e.kc){
+        var sel = prefix === 'q' ? els.qCustPick : els.dCustPick, btn = prefix === 'q' ? els.qCustPickBtn : els.dCustPickBtn;
+        if (sel && btn){ sel.value = e.kc.id; btn.click(); return; }
+      }
+      var src = document.querySelector('input[name="' + prefix + 'CustSource"][value="' + (e.source || 'LINE') + '"]');
+      if (src) src.checked = true;
+      if (prefix === 'q'){
+        els.qCustSourceName.value = e.sourceName || ''; els.qCustName.value = e.name || ''; els.qCustPhone.value = e.phone || '';
+        setDispatchStatus(els.quoteStatusMsg, '已帶入客戶資料', 'ok');
+        if (typeof renderQuoteDoc === 'function') renderQuoteDoc();
+      } else {
+        els.dCustSourceName.value = e.sourceName || ''; els.dContactName.value = e.name || ''; els.dContactPhone.value = e.phone || '';
+        renderPassengerDoc(); renderDispatchSheet();
+        setDispatchStatus(els.dispatchStatusMsg, '已帶入客戶資料', 'ok');
+      }
+    }
+    input.addEventListener('input', function(){ active = -1; render(); });
+    input.addEventListener('focus', render);
+    input.addEventListener('blur', function(){ setTimeout(hide, 200); });
+    input.addEventListener('keydown', function(ev){
+      if (box.hidden || !shown.length) return;
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){ ev.preventDefault(); active = (active + (ev.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length; render(); }
+      else if (ev.key === 'Enter'){ ev.preventDefault(); pick(shown[active >= 0 ? active : 0]); }
+      else if (ev.key === 'Escape'){ hide(); }
+    });
+    box.addEventListener('mousedown', function(ev){
+      var b = ev.target.closest('button[data-i]'); if (!b) return;
+      ev.preventDefault(); pick(shown[Number(b.getAttribute('data-i'))]);
+    });
+  }
+  bindCustSearch('q');
+  bindCustSearch('d');
 
   function renderCustPickSelects(){
     [els.qCustPick, els.dCustPick, els.kcAddrCustSelect].forEach(function(sel){
