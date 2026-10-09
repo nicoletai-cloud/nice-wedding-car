@@ -996,7 +996,7 @@
 
         <div class="card">
           <h2><span class="dot"></span>從報價單帶入（選填）</h2>
-          <p class="hint">已儲存的報價可直接帶入下方訂單欄位，不用再貼一次</p>
+          <p class="hint">通常不用來這裡：在「報價」頁按「➜ 客人確認了，轉成訂單」就會自動帶入。這裡是補帶入（例如來回報價的第 2 段行程）用的</p>
           <div class="field">
             <label for="dQuoteSelect">選擇報價</label>
             <select id="dQuoteSelect"><option value="">－不使用－</option></select>
@@ -1643,6 +1643,9 @@
           <button type="button" class="secondary" id="saveQuoteBtn">💾 儲存報價</button>
           <button type="button" class="secondary" id="copyQuoteBtn">複製文字</button>
           <button type="button" class="primary" id="printQuoteBtn">下載 PDF</button>
+        </div>
+        <div class="actions" style="margin-top:8px;">
+          <button type="button" class="primary" id="quoteToOrderBtn" title="儲存這張報價，並直接在「訂單／派車」帶入成訂單">➜ 客人確認了，轉成訂單</button>
         </div>
         <div class="status" id="quoteStatusMsg"></div>
 
@@ -7516,6 +7519,22 @@
 
   if (els.dQuoteSelect) els.dQuoteSelect.addEventListener('change', updateDispatchLegSelect);
 
+
+  // 報價 → 訂單：一鍵儲存報價、切到訂單／派車並帶入
+  if (document.getElementById('quoteToOrderBtn')) document.getElementById('quoteToOrderBtn').addEventListener('click', function(){
+    var before = recentQuotes[0] && recentQuotes[0].savedAt;
+    saveCurrentQuote();
+    var q = recentQuotes[0];
+    if (!q || q.savedAt === before) return; // 沒存成功（例如沒填行程），saveCurrentQuote 已顯示原因
+    switchTab('dispatch');
+    try { renderDispatchQuoteSelect(); } catch (e) {}
+    els.dQuoteSelect.value = q.id; updateDispatchLegSelect();
+    if (els.dQuoteLegSelect && els.dQuoteLegSelect.options.length) els.dQuoteLegSelect.value = '0';
+    els.dImportQuoteBtn.click();
+    var n = (q.legs || []).length;
+    setDispatchStatus(els.dispatchStatusMsg, n > 1 ? '已帶入第 1 段行程。存好這筆訂單後，到上方「從報價單帶入」選第 2 段再帶入一次' : '已從報價帶入，確認地址、司機後按「💾 儲存訂單」', 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
   if (els.dImportQuoteBtn) els.dImportQuoteBtn.addEventListener('click', function(){
     var q = recentQuotes.find(function(x){ return x.id === els.dQuoteSelect.value; });
     if (!q){ setDispatchStatus(els.dispatchStatusMsg, '請先選擇一筆報價', 'err'); return; }
