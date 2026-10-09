@@ -328,6 +328,9 @@
   .remove-trip:hover{ color:var(--danger); background:color-mix(in srgb, var(--danger) 10%, transparent); }
   .remove-trip:disabled{ opacity:.35; cursor:not-allowed; }
 
+  .chip.addr-on{background:var(--accent,#a07c4f);color:#fff;border-color:var(--accent,#a07c4f)}
+  .addr-chip{display:inline-flex;align-items:center;gap:4px}
+  .addr-chip .x{border:0;background:none;color:#a0453a;cursor:pointer;font-size:15px;padding:0 4px}
   .quick-picks{
     display:flex;
     gap:6px;
@@ -1460,6 +1463,18 @@
             <label for="qCustNote">客人備註（只有自己看得到，不會出現在報價單）</label>
             <input type="text" id="qCustNote" placeholder="例如：王經理的朋友、阿明介紹、台積電">
           </div>
+          <div class="field" id="qAddrField">
+            <label>客人地址（可存多個，報價的上下車地區可直接點選）</label>
+            <div class="quick-picks" id="qAddrList"></div>
+            <input type="text" id="qAddrInput" placeholder="完整地址，例如：台北市大同區萬全街 10 號 5 樓" style="margin-top:8px;">
+            <div class="quick-picks" id="qAddrLabels" style="margin-top:8px;">
+              <button type="button" class="chip" data-addr-label="住家">住家</button>
+              <button type="button" class="chip" data-addr-label="公司">公司</button>
+              <button type="button" class="chip" data-addr-label="其他">其他</button>
+              <input type="text" id="qAddrLabelOther" placeholder="自訂名稱" style="max-width:160px;" hidden>
+              <button type="button" class="secondary" id="qAddrAddBtn" style="padding:6px 14px;">＋ 新增地址</button>
+            </div>
+          </div>
           <div class="check-row">
             <input type="checkbox" id="qIsKnownCustomer">
             <label for="qIsKnownCustomer" style="margin:0;">設為熟客（存入熟客建議名單）</label>
@@ -1564,10 +1579,10 @@
               <label><input type="radio" name="qBankChoice" value="monthly"> 月結</label>
             </div>
           </div>
-          <p class="hint">這筆報價要附上哪些付款方式——刷卡連結有手續費，客人習慣匯款的話可以取消勾選</p>
+          <p class="hint">這筆報價要附上哪些付款方式——接送機刷卡不加收手續費，客人習慣匯款的話可以取消勾選刷卡</p>
           <div class="field" style="margin-bottom:0;">
             <div class="check-row"><input type="checkbox" id="qShowBankInfo" checked><label for="qShowBankInfo" style="margin:0;">附上匯款資訊</label></div>
-            <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qShowCardLink" checked><label for="qShowCardLink" style="margin:0;">附上刷卡付款連結（有手續費）</label></div>
+            <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qShowCardLink" checked><label for="qShowCardLink" style="margin:0;">附上刷卡付款連結</label></div>
           </div>
         </div>
 
@@ -5888,6 +5903,7 @@
     els.quoteDocBody.textContent = buildQuoteText();
     renderPaymentNotice();
     try { renderPaylink(); } catch (e) {}
+    try { renderQuoteAddresses(); } catch (e) {}
   }
 
   // ---------- payment confirmation → customer notice + shareable e-receipt link ----------
@@ -8083,7 +8099,7 @@
       btn.title = a.address;
       btn.textContent = a.label;
       btn.addEventListener('click', function(){
-        field.value = a.address;
+        field.value = stripFloor(a.address);
         field.dispatchEvent(new Event('input'));
       });
       wrap.appendChild(btn);
@@ -8100,6 +8116,71 @@
     injectAddressChips('dDropoffFullAddr', c.addresses);
   }
 
+
+  // ---------- 客人地址（報價頁）：存在熟客資料裡，上下車地區可直接點選，自動去掉樓層 ----------
+  function stripFloor(a){
+    var s = String(a || '').trim();
+    for (var i = 0; i < 3; i++){
+      var t = s.replace(/[\s,，、]*(?:之\s*[0-9０-９]+)?\s*[0-9０-９]+\s*室\s*$/, '')
+               .replace(/[\s,，、]*(?:[0-9０-９]+|[一二三四五六七八九十]+|B\s*[0-9]+|地下\s*[0-9一二三]*)\s*(?:樓|層|[Ff])(?:\s*之\s*[0-9０-９]+)?\s*$/, '')
+               .replace(/(號)[\s,，、]*B\s*[0-9]+\s*$/i, '$1')
+               .trim();
+      if (t === s) break; s = t;
+    }
+    return s;
+  }
+  var qAddrLabel = '住家';
+  function quoteCustomer(){ return findKnownCustomerByContact(els.qCustSourceName.value.trim() || els.qCustName.value.trim(), els.qCustPhone.value.trim()); }
+  function renderQuoteAddresses(){
+    var box = document.getElementById('qAddrList'); if (!box) return;
+    var c = quoteCustomer(), list = (c && c.addresses) || [];
+    box.innerHTML = list.length ? '' : '<span class="hint" style="margin:0">尚未存地址</span>';
+    list.forEach(function(a){
+      var w = document.createElement('span'); w.className = 'chip addr-chip'; w.title = a.address;
+      w.textContent = a.label + '｜' + stripFloor(a.address);
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '✕'; x.title = '刪除這個地址';
+      x.onclick = function(){ if (!confirm('刪除「' + a.label + '」地址？')) return; c.addresses = c.addresses.filter(function(z){ return z.id !== a.id; }); saveKnownCustomersList(); renderQuoteAddresses(); };
+      w.appendChild(x); box.appendChild(w);
+    });
+    renderQuoteAddrChips(list);
+  }
+  function renderQuoteAddrChips(list){
+    if (!els.quoteLegsContainer) return;
+    if (!list){ var c = quoteCustomer(); list = (c && c.addresses) || []; }
+    els.quoteLegsContainer.querySelectorAll('.q-pickup-area, .q-dropoff-area').forEach(function(f){
+      var wrap = f.parentElement.querySelector('.quick-picks'); if (!wrap) return;
+      wrap.querySelectorAll('[data-qaddr]').forEach(function(el){ el.remove(); });
+      list.forEach(function(a){
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.setAttribute('data-qaddr', '1');
+        b.textContent = a.label; b.title = stripFloor(a.address);
+        b.onclick = function(){ f.value = stripFloor(a.address); f.dispatchEvent(new Event('input', { bubbles: true })); f.dispatchEvent(new Event('change', { bubbles: true })); };
+        wrap.appendChild(b);
+      });
+    });
+  }
+  (function(){
+    var labels = document.getElementById('qAddrLabels'); if (!labels) return;
+    function mark(){ labels.querySelectorAll('[data-addr-label]').forEach(function(b){ b.classList.toggle('addr-on', b.dataset.addrLabel === qAddrLabel); }); document.getElementById('qAddrLabelOther').hidden = qAddrLabel !== '其他'; }
+    labels.addEventListener('click', function(e){ var b = e.target.closest('[data-addr-label]'); if (!b) return; qAddrLabel = b.dataset.addrLabel; mark(); });
+    mark();
+    document.getElementById('qAddrAddBtn').addEventListener('click', function(){
+      var addr = document.getElementById('qAddrInput').value.trim();
+      if (!addr){ setDispatchStatus(els.quoteStatusMsg, '請先填地址', 'err'); return; }
+      var label = qAddrLabel === '其他' ? (document.getElementById('qAddrLabelOther').value.trim() || '其他') : qAddrLabel;
+      var src = document.querySelector('input[name="qCustSource"]:checked');
+      var c = quoteCustomer() || upsertKnownCustomer({ source: src ? src.value : 'LINE', sourceName: els.qCustSourceName.value.trim(), name: els.qCustName.value.trim(), phone: els.qCustPhone.value.trim(), note: els.qCustNote ? els.qCustNote.value.trim() : '' });
+      if (!c){ setDispatchStatus(els.quoteStatusMsg, '請先填客戶暱稱、姓名或電話', 'err'); return; }
+      if (!c.addresses) c.addresses = [];
+      if (c.addresses.some(function(a){ return a.address === addr; })){ setDispatchStatus(els.quoteStatusMsg, '這個地址已經存過了', 'err'); return; }
+      c.addresses.push({ id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), label: label, address: addr });
+      saveKnownCustomersList();
+      if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = true;
+      document.getElementById('qAddrInput').value = ''; document.getElementById('qAddrLabelOther').value = '';
+      renderQuoteAddresses(); if (typeof renderCustPickSelects === 'function') renderCustPickSelects();
+      setDispatchStatus(els.quoteStatusMsg, '已存入「' + label + '」地址，上下車地區下方可直接點選', 'ok');
+    });
+    ['qCustName', 'qCustPhone', 'qCustSourceName'].forEach(function(k){ if (els[k]) els[k].addEventListener('change', renderQuoteAddresses); });
+  })();
   if (els.qCustPickBtn) els.qCustPickBtn.addEventListener('click', function(){
     if (!els.qCustPick.value){ setDispatchStatus(els.quoteStatusMsg, '請先選擇熟客', 'err'); return; }
     var c = findKnownCustomer(els.qCustPick.value);
@@ -8112,6 +8193,7 @@
     if (els.qCustNote) els.qCustNote.value = c.note || custNoteLookup(c.phone, c.sourceName, c.name);
     if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = true;
     setDispatchStatus(els.quoteStatusMsg, '已帶入熟客資料', 'ok');
+    renderQuoteAddresses();
   });
 
   if (els.dCustPickBtn) els.dCustPickBtn.addEventListener('click', function(){
