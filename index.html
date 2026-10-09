@@ -893,6 +893,11 @@
   .claim-chip small{ font-size:.75rem; color:var(--ink-soft); }
   .claim-chip:hover{ background:color-mix(in srgb, var(--accent) 14%, transparent); }
   .claim-box .status{ margin-top:8px; }
+  .addr-suggest{ position:absolute; left:0; right:0; z-index:60; background:var(--card, #fff); border:1px solid var(--line, #e4dbce); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.12); overflow:hidden; }
+  .addr-suggest .addr-opt{ display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line, #eee); padding:10px 12px; font:inherit; color:var(--ink, #333); cursor:pointer; }
+  .addr-suggest .addr-opt small{ display:block; color:var(--ink-soft, #888); font-size:.8rem; }
+  .addr-suggest .addr-opt.on, .addr-suggest .addr-opt:hover{ background:color-mix(in srgb, var(--accent, #8a6d43) 10%, transparent); }
+  .addr-suggest .addr-by{ text-align:right; font-size:.7rem; color:var(--ink-soft, #999); padding:4px 10px; }
 </style>
 </head>
 <body>
@@ -2702,46 +2707,103 @@
   // 幫某個地址欄位接上 Google 地址自動完成建議——選了建議地址後欄位會自動
   // 換成 Google 回傳的完整地址（客人自己打的地址沒寫完整，選一次就補齊），
   // 並觸發原本的 input 監聽（地址簡化、偏遠地區加價判斷都會照原本邏輯跑）。
+  // Google 已停止讓新專案使用舊版 Places Autocomplete（會跳「這個網頁無法正確載入 Google 地圖」），
+  // 這裡改用新版 Places API（AutocompleteSuggestion），建議清單用自己的下拉選單顯示。
+  var placesNewLib = null;
+  function getPlacesNew(){
+    if (!placesNewLib) placesNewLib = google.maps.importLibrary('places');
+    return placesNewLib;
+  }
   function bindAddressAutocomplete(inputEl, onPlace){
-    if (!inputEl || !window.google || !google.maps || !google.maps.places) return;
+    if (!inputEl || !window.google || !google.maps || !google.maps.importLibrary) return;
     if (inputEl.dataset.gmapsBound === 'true') return;
     inputEl.dataset.gmapsBound = 'true';
-    var autocomplete = new google.maps.places.Autocomplete(inputEl, {
-      componentRestrictions: { country: 'tw' },
-      fields: ['formatted_address', 'geometry', 'name']
+    inputEl.setAttribute('autocomplete', 'off');
+    var host = inputEl.parentNode;
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    var box = document.createElement('div');
+    box.className = 'addr-suggest';
+    box.hidden = true;
+    inputEl.insertAdjacentElement('afterend', box);
+    var token = null, timer = null, seq = 0, items = [], active = -1, picking = false;
+    function hide(){ box.hidden = true; box.innerHTML = ''; items = []; active = -1; }
+    function render(){
+      if (!items.length){ hide(); return; }
+      box.style.top = (inputEl.offsetTop + inputEl.offsetHeight + 4) + 'px';
+      box.innerHTML = items.map(function(p, i){
+        var main = (p.mainText && p.mainText.text) || (p.text && p.text.text) || '';
+        var sub = (p.secondaryText && p.secondaryText.text) || '';
+        return '<button type="button" class="addr-opt' + (i === active ? ' on' : '') + '" data-i="' + i + '"><b>' + escapeHtml(main) + '</b>' + (sub ? '<small>' + escapeHtml(sub) + '</small>' : '') + '</button>';
+      }).join('') + '<div class="addr-by">Google</div>';
+      box.hidden = false;
+    }
+    function pick(i){
+      var pred = items[i];
+      if (!pred) return;
+      var fallback = (pred.text && pred.text.text) || '';
+      hide();
+      var place = pred.toPlace();
+      place.fetchFields({ fields: ['formattedAddress', 'location'] }).then(function(){
+        return place.formattedAddress || fallback;
+      }, function(){ return fallback; }).then(function(addr){
+        token = null;
+        if (addr){
+          picking = true;
+          inputEl.value = addr;
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          picking = false;
+        }
+        if (onPlace) onPlace({ formatted_address: addr, location: place.location || null });
+      });
+    }
+    inputEl.addEventListener('input', function(){
+      if (picking) return;
+      clearTimeout(timer);
+      var q = inputEl.value.trim();
+      if (q.length < 2){ hide(); return; }
+      timer = setTimeout(function(){
+        var my = ++seq;
+        getPlacesNew().then(function(lib){
+          if (!token) token = new lib.AutocompleteSessionToken();
+          return lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input: q, includedRegionCodes: ['tw'], language: 'zh-TW', region: 'tw', sessionToken: token });
+        }).then(function(r){
+          if (my !== seq || document.activeElement !== inputEl) return;
+          items = ((r && r.suggestions) || []).map(function(x){ return x.placePrediction; }).filter(Boolean).slice(0, 5);
+          active = -1;
+          render();
+        }).catch(function(){ hide(); });
+      }, 250);
     });
-    autocomplete.addListener('place_changed', function(){
-      var place = autocomplete.getPlace();
-      if (!place) return;
-      var addr = place.formatted_address || place.name || '';
-      if (addr){
-        inputEl.value = addr;
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      if (onPlace) onPlace(place);
+    inputEl.addEventListener('keydown', function(e){
+      if (box.hidden || !items.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+        e.preventDefault();
+        active = (active + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        render();
+      } else if (e.key === 'Enter' && active >= 0){
+        e.preventDefault(); pick(active);
+      } else if (e.key === 'Escape'){ hide(); }
+    });
+    inputEl.addEventListener('blur', function(){ setTimeout(hide, 200); });
+    box.addEventListener('mousedown', function(e){
+      var b = e.target.closest('.addr-opt');
+      if (!b) return;
+      e.preventDefault();
+      pick(Number(b.getAttribute('data-i')));
     });
   }
 
   // 選了報價地址欄位的建議地址後，算一次到桃園機場的距離，顯示在欄位下面
-  // 的提示文字裡（僅供參考，不會影響偏遠地區加價金額）。
+  // 的提示文字裡（僅供參考，不會影響偏遠地區加價金額）。用新版 Routes API。
   function updateQuoteDistanceNote(noteEl, place){
     if (!noteEl) return;
-    if (!place || !place.geometry || !place.geometry.location || !gmapsDistanceService){
-      noteEl.textContent = '';
-      return;
-    }
+    var addr = place && place.formatted_address;
+    var key = currentGmapsKey();
+    if (!addr || !key){ noteEl.textContent = ''; return; }
     noteEl.textContent = '距桃園機場：計算中…';
-    gmapsDistanceService.getDistanceMatrix({
-      origins: [place.geometry.location],
-      destinations: [TAOYUAN_AIRPORT_LATLNG],
-      travelMode: 'DRIVING',
-      unitSystem: google.maps.UnitSystem.METRIC
-    }, function(res, status){
-      if (status !== 'OK' || !res || !res.rows || !res.rows[0] || !res.rows[0].elements || !res.rows[0].elements[0] || res.rows[0].elements[0].status !== 'OK'){
-        noteEl.textContent = '距桃園機場：查詢失敗';
-        return;
-      }
-      noteEl.textContent = '距桃園機場約 ' + res.rows[0].elements[0].distance.text + '（僅供參考）';
+    routesApiMatrix(key, [addr], ['桃園國際機場'], function(err, meters){
+      var m = err ? null : meters(0, 0);
+      noteEl.textContent = (m == null) ? '距桃園機場：查詢失敗' : '距桃園機場約 ' + (Math.round(m / 100) / 10) + ' 公里（僅供參考）';
     });
   }
 
