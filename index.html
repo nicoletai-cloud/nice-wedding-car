@@ -6982,8 +6982,9 @@
     var o = {};
     ['id','savedAt','svcType','date','pickupTime','flightNo','terminal','flightDepTime','flightArrTime','otherAirport',
      'contactName','contactPhone','pickupAddr','dropoffAddr','pickupFullAddr','dropoffFullAddr','extraStopAddr','pax','luggageCount',
-     'note','custSource','custSourceName','driverName','driverPhone','driverCar','driverPlate'].forEach(function(k){ o[k] = (b[k] == null ? '' : String(b[k])); });
+     'note','custSource','custSourceName','driverName','driverPhone','driverCar','driverPlate','formalNo','quoteNo'].forEach(function(k){ o[k] = (b[k] == null ? '' : String(b[k])); });
     o.extraStopChk = !!b.extraStopChk;
+    o.fixedPickup = !!b.fixedPickup;
     o.amount = (typeof b.amount === 'number') ? b.amount : null;
     if (!o.custSource) o.custSource = 'LINE';
     o.driverId = '';
@@ -6999,6 +7000,7 @@
     botPullBusy = true;
     return botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airPull' }); }).then(function(j){
       var inc = Array.isArray(j.orders) ? j.orders : [], del = (j.deleted && typeof j.deleted === 'object') ? j.deleted : {};
+      if (Array.isArray(j.pending)){ webPendingList = j.pending; safeSet(WEB_PENDING_KEY, JSON.stringify(webPendingList)); setTimeout(renderTodoBadge, 0); }
       var added = 0, updated = 0;
       inc.forEach(function(b){
         if (!b || !b.id) return;
@@ -7011,6 +7013,7 @@
           var nb = botOrderToLocal(b);
           Object.keys(nb).forEach(function(k){
             if (k === 'driverId' || k === 'luggageSize' || k === 'paymentMethod' || k === 'driverFee' || k === 'isKnownCustomer') return;
+            if ((k === 'formalNo' || k === 'quoteNo') && !nb[k]) return;
             cur[k] = nb[k];
           });
           updated++;
@@ -7560,6 +7563,23 @@
   var TODO_ST = { quote: '報價追蹤', nodrv: '未指派司機', tt: '未記 TimeTree', pax: '未傳乘客資訊', receipt: '用車後未開收據', rev: '用車後追評價' };
   var REV_ASK_AIR = '請問這次的接送服務還滿意嗎？\n\n如果您對我們的服務感到滿意，誠摯邀請您抽空寫幾句話留下寶貴評價，或是對司機的鼓勵，這會是我們最大的動力 🙏\n\n👉 Google 評價：https://goo.gl/maps/WsAvwhXy1eQPqk5f6';
   var todoF = 'all', todoSel = {};
+  // 官網待付款（機器人轉來，只放在「報價追蹤」）；追蹤次數／失單記在這個瀏覽器（會跟著同步）
+  var WEB_PENDING_KEY = 'hhlc_web_pending', WEB_FLAGS_KEY = 'hhlc_web_pending_flags';
+  var webPendingList = (function(){ try { return JSON.parse(safeGet(WEB_PENDING_KEY) || '[]') || []; } catch(e){ return []; } })();
+  var webFlags = (function(){ try { return JSON.parse(safeGet(WEB_FLAGS_KEY) || '{}') || {}; } catch(e){ return {}; } })();
+  function webTasks(w){
+    var f = webFlags[w.id] || {};
+    if (f.lost) return [];
+    if (w.deadline && w.deadline * 1000 < Date.now()) return [];
+    var d = dayDiff(w.date); if (d !== null && d < 0) return [];
+    var fn = +f.followN || 0; if (fn >= 3) return [];
+    var base = Math.max(+w.at || 0, +f.followAt || 0), ago = base ? (Date.now() - base) / 864e5 : 0;
+    return [{ k: 'quote', late: ago >= [1, 2, 5][fn], why: '官網待付款' + (fn ? '・已追 ' + fn + ' 次' : '') }];
+  }
+  function openWebPending(id){
+    var base = String(id || '').replace(/-\d+$/, '');
+    window.open('https://niceweddingcar.com/wp-admin/admin.php?page=nwc-booking&s=' + encodeURIComponent(base), '_blank');
+  }
   function dayDiff(date){
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date || ''); if (!m) return null;
     var t = new Date(); t.setHours(0, 0, 0, 0);
@@ -7597,6 +7617,9 @@
     recentQuotes.forEach(function(q){ rows.push({ type: 'q', id: q.id, x: q, T: quoteTasks(q), date: firstLegDate(q),
       no: q.quoteNo || '', name: quoteSourceLabel(q), phone: q.custPhone || '',
       sub: (q.legs || []).map(function(l){ return fmtMD(l.date) + ' ' + (l.svc || ''); }).join('、') + '　NT$ ' + fmtNum(q.finalTotal) }); });
+    (webPendingList || []).forEach(function(w){ if (!w || !w.id) return; rows.push({ type: 'w', id: w.id, x: w, T: webTasks(w), date: w.date || '',
+      no: '', name: '[官網] ' + (w.custSourceName || w.contactName || '客人'), phone: w.contactPhone || '',
+      sub: fmtMD(w.date) + ' ' + (w.pickupTime || '') + ' ' + (w.svcType || '') + (w.amount != null ? '　NT$ ' + fmtNum(w.amount) : '') + '　官網待付款' }); });
     recentOrders.forEach(function(o){ rows.push({ type: 'o', id: o.id, x: o, T: orderTasks(o), date: o.date || '',
       no: o.formalNo || '', name: orderSourceLabel(o), phone: o.contactPhone || '',
       sub: fmtMD(o.date) + ' ' + (o.pickupTime || '') + ' ' + (o.svcType || '') + (o.flightNo ? ' ' + o.flightNo : '') + (o.driverName ? '　司機 ' + o.driverName : '') + (isWebOrder(o) ? '　官網' : '') }); });
@@ -7652,6 +7675,11 @@
     var now = Date.now(), n = 0;
     if (kind === 'follow') n = markQuotes(qIds, function(q){ q.followN = (+q.followN || 0) + 1; q.followAt = now; });
     if (kind === 'lost') n = markQuotes(qIds, function(q){ q.lost = true; });
+    var wIds = pick.filter(function(r){ return r.type === 'w'; }).map(function(r){ return r.id; });
+    if ((kind === 'follow' || kind === 'lost') && wIds.length){
+      wIds.forEach(function(id){ var f = webFlags[id] = webFlags[id] || {}; if (kind === 'lost') f.lost = true; else { f.followN = (+f.followN || 0) + 1; f.followAt = now; } });
+      safeSet(WEB_FLAGS_KEY, JSON.stringify(webFlags)); n += wIds.length;
+    }
     if (kind === 'tt') n = markOrders(oIds, { ttAt: now });
     if (kind === 'pax') n = markOrders(oIds, { paxSentAt: now });
     if (kind === 'receipt') n = markOrders(oIds, { receiptAt: now });
@@ -7675,6 +7703,7 @@
       var row = e.target.closest('[data-open]'); if (row){
         var v = row.getAttribute('data-open'), type = v.slice(0, 1), id = v.slice(2);
         modal.hidden = true;
+        if (type === 'w'){ openWebPending(id); return; }
         if (type === 'q'){ switchTab('quote'); loadQuoteIntoForm(id); } else { loadOrderIntoDispatchForm(id); }
         try { window.scrollTo(0, 0); } catch(x){}
       }
@@ -7705,12 +7734,13 @@
         return terms.every(function(t){ var td = t.replace(/[\s-]/g, ''); return h.indexOf(t) !== -1 || (/^\d{3,}$/.test(td) && hd.indexOf(td) !== -1); });
       }).sort(function(a, b){ return String(b.date || '').localeCompare(String(a.date || '')); }).slice(0, 20);
       box.innerHTML = shown.length ? shown.map(function(r, i){
-        return '<button type="button" data-i="' + i + '"' + (i === active ? ' class="on"' : '') + '>' + (r.type === 'q' ? '📝 報價 ' : '🚗 ') + (r.no ? '<span class="hit">' + escapeHtml(r.no) + '</span> ' : '') + escapeHtml(r.name) + '<small>' + escapeHtml(r.sub) + '</small></button>';
+        return '<button type="button" data-i="' + i + '"' + (i === active ? ' class="on"' : '') + '>' + (r.type === 'q' ? '📝 報價 ' : r.type === 'w' ? '🌐 官網待付款 ' : '🚗 ') + (r.no ? '<span class="hit">' + escapeHtml(r.no) + '</span> ' : '') + escapeHtml(r.name) + '<small>' + escapeHtml(r.sub) + '</small></button>';
       }).join('') : '<div class="empty">找不到相關的報價或訂單</div>';
       box.hidden = false;
     }
     function open(r){
       box.hidden = true; input.blur();
+      if (r.type === 'w'){ openWebPending(r.id); return; }
       if (r.type === 'q'){ switchTab('quote'); loadQuoteIntoForm(r.id); } else { loadOrderIntoDispatchForm(r.id); }
       try { window.scrollTo(0, 0); } catch(e){}
     }
