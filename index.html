@@ -3415,6 +3415,11 @@
   function drvBankHtml(d){
     var b = drvBind[d.name], t = drvBankText(b && b.bank);
     var em = b && b.em && b.em.phone ? '<div class="li-sub">緊急聯絡：' + escapeHtml(b.em.phone) + (b.em.rel ? '（' + escapeHtml(b.em.rel) + '）' : '') + '</div>' : '';
+    var dc = b && b.docs, today = new Date().toISOString().slice(0, 10);
+    var EXN = { lic: '駕照', reg: '行照', ins1: '強制險', ins2: '任意險' };
+    var expTxt = dc && dc.exp ? Object.keys(EXN).filter(function(k){ return dc.exp[k]; }).map(function(k){ var e = dc.exp[k], soon = e <= new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); return (soon ? '⚠️' : '') + EXN[k] + ' ' + e.slice(2).replace(/-/g, '/') + (e < today ? '（已過期）' : ''); }).join('　') : '';
+    em += '<div class="li-sub">證件：' + (!dc ? '還沒上傳（請司機在 LINE 傳「上傳證件」）' : dc.ok ? '✅ 齊全' : '缺 ' + escapeHtml((dc.miss || []).join('、'))) +
+      (dc && dc.folder ? '　<a href="' + escapeHtml(dc.folder) + '" target="_blank" rel="noopener">開資料夾</a>' : '') + (expTxt ? '<br>到期：' + escapeHtml(expTxt) : '') + '</div>';
     if (!t) return '<div class="li-sub">匯款帳號：司機尚未填寫（請他從 LINE 開車卡表單補上）</div>' + em;
     return '<div class="li-sub">匯款帳號：' + escapeHtml(t) + '　<button type="button" class="tag" data-drv-bank="' + escapeHtml(d.name) + '">複製帳號</button></div>' + em;
   }
