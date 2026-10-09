@@ -1585,7 +1585,7 @@
 
         <div class="card" id="paylinkCard" >
           <h2><span class="dot"></span>線上付款連結</h2>
-          <p class="hint">依上方勾的付款方式，在官網建立一筆待付款訂單、產生 niceweddingcar.com 的付款頁，報價文字會自動換成這個付款連結。客人付款後官網自動核帳，這裡會顯示已付款並自動勾「已完成付款」。金額或付款方式改了，再按一次就會更新同一個連結</p>
+          <p class="hint">產生 niceweddingcar.com 的付款頁，報價文字會自動放上這個連結（沒產生前報價不會有付款資訊）。客人付款後官網自動核帳、自動勾「已完成付款」，並自動建立訂單送到「訂單／派車」待指派，不用再按「轉成訂單」。金額或付款方式改了，再按一次就會更新同一個連結</p>
           <div class="actions" style="margin-top:6px;">
             <button type="button" class="primary" id="paylinkBtn">產生付款連結</button>
             <button type="button" class="secondary" id="paylinkCheckBtn" hidden>檢查付款狀態</button>
@@ -1638,6 +1638,7 @@
         </div>
         <div class="actions">
           <button type="button" class="secondary" id="saveQuoteBtn">💾 儲存報價</button>
+          <button type="button" class="secondary" id="requoteBtn" title="客人要修改時按：改完會給新的報價編號">🔄 重新報價（新編號）</button>
           <button type="button" class="secondary" id="copyQuoteBtn">複製文字</button>
           <button type="button" class="primary" id="printQuoteBtn">下載 PDF</button>
         </div>
@@ -5745,7 +5746,7 @@
     var legs = readQuoteLegs();
     var lines = [];
     if (currentQuoteNo && quoteSameCustomer()){
-      lines.push(({ 'en': 'Quote No.: ', 'ja': '見積番号：' }[currentQuoteLang] || '報價編號：') + currentQuoteNo);
+      lines.push(currentQuoteNo);
       lines.push('');
     }
     var rawTotal = 0;
@@ -5806,7 +5807,6 @@
       if (breakdown) priceStr = '$' + fmtNum(leg.base) + breakdown + '=$' + fmtNum(leg.subtotal);
       lines.push(lineParts.join(' ') + ' ' + priceStr);
     });
-    lines.push('');
 
     var discountFactor = 1;
     var appliedDiscountNames = [];
@@ -5836,35 +5836,22 @@
     } else {
       lines.push(L.total + fmtNum(rawTotal));
     }
-    lines.push('');
     // 匯款資訊、刷卡連結是否附上，看這筆報價自己勾選的「附上匯款資訊」／
     // 「附上刷卡付款連結」——刷卡有手續費，客人習慣匯款的話可以只附匯款資訊，
     // 不用把刷卡連結也貼給客人。
     var plk = null, cashq = false; try { cashq = !isMonthlyChoice() && qCash(); if (!isMonthlyChoice() && !cashq && els.paylinkCard) plk = paylinkMap()[paylinkRef()]; } catch (e) {}
-    if (cashq){
-      var enc = currentQuoteLang && currentQuoteLang.indexOf('zh') !== 0;
-      lines.push(enc ? 'Payment: cash to the driver on the day.' : '付款方式：當天以現金支付給司機');
-    }
-    if (plk){
-      var enq = currentQuoteLang && currentQuoteLang.indexOf('zh') !== 0;
-      lines.push((enq ? 'Payment (' : '付款方式：') + paylinkMethodText(plk.methods, enq) + (enq ? '):' : ''));
-      lines.push(plk.url);
-      lines.push(enq ? 'Your booking is confirmed automatically once paid.' : '付款完成後系統自動確認，不需回傳截圖。');
-    }
-    if (!plk && !cashq && shouldShowBankInfo()){
-      var bankText = selectedBankBlockText(currentQuoteLang);
-      if (bankText) lines.push(bankText);
-    }
-    if (!plk && !cashq && shouldShowCardLink() && els.qPayLink.value.trim()){
-      lines.push('');
-      lines.push(L.creditCard + els.qPayLink.value.trim());
-      lines.push(L.creditCardNote);
-    }
+    // 收據／發票說明在前；付款資訊（付款連結訊息／收現／月結）一律放在最後
     var noticeText = currentQuoteLang === 'zh-TW' ? els.qNoticeBlock.value.trim() : (NOTICE_BLOCK_I18N[currentQuoteLang] || '');
     if (noticeText){
+      // 「（費用需另+5%營業稅）」這類括號補充接在上一行後面，不另起一行
+      noticeText = noticeText.replace(/\n+\s*(?=[（(])/g, '');
       lines.push('');
       lines.push(noticeText);
     }
+    var enq = currentQuoteLang && currentQuoteLang.indexOf('zh') !== 0;
+    if (cashq){ lines.push(''); lines.push(enq ? 'Payment: cash to the driver on the day.' : '付款方式：當天以現金支付給司機'); }
+    else if (plk){ lines.push(''); lines.push(paylinkMsgText(plk)); }
+    else if (isMonthlyChoice()){ var bankText = selectedBankBlockText(currentQuoteLang); if (bankText){ lines.push(''); lines.push(bankText); } }
     return lines.join('\n');
   }
 
@@ -6028,7 +6015,14 @@
   function paylinkMap(){ try { return JSON.parse(safeGet(PAYLINK_KEY) || '{}') || {}; } catch (e) { return {}; } }
   function paylinkSave(m){ safeSet(PAYLINK_KEY, JSON.stringify(m)); }
   function paylinkRef(){
-    if (currentQuoteNo) return String(currentQuoteNo).replace(/[^A-Za-z0-9_.:-]/g, '');
+    if (currentQuoteNo){
+      var qn = String(currentQuoteNo).replace(/[^A-Za-z0-9_.:-]/g, ''), m = paylinkMap(), h = paylinkHashRef();
+      if (!m[qn] && m[h]){ m[qn] = m[h]; delete m[h]; paylinkSave(m); } // 先產生連結、後來才有報價編號：搬到報價編號底下
+      return qn;
+    }
+    return paylinkHashRef();
+  }
+  function paylinkHashRef(){
     var legs = readQuoteLegs(), k = [els.qCustName.value.trim(), els.qCustPhone.value.trim()].concat(legs.map(function(l){ return l.date + l.svc; })).join('|');
     var h = 0; for (var i = 0; i < k.length; i++){ h = (h * 31 + k.charCodeAt(i)) | 0; }
     return 'q' + (h >>> 0).toString(36);
@@ -6056,6 +6050,19 @@
       return [fmtMD(l.date), tm, (en ? svc + ' · ' + area : (l.svc === '接機' ? svc + area : area + svc)), l.modelLabel, l.flight].filter(Boolean).join(' ');
     }).join('\n');
   }
+  function paylinkOrders(){
+    var q = serializeCurrentQuote(), amts = []; try { amts = quoteLegPayableAmounts(q); } catch (e) {}
+    var src = document.querySelector('input[name="qCustSource"]:checked');
+    return (q.legs || []).map(function(l, i){
+      var sa = function(a){ try { return shortAreaForFindDriver(a); } catch (e) { return a; } };
+      return { svcType: l.svc, date: l.date, pickupTime: l.pickupTime || (l.svc === '接機' ? '' : l.dep) || '', flightNo: l.flight, terminal: l.terminal,
+        flightDepTime: l.dep || '', flightArrTime: l.arr || '', contactName: q.custName || q.custSourceName, contactPhone: q.custPhone,
+        pickupAddr: sa(l.pickupArea), dropoffAddr: sa(l.dropoffArea), pickupFullAddr: l.pickupArea, dropoffFullAddr: l.dropoffArea,
+        extraStopChk: !!l.extraStopChk, extraStopAddr: l.extraStopAddr || '', pax: l.pax || '', luggageCount: l.luggageCount || '',
+        note: [(src ? '[' + src.value + ']' : ''), l.modelLabel ? '車款 ' + l.modelLabel : '', q.quoteNo ? '報價 ' + q.quoteNo : ''].filter(Boolean).join(' '),
+        custSourceName: q.custSourceName || q.custName, amount: typeof amts[i] === 'number' ? amts[i] : l.subtotal };
+    });
+  }
   function paylinkPickup(){
     var l = readQuoteLegs()[0]; if (!l || !l.date) return '';
     var tm = l.pickupTime || (l.svc === '接機' ? l.arr : l.dep) || '23:59';
@@ -6076,7 +6083,8 @@
       .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error((j && j.message) || '官網回應錯誤'); return j; }); });
   }
   function paylinkMarkPaid(r){
-    setDispatchStatus(els.paylinkStatus, '✅ 客人已用 ' + (r.paidBy === 'paypal' ? 'PayPal' : r.paidBy || '線上') + ' 付款 NT$' + fmtNum(r.amount) + (r.test ? '（測試付款）' : ''), 'ok');
+    setDispatchStatus(els.paylinkStatus, '✅ 客人已用 ' + (r.paidBy === 'paypal' ? 'PayPal' : r.paidBy === 'ecpay' ? '綠界' : '線上') + ' 付款 NT$' + fmtNum(r.amount) + (r.test ? '（測試付款）' : '') + (r.autoOrder ? '，訂單已自動建立，到「訂單／派車」按「同步」就會出現在待指派' : ''), 'ok');
+    try { var mm = paylinkMap(), kk = paylinkRef(); if (mm[kk] && r.autoOrder){ mm[kk].paidAuto = true; paylinkSave(mm); } } catch (e) {}
     if (!r.test && els.qPaymentConfirmed && !els.qPaymentConfirmed.checked){ els.qPaymentConfirmed.checked = true; els.qPaymentConfirmed.dispatchEvent(new Event('change')); }
   }
   function renderPaylink(){
@@ -6104,7 +6112,7 @@
     var ref = paylinkRef(), b = els.paylinkBtn; b.disabled = true; setDispatchStatus(els.paylinkStatus, '正在建立付款連結…', 'ok');
     if (qCash()){ b.disabled = false; setDispatchStatus(els.paylinkStatus, '這筆勾了「收現」，不需要付款連結', 'err'); return; }
     var methods = paylinkMethods();
-    paylinkApi('paylink', { methods: methods, amount: amount, name: name, phone: els.qCustPhone.value.trim(), lang: paylinkEn() ? 'en' : 'zh', ref: ref, summary: paylinkSummary(), pickup: paylinkPickup() })
+    paylinkApi('paylink', { orders: paylinkOrders(), methods: methods, amount: amount, name: name, phone: els.qCustPhone.value.trim(), lang: paylinkEn() ? 'en' : 'zh', ref: ref, summary: paylinkSummary(), pickup: paylinkPickup() })
       .then(function(j){
         var m = paylinkMap(); m[ref] = { id: j.id, url: j.url, amount: j.amount, deadline: j.deadline, methods: j.methods || methods, at: Date.now() }; paylinkSave(m);
         renderPaylink();
@@ -6121,7 +6129,7 @@
     var r = paylinkMap()[paylinkRef()]; if (r && id === 'qOverseasPay') setDispatchStatus(els.paylinkStatus, '付款方式已改，請按「更新付款連結」', 'err');
     renderQuoteDoc();
   }); });
-  if (document.getElementById('paylinkCopyBtn')) document.getElementById('paylinkCopyBtn').addEventListener('click', function(){ copyToClipboard(els.paylinkMsg.textContent, els.paylinkStatus); });
+  if (document.getElementById('paylinkCopyBtn')) document.getElementById('paylinkCopyBtn').addEventListener('click', function(){ previewAndCopy(els.paylinkMsg.textContent, els.paylinkStatus, '預覽付款訊息'); });
   if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(){
     if (els.qPaymentConfirmed.checked && !currentPaymentReceiptNo){
       var d = todayStr();
@@ -6500,8 +6508,40 @@
     safeSet('hhlc_notice_block', els.qNoticeBlock.value); renderQuoteDoc();
   });
 
+  // 複製前先預覽（可直接修改），確認後才複製——跟禮車系統一樣
+  function previewAndCopy(text, statusEl, title){
+    var bg = document.getElementById('copyPreview');
+    if (!bg){
+      bg = document.createElement('div'); bg.id = 'copyPreview';
+      bg.style.cssText = 'position:fixed;inset:0;background:rgba(40,32,24,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+      bg.innerHTML = '<div style="background:var(--card,#fff);border-radius:16px;max-width:620px;width:100%;max-height:92vh;display:flex;flex-direction:column;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25)"><h3 id="cpTitle" style="margin:0 0 10px">預覽要傳給客人的訊息</h3><textarea id="cpText" style="flex:1;min-height:320px;width:100%;font:inherit;font-size:16px;line-height:1.6;padding:12px;border:1px solid var(--line,#e4dbce);border-radius:10px;resize:vertical"></textarea><p class="hint" style="margin:8px 0">可以直接在這裡修改，按「複製」才會複製</p><div class="actions" style="margin:0"><button type="button" class="secondary" id="cpCancel">取消</button><button type="button" class="primary" id="cpCopy">📋 複製</button></div></div>';
+      document.body.appendChild(bg);
+      bg.addEventListener('click', function(e){ if (e.target === bg){ bg.hidden = true; bg.style.display = 'none'; } });
+      document.getElementById('cpCancel').onclick = function(){ bg.hidden = true; bg.style.display = 'none'; };
+    }
+    document.getElementById('cpTitle').textContent = title || '預覽要傳給客人的訊息';
+    document.getElementById('cpText').value = text;
+    document.getElementById('cpCopy').onclick = function(){ copyToClipboard(document.getElementById('cpText').value, statusEl); bg.hidden = true; bg.style.display = 'none'; };
+    bg.hidden = false; bg.style.display = 'flex';
+    setTimeout(function(){ var t = document.getElementById('cpText'); t.focus(); t.setSelectionRange(0, 0); t.scrollTop = 0; }, 30);
+  }
+  // 複製前先自動儲存（拿到報價編號），再預覽要傳給客人的訊息
   if (els.copyQuoteBtn) els.copyQuoteBtn.addEventListener('click', function(){
-    copyToClipboard(buildQuoteText(), els.quoteStatusMsg);
+    if (!readQuoteLegs().length){ setDispatchStatus(els.quoteStatusMsg, '請先填寫行程', 'err'); return; }
+    var b = els.copyQuoteBtn; b.disabled = true;
+    Promise.resolve(saveCurrentQuote()).catch(function(){}).then(function(){
+      b.disabled = false; try { renderQuoteDoc(); } catch (e) {}
+      previewAndCopy(buildQuoteText(), els.quoteStatusMsg, '預覽報價訊息');
+    });
+  });
+  // 客人有疑慮或要修改：改完按這顆，下次複製／儲存會給一個新的報價編號（舊的那版保留在最近報價裡）
+  if (document.getElementById('requoteBtn')) document.getElementById('requoteBtn').addEventListener('click', function(){
+    if (!currentQuoteNo){ setDispatchStatus(els.quoteStatusMsg, '這張還沒有報價編號，直接修改後複製就好', 'ok'); return; }
+    var old = currentQuoteNo;
+    currentQuoteNo = ''; currentQuoteFormalNo = ''; currentQuoteFlags = {};
+    var pc = document.getElementById('qPaymentConfirmed'); if (pc) pc.checked = false;
+    try { renderQuoteDoc(); renderNoLines(); } catch (e) {}
+    setDispatchStatus(els.quoteStatusMsg, '已改成新報價（' + old + ' 保留在最近報價）。修改完按「複製文字」會給新的報價編號；有付款連結的話請重新產生', 'ok');
   });
   if (els.printQuoteBtn) els.printQuoteBtn.addEventListener('click', function(){
     printDoc('print-quote', '好好禮車_報價_' + todayStr(), els.quoteStatusMsg);
@@ -6850,7 +6890,7 @@
     renderCustPickSelects();
     setDispatchStatus(els.quoteStatusMsg, '已儲存這筆報價', 'ok');
     doFullSync(true);
-    ensureQuoteNumbers(q);
+    return ensureQuoteNumbers(q);
   }
 
   function loadQuoteIntoForm(id){
@@ -7554,6 +7594,9 @@
 
   // 報價 → 訂單：一鍵儲存報價、切到訂單／派車並帶入
   if (document.getElementById('quoteToOrderBtn')) document.getElementById('quoteToOrderBtn').addEventListener('click', function(){
+    var plr = null; try { plr = paylinkMap()[paylinkRef()]; } catch (e) {}
+    if (plr && plr.paidAuto){ if (!confirm('這張報價的客人已線上付款，系統已自動建立訂單。還要再手動建一筆嗎？')) return; }
+    else if (plr){ paylinkApi('paylink-manual', { ids: [plr.id] }).catch(function(){}); }
     var before = recentQuotes[0] && recentQuotes[0].savedAt;
     saveCurrentQuote();
     var q = recentQuotes[0];
@@ -7780,7 +7823,7 @@
   function ensureQuoteNumbers(q){
     var stored = function(){ return recentQuotes.find(function(x){ return x.id === q.id; }); };
     var p = q.quoteNo ? Promise.resolve(q.quoteNo) : requestNo('Q', todayStr(), 'q:' + q.id);
-    p.then(function(no){
+    return p.then(function(no){
       var r = stored(); if (!r || !no) return null;
       r.quoteNo = no; currentQuoteNo = no; currentQuoteKey = friendCustomerKey(r.custPhone, r.custSourceName, r.custName);
       if (!r.paymentConfirmed || r.formalNo) return null;
