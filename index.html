@@ -1785,8 +1785,8 @@
           <summary><span class="dot"></span>航班查詢金鑰（查詢起降時間）<span class="chev">▾</span></summary>
           <p class="hint">
             「查詢起降時間」按鈕用的是 RapidAPI 的 AeroDataBox 航班資料服務，需要你自己的金鑰。
-            這個金鑰只會存在這個瀏覽器，不會寫在程式碼裡，也不會送去別的地方；換瀏覽器或換手機使用時要再貼一次。
-            沒有金鑰的話，只有「查詢起降時間」不能用，其他功能不受影響。
+            <b>建議做法：</b>把金鑰填在機器人（Apps Script 的指令碼屬性 <code>AERO_KEY</code>），之後只要這台裝置有連線機器人，這格可以留空，手機電腦都能查。
+            這格有填的話就用這台裝置自己的金鑰直接查；金鑰只存在這個瀏覽器，不會寫在程式碼裡。
           </p>
           <div class="settings-body">
             <div class="field">
@@ -3698,7 +3698,7 @@
     lines.push('☑️ ' + (L.svc[svcVal] || svcVal));
     lines.push(L.useDate + fmtDateWeekday(els.dUseDate.value, lang));
     var fixedPk = !!(document.getElementById('dFixedPickup') && document.getElementById('dFixedPickup').checked);
-    lines.push(L.pickupTime + (fmtTime24(els.dPickupTime.value) || '—') + (fixedPk ? (opts.driverInfoHeader ? '（客人指定上車時間：不用追蹤航班，請準時抵達機場待命）' : ({ 'en': ' (as you requested)', 'ja': '（ご指定の時刻）' }[lang] || '（依您指定的上車時間）')) : ''));
+    lines.push(L.pickupTime + (fmtTime24(els.dPickupTime.value) || '—') + (fixedPk ? (opts.driverInfoHeader ? '｜客人指定上車時間，請準時抵達機場待命' : ({ 'en': ' (as you requested)', 'ja': '（ご指定の時刻）' }[lang] || '（依您指定的上車時間）')) : ''));
     if (els.dFlightNo.value || els.dTerminal.value || (els.dFlightDepTime && els.dFlightDepTime.value) || (els.dFlightArrTime && els.dFlightArrTime.value)){
       lines.push(L.flightInfo);
       // 航廈已經改成標在上／下車地址後面（桃園機場那一端），這裡班機航班號
@@ -5066,28 +5066,30 @@
     if (city && code) return city + ' ' + code;
     return city || code || '';
   }
+  function flightStatusError(status){
+    if (status === 401 || status === 403) return new Error('金鑰無效或未訂閱，請確認 RapidAPI 金鑰');
+    if (status === 404 || status === 204) return new Error('查無此航班資料');
+    if (status === 429) return new Error('查詢次數已達上限，請稍後再試');
+    return new Error('查詢失敗（' + status + '）');
+  }
+  // 這台裝置有貼金鑰就直接查；沒有的話改請機器人代查（金鑰放在 Apps Script 指令碼屬性 AERO_KEY）
   function lookupFlightTimes(flightNo, dateIso){
     var key = getAeroApiKey();
     flightNo = (flightNo || '').trim();
-    if (!key) return Promise.reject(new Error('尚未設定航班查詢金鑰，請到「收據」分頁的「航班查詢金鑰」設定貼上'));
     if (!flightNo) return Promise.reject(new Error('請先輸入班機號碼'));
     if (!dateIso) return Promise.reject(new Error('請先選擇日期'));
-    var url = 'https://aerodatabox.p.rapidapi.com/flights/number/' + encodeURIComponent(flightNo) + '/' + dateIso;
-    return fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-RapidAPI-Key': key,
-        'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
-      }
-    }).then(function(res){
-      if (!res.ok){
-        if (res.status === 401 || res.status === 403) throw new Error('金鑰無效或未訂閱，請確認 RapidAPI 金鑰');
-        if (res.status === 404) throw new Error('查無此航班資料');
-        if (res.status === 429) throw new Error('查詢次數已達上限，請稍後再試');
-        throw new Error('查詢失敗（' + res.status + '）');
-      }
-      return res.json();
-    }).then(function(data){
+    var cfg = key ? null : botConfig();
+    if (!key && !cfg) return Promise.reject(new Error('這台裝置還沒連線機器人，也沒有航班查詢金鑰：請到「收據」分頁設定其中一個'));
+    var getData;
+    if (key){
+      var url = 'https://aerodatabox.p.rapidapi.com/flights/number/' + encodeURIComponent(flightNo) + '/' + dateIso;
+      getData = fetch(url, { method: 'GET', headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com' } })
+        .then(function(res){ if (!res.ok) throw flightStatusError(res.status); return res.json(); });
+    } else {
+      getData = botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'flight', flightNo: flightNo, date: dateIso }); })
+        .then(function(j){ if (j.status < 200 || j.status >= 300) throw flightStatusError(j.status); return j.data; });
+    }
+    return getData.then(function(data){
       var flight = Array.isArray(data) ? data[0] : data;
       if (!flight) throw new Error('查無此航班資料');
       var dep = extractLocalTime(flight.departure && flight.departure.scheduledTime);
