@@ -3497,6 +3497,14 @@
   // 司機自己在 LINE 建檔／更新的資料（車卡）→ 併進司機資料庫
   function mergeBotDrivers(list){
     var changed = false;
+    // 備註／暫停派車（客訴等）由機器人統一保存，每台裝置都同步
+    list.forEach(function(x){
+      if (!x || !x.name) return;
+      var d = drivers.find(function(y){ return y.name === x.name; });
+      if (!d) return;
+      var rm = x.remark || '', pz = !!x.paused;
+      if ((d.remark || '') !== rm || !!d.paused !== pz){ d.remark = rm; d.paused = pz; changed = true; }
+    });
     list.forEach(function(x){
       if (!x || !x.self || !x.name) return;
       var car = [x.car, x.color].filter(Boolean).join(' ');
@@ -3540,7 +3548,8 @@
         var sizeLabel = d.size === 'large' ? '大車' : '小車';
         var formalTag = d.formalSheet ? '<span class="tag" style="background:color-mix(in srgb, var(--danger) 16%, transparent); color:var(--danger);">正式派車單</span>' : '';
         return '<div class="list-row" data-id="' + d.id + '">' +
-          '<div class="li-main"><div class="li-name">' + escapeHtml(d.name) + '</div>' +
+          '<div class="li-main"><div class="li-name">' + escapeHtml(d.name) + (d.paused ? ' <span class="tag" style="background:color-mix(in srgb, var(--danger) 16%, transparent); color:var(--danger);">⛔ 暫停派車</span>' : '') + '</div>' +
+          (d.remark ? '<div class="li-sub" style="color:var(--danger)">備註：' + escapeHtml(d.remark) + '</div>' : '') +
           '<div class="li-sub">' + escapeHtml(d.phone) + '　' + escapeHtml(d.car) + '　' + escapeHtml(d.plate) + (d.seats ? '　' + escapeHtml(d.seats) + '人座' : '') + '</div>' + drvBindHtml(d) + '</div>' +
           '<span class="tag">' + sizeLabel + '</span>' + formalTag +
           '<button type="button" class="del" data-del-driver="' + d.id + '">✕</button>' +
@@ -3566,8 +3575,9 @@
     var filter = currentCarFilter();
     var prevVal = els.dDriverSelect.value;
     var list = drivers.filter(function(d){ return filter === 'all' || d.size === filter; });
+    list = list.filter(function(d){ return !d.paused; }).concat(list.filter(function(d){ return d.paused; }));
     var html = '<option value="">－未指派－</option>' + list.map(function(d){
-      return '<option value="' + d.id + '">' + escapeHtml(d.name) + '</option>';
+      return '<option value="' + d.id + '">' + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(d.name) + '</option>';
     }).join('');
     els.dDriverSelect.innerHTML = html;
     if (list.some(function(d){ return d.id === prevVal; })) els.dDriverSelect.value = prevVal;
@@ -3588,7 +3598,8 @@
     } else {
       els.dDriverReadout.innerHTML =
         '駕駛：' + escapeHtml(d.name) + '<br>電話：' + escapeHtml(d.phone) +
-        '<br>車款：' + escapeHtml(d.car) + '<br>車號：' + escapeHtml(d.plate);
+        '<br>車款：' + escapeHtml(d.car) + '<br>車號：' + escapeHtml(d.plate) +
+        (d.paused || d.remark ? '<br><span style="color:var(--danger);font-weight:600">' + (d.paused ? '⛔ 此司機暫停派車' : '') + (d.remark ? (d.paused ? '：' : '備註：') + escapeHtml(d.remark) : '') + '</span>' : '');
     }
     renderPassengerDoc();
     renderDispatchSheet();
