@@ -3570,18 +3570,67 @@
     return el ? el.value : 'all';
   }
 
+  // 司機總表（跟禮車系統同一份，從機器人讀；快取在這台裝置 30 分鐘）
+  var SHARED_DRV_KEY = 'nwca_shared_drivers', sharedDrivers = [], sharedDrvTs = 0, sharedDrvBusy = false;
+  try { var _sd = JSON.parse(safeGet(SHARED_DRV_KEY) || 'null'); if (_sd && Array.isArray(_sd.list)){ sharedDrivers = _sd.list; sharedDrvTs = +_sd.ts || 0; } } catch(e){}
+  function loadSharedDrivers(force){
+    var cfg = botConfig();
+    if (!cfg || sharedDrvBusy) return Promise.resolve(false);
+    if (!force && sharedDrivers.length && Date.now() - sharedDrvTs < 18e5) return Promise.resolve(false);
+    sharedDrvBusy = true;
+    return fetch(cfg.url + '?action=drivers&token=' + encodeURIComponent(cfg.token)).then(function(r){ return r.json(); }).then(function(j){
+      if (!j || !j.ok || !Array.isArray(j.drivers)) return false;
+      sharedDrivers = j.drivers; sharedDrvTs = Date.now();
+      safeSet(SHARED_DRV_KEY, JSON.stringify({ ts: sharedDrvTs, list: sharedDrivers }));
+      populateDriverSelect();
+      return true;
+    }).catch(function(){ return false; }).then(function(x){ sharedDrvBusy = false; return x; });
+  }
+  function normPlate(p){ return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function sharedCar(x){ return [x.brand, x.model || x.spec].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(); }
+  function sharedSize(x){
+    var n = parseInt(x.seats, 10), t = [x.brand, x.model, x.spec].join(' ');
+    if (n >= 7 || /alphard|vito|lm\b|lm300|granvia|odyssey|sienna|v-?class|t6|t7|caravelle|hiace/i.test(t)) return 'large';
+    if (n && n <= 6) return 'small';
+    return '';
+  }
+  function sharedInLocal(x){
+    var pl = normPlate(x.plate);
+    return drivers.some(function(d){ return d.name === x.name && (!pl || !normPlate(d.plate) || normPlate(d.plate) === pl); });
+  }
+  function driverOptLabel(name, car, plate){ return [name, car, plate].filter(function(v){ return v && String(v).trim(); }).join('｜'); }
   function populateDriverSelect(){
     if (!els.dDriverSelect) return;
     var filter = currentCarFilter();
     var prevVal = els.dDriverSelect.value;
     var list = drivers.filter(function(d){ return filter === 'all' || d.size === filter; });
     list = list.filter(function(d){ return !d.paused; }).concat(list.filter(function(d){ return d.paused; }));
-    var html = '<option value="">－未指派－</option>' + list.map(function(d){
-      return '<option value="' + d.id + '">' + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(d.name) + '</option>';
-    }).join('');
+    var shared = sharedDrivers.map(function(x, i){ return { x: x, i: i }; }).filter(function(o){
+      if (!o.x || !o.x.name || sharedInLocal(o.x)) return false;
+      var sz = sharedSize(o.x); return filter === 'all' || !sz || sz === filter;
+    }).sort(function(a, b){ return (a.x.src === '司機總表' ? 0 : 1) - (b.x.src === '司機總表' ? 0 : 1) || String(a.x.name).localeCompare(String(b.x.name), 'zh-Hant'); });
+    var html = '<option value="">－未指派－（可選 ' + (list.length + shared.length) + ' 位）</option>' +
+      (list.length ? '<optgroup label="常用司機">' + list.map(function(d){
+        return '<option value="' + d.id + '">' + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(driverOptLabel(d.name, d.car, d.plate)) + '</option>';
+      }).join('') + '</optgroup>' : '') +
+      (shared.length ? '<optgroup label="司機總表（與禮車系統共用）">' + shared.map(function(o){
+        return '<option value="sh:' + o.i + '">' + escapeHtml(driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate)) + (o.x.src === '司機招募' ? '（招募）' : '') + '</option>';
+      }).join('') + '</optgroup>' : '');
     els.dDriverSelect.innerHTML = html;
     if (list.some(function(d){ return d.id === prevVal; })) els.dDriverSelect.value = prevVal;
     updateDriverReadout();
+  }
+  // 從司機總表選到的司機：自動加進這台的司機資料庫，之後派車單、行事曆都照原本流程
+  function adoptSharedDriver(i){
+    var x = sharedDrivers[i]; if (!x) return null;
+    var pl = normPlate(x.plate);
+    var d = drivers.find(function(y){ return y.name === x.name && (!pl || !normPlate(y.plate) || normPlate(y.plate) === pl); });
+    if (!d){
+      d = { id: 'drv_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), name: x.name, phone: x.phone || '',
+        car: sharedCar(x), plate: String(x.plate || '').toUpperCase(), seats: x.seats || '', size: sharedSize(x) || 'small', formalSheet: false, fromRoster: true };
+      drivers.push(d); saveDrivers(); renderDriverList(); try { syncDriverBindings(false); } catch(e){}
+    }
+    return d;
   }
 
   function selectedDriver(){
@@ -3712,7 +3761,22 @@
   document.querySelectorAll('input[name="dCarFilter"]').forEach(function(r){
     r.addEventListener('change', populateDriverSelect);
   });
-  if (els.dDriverSelect) els.dDriverSelect.addEventListener('change', updateDriverReadout);
+  if (els.dDriverSelect){
+    els.dDriverSelect.addEventListener('change', function(){
+      var v = els.dDriverSelect.value;
+      if (/^sh:\d+$/.test(v)){
+        var d = adoptSharedDriver(+v.slice(3));
+        if (d){
+          var all = document.querySelector('input[name="dCarFilter"][value="all"]');
+          if (all && !all.checked && d.size !== currentCarFilter()){ all.checked = true; populateDriverSelect(); }
+          els.dDriverSelect.value = d.id;
+        } else els.dDriverSelect.value = '';
+      }
+      updateDriverReadout();
+    });
+    els.dDriverSelect.addEventListener('focus', function(){ loadSharedDrivers(false); });
+    setTimeout(function(){ loadSharedDrivers(false); }, 1500);
+  }
   (function(){ var f = document.getElementById('dFixedPickup'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); }); })();
   ['dUseDate'].forEach(function(k){ if (els[k]) els[k].addEventListener('change', function(){ try { renderClaimBox(); } catch(e){} }); });
 
@@ -4271,6 +4335,7 @@
   function pickClaimDriver(name, retried){
     var st = document.getElementById('dClaimStatus');
     var d = drivers.find(function(x){ return x.name === name; });
+    if (!d){ var si = sharedDrivers.findIndex(function(x){ return x && x.name === name; }); if (si >= 0) d = adoptSharedDriver(si); }
     if (!d){
       if (!retried){ syncDriverBindings(false).then(function(){ pickClaimDriver(name, true); }); return; }
       setDispatchStatus(st, '司機資料庫找不到「' + name + '」，請到下方「司機資料庫」新增後再點一次', 'err');
