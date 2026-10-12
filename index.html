@@ -4094,7 +4094,8 @@
     lines.push(L.luggageCount + (els.dLuggageCount.value !== '' ? els.dLuggageCount.value : L.tbd));
     lines.push(L.luggageSize + (els.dLuggageSize.value || L.tbd));
     if (els.dNote.value.trim()) lines.push(L.note + els.dNote.value.trim());
-    var d = selectedDriver();
+    // 在別台裝置指派的司機，這台的司機資料庫可能沒有同一個 id——改用訂單上存的司機資料，派車單／乘客資訊才不會漏掉司機資訊
+    var d = selectedDriver() || ((typeof keptDriverSnap !== 'undefined' && keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value) ? keptDriverSnap : null);
     if (d){
       if (!compact) lines.push('');
       lines.push(driverInfoHeader);
@@ -4495,13 +4496,23 @@
     }, 900);
   }
 
+  // 還沒指派司機（或司機資料讀不到）時，乘客資訊／派車單都不能複製——避免傳出去少了司機資訊
+  function docDriverMissing(){
+    var d = selectedDriver() || ((keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value) ? keptDriverSnap : null);
+    if (d && d.name) return false;
+    setDispatchStatus(els.dispatchDocStatusMsg, '⚠️ 還沒指派司機，司機資訊是空的，不能複製。請先在上方選好司機（並按「💾 儲存司機指派」）再複製', 'err');
+    if (els.dispatchDocStatusMsg && els.dispatchDocStatusMsg.scrollIntoView) els.dispatchDocStatusMsg.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return true;
+  }
   if (els.copyPassengerBtn) els.copyPassengerBtn.addEventListener('click', function(){
-    if (editingOrderId) markOrders([editingOrderId], { paxSentAt: Date.now() });
     setPreviewMode('passenger');
+    if (docDriverMissing()) return;
+    if (editingOrderId) markOrders([editingOrderId], { paxSentAt: Date.now() });
     copyToClipboard(buildPassengerDocText(), els.dispatchDocStatusMsg);
   });
   if (els.copyDispatchBtn) els.copyDispatchBtn.addEventListener('click', function(){
     setPreviewMode('driver');
+    if (docDriverMissing()) return;
     copyToClipboard(buildDispatchSheetText(), els.dispatchDocStatusMsg);
   });
   if (els.copyFindDriverBtn) els.copyFindDriverBtn.addEventListener('click', function(){
@@ -7703,15 +7714,18 @@
     if (els.dDriverFee) els.dDriverFee.value = (typeof o.driverFee === 'number') ? o.driverFee : '';
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = !!o.isKnownCustomer;
     updatePaymentUI();
-    if (o.driverId && els.dDriverSelect){
-      ensureDriverOpt(o.driverId); els.dDriverSelect.value = o.driverId;
-      updateDriverReadout();
+    if (els.dDriverSelect){
+      // 司機 id 是各裝置自己產生的：別台指派的單，這台找不到同 id 時改用姓名對到這台資料庫的同一位司機
+      var _oid = o.driverId && driverById(o.driverId) ? o.driverId : '';
+      if (!_oid && o.driverName){ var _byName = drivers.find(function(x){ return x.name === o.driverName; }); if (_byName) _oid = _byName.id; }
+      if (_oid){ ensureDriverOpt(_oid); els.dDriverSelect.value = _oid; } else els.dDriverSelect.value = '';
     }
-    keptDriverSnap = (o.driverName && !(o.driverId && driverById(o.driverId)))
+    keptDriverSnap = (o.driverName && !(els.dDriverSelect && els.dDriverSelect.value && driverById(els.dDriverSelect.value)))
       ? { id: '', name: o.driverName || '', phone: o.driverPhone || '', car: o.driverCar || '', plate: o.driverPlate || '' }
       : null;
     editingOrderId = o.id;
     currentOrderNos = { quoteNo: o.quoteNo || '', formalNo: o.formalNo || '' };
+    try { updateDriverReadout(); } catch(e){}
     renderNoLines();
     updateOrderEditUI();
     switchTab('dispatch');
