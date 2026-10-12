@@ -3539,6 +3539,7 @@
       if (added && manual) j.msg = (j.msg ? j.msg + '；' : '') + '司機自己建檔的資料已同步進來';
       drvInfo = { ready: !!j.ready, friend: j.friend || '' };
       renderDriverList();
+      try { populateDriverSelect(); } catch(e){}
       if (manual || !j.ready){
         drvBindStatus(j.ready ? (j.msg || '已更新綁定狀態') : '機器人還沒設定「司機回報平台」（缺 DRV_CH_ID / DRV_CH_SECRET），綁定碼先產生好了，設定完成後才會真的推播', j.ready ? 'ok' : 'err');
       }
@@ -3606,6 +3607,8 @@
     return drivers.some(function(d){ return d.name === x.name && (!pl || !normPlate(d.plate) || normPlate(d.plate) === pl); });
   }
   function driverOptLabel(name, car, plate){ return [name, car, plate].filter(function(v){ return v && String(v).trim(); }).join('｜'); }
+  // 已綁定車卡（司機回報平台）的司機前面加 ✅
+  function drvMark(name){ var b = drvBind[name]; return b && b.bound ? '✅ ' : ''; }
   function populateDriverSelect(){
     if (!els.dDriverSelect) return;
     var filter = currentCarFilter();
@@ -3624,10 +3627,10 @@
     }).sort(function(a, b){ return (a.x.src === '司機總表' ? 0 : 1) - (b.x.src === '司機總表' ? 0 : 1) || String(a.x.name).localeCompare(String(b.x.name), 'zh-Hant'); });
     var html = '<option value="">－未指派－（可選 ' + (list.length + shared.length) + ' 位）</option>' +
       (list.length ? '<optgroup label="常用司機">' + list.map(function(d){
-        return '<option value="' + d.id + '">' + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(driverOptLabel(d.name, d.car, d.plate)) + '</option>';
+        return '<option value="' + d.id + '">' + drvMark(d.name) + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(driverOptLabel(d.name, d.car, d.plate)) + '</option>';
       }).join('') + '</optgroup>' : '') +
       (shared.length ? '<optgroup label="司機總表（與禮車系統共用）">' + shared.map(function(o){
-        return '<option value="sh:' + o.i + '">' + escapeHtml(driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate)) + (o.x.src === '司機招募' ? '（招募）' : '') + '</option>';
+        return '<option value="sh:' + o.i + '">' + drvMark(o.x.name) + escapeHtml(driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate)) + (o.x.src === '司機招募' ? '（招募）' : '') + '</option>';
       }).join('') + '</optgroup>' : '');
     els.dDriverSelect.innerHTML = html;
     if (list.some(function(d){ return d.id === prevVal; })) els.dDriverSelect.value = prevVal;
@@ -3640,7 +3643,7 @@
     if (!id || !els.dDriverSelect || /^sh:/.test(id)) return;
     if ([].some.call(els.dDriverSelect.options, function(o){ return o.value === id; })) return;
     var d = drivers.find(function(x){ return x.id === id; }); if (!d) return;
-    var op = document.createElement('option'); op.value = d.id; op.textContent = (d.paused ? '⛔暫停派車 ' : '') + driverOptLabel(d.name, d.car, d.plate);
+    var op = document.createElement('option'); op.value = d.id; op.textContent = drvMark(d.name) + (d.paused ? '⛔暫停派車 ' : '') + driverOptLabel(d.name, d.car, d.plate);
     els.dDriverSelect.insertBefore(op, els.dDriverSelect.options[1] || null);
   }
   // 機場接送不用自用車牌：接機（含接送來回）只能 R 牌短租；送機可 R 牌或多元計程車牌（T 開頭）
@@ -3667,8 +3670,8 @@
   function renderDriverHits(q, list, shared){
     var box = document.getElementById('dDriverHits'); if (!box) return;
     if (!q){ box.hidden = true; box.innerHTML = ''; return; }
-    var items = list.map(function(d){ return { v: d.id, t: (d.paused ? '⛔暫停派車 ' : '') + driverOptLabel(d.name, d.car, d.plate) }; })
-      .concat(shared.map(function(o){ return { v: 'sh:' + o.i, t: driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate) }; }))
+    var items = list.map(function(d){ return { v: d.id, t: drvMark(d.name) + (d.paused ? '⛔暫停派車 ' : '') + driverOptLabel(d.name, d.car, d.plate) }; })
+      .concat(shared.map(function(o){ return { v: 'sh:' + o.i, t: drvMark(o.x.name) + driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate) }; }))
       .filter(function(it){ return it.v; }).slice(0, 8);
     box.hidden = false;
     box.innerHTML = items.length ? items.map(function(it){ return '<button type="button" data-drv-pick="' + escapeHtml(it.v) + '">' + escapeHtml(it.t) + '</button>'; }).join('')
@@ -7051,7 +7054,8 @@
       return;
     }
     // 同一張報價（同編號）再存一次就是更新，不另外多一筆
-    if (q.quoteNo) recentQuotes = recentQuotes.filter(function(x){ return x.quoteNo !== q.quoteNo; });
+    if (q.quoteNo){ markSyncDeleted(recentQuotes.filter(function(x){ return x.quoteNo === q.quoteNo && x.id !== q.id; }).map(function(x){ return x.id; }));
+      recentQuotes = recentQuotes.filter(function(x){ return x.quoteNo !== q.quoteNo; }); }
     recentQuotes.unshift(q);
     if (recentQuotes.length > 50) recentQuotes = recentQuotes.slice(0, 50);
     saveRecentQuotesList();
@@ -7142,7 +7146,9 @@
       if (delBtn){
         var id = delBtn.getAttribute('data-del-quote');
         recentQuotes = recentQuotes.filter(function(q){ return q.id !== id; });
+        markSyncDeleted([id]);
         saveRecentQuotesList();
+        doFullSync(true);
         renderRecentQuotesList();
         renderDispatchQuoteSelect();
         renderCustPickSelects();
@@ -7330,6 +7336,12 @@
       var idx = -1;
       recentOrders.forEach(function(x, i){ if (x.id === editingOrderId) idx = i; });
       if (idx >= 0){ o.id = editingOrderId; carryOrderFlags(recentOrders[idx], o); recentOrders[idx] = o; updated = true; }
+    }
+    // 同一張報價已經轉過訂單（例如另一台裝置轉過）：更新原本那筆，不另外多一筆
+    if (!updated && !asNew && o.quoteNo){
+      var dupIdx = -1;
+      recentOrders.forEach(function(x, i){ if (dupIdx < 0 && x && x.quoteNo === o.quoteNo && x.date === o.date && x.svcType === o.svcType) dupIdx = i; });
+      if (dupIdx >= 0){ o.id = recentOrders[dupIdx].id; carryOrderFlags(recentOrders[dupIdx], o); if (!o.formalNo) o.formalNo = recentOrders[dupIdx].formalNo || ''; recentOrders[dupIdx] = o; editingOrderId = o.id; updated = true; }
     }
     if (!updated){
       recentOrders.unshift(o);
@@ -7548,11 +7560,25 @@
     els.syncStatusMsg.className = 'sync-status' + (kind ? ' ' + kind : '');
   }
 
+  // 刪除紀錄（墓碑）：在任一台刪掉或被取代的報價／訂單，同步時不會從雲端被補回來
+  var SYNC_DEL_KEY = 'hhlc_sync_deleted';
+  var syncDeleted = {}; try { syncDeleted = JSON.parse(safeGet(SYNC_DEL_KEY) || '{}') || {}; } catch(e){ syncDeleted = {}; }
+  function markSyncDeleted(ids){
+    var now = Date.now(); (ids || []).forEach(function(id){ if (id) syncDeleted[id] = now; });
+    var cut = now - 60 * 864e5; Object.keys(syncDeleted).forEach(function(k){ if (syncDeleted[k] < cut) delete syncDeleted[k]; });
+    safeSet(SYNC_DEL_KEY, JSON.stringify(syncDeleted));
+  }
+  function mergeSyncDeleted(cloudDel){
+    Object.keys(cloudDel || {}).forEach(function(k){ if (!syncDeleted[k] || syncDeleted[k] < cloudDel[k]) syncDeleted[k] = cloudDel[k]; });
+    safeSet(SYNC_DEL_KEY, JSON.stringify(syncDeleted));
+  }
+  function syncAlive(item){ var t = item && syncDeleted[item.id]; return !t || new Date(item.savedAt || 0).getTime() > t; }
+  function syncSig(list){ return (list || []).map(function(x){ return x && x.id + '@' + (x.savedAt || ''); }).join('|'); }
   function mergeSyncLists(localList, cloudList){
     var map = {};
-    (localList || []).forEach(function(item){ if (item && item.id) map[item.id] = item; });
+    (localList || []).forEach(function(item){ if (item && item.id && syncAlive(item)) map[item.id] = item; });
     (cloudList || []).forEach(function(item){
-      if (!item || !item.id) return;
+      if (!item || !item.id || !syncAlive(item)) return;
       var existing = map[item.id];
       if (!existing || new Date(item.savedAt || 0) > new Date(existing.savedAt || 0)){
         map[item.id] = item;
@@ -7564,7 +7590,7 @@
     return merged;
   }
 
-  var hhlcSyncBusy = false;
+  var hhlcSyncBusy = false, hhlcSyncAgain = false, hhlcLastSyncAt = 0;
   function doFullSync(silent){
     var passcode = els.syncPasscodeInput ? els.syncPasscodeInput.value.trim() : '';
     if (!passcode){
@@ -7575,19 +7601,27 @@
       if (!silent) hhlcSyncStatus('同步元件尚未就緒，請稍後再試（需要網路連線）', 'err');
       return;
     }
-    if (hhlcSyncBusy) return;
-    hhlcSyncBusy = true;
-    hhlcSyncStatus('同步中…', 'busy');
+    // 同步進行中又有新的儲存：等這次做完再補同步一次，不會漏傳
+    if (hhlcSyncBusy){ hhlcSyncAgain = true; return; }
+    hhlcSyncBusy = true; hhlcLastSyncAt = Date.now();
+    if (!silent) hhlcSyncStatus('同步中…', 'busy');
     window.__hhlcSync.pull(passcode).then(function(cloud){
+      mergeSyncDeleted(cloud && cloud.deleted);
+      var lq = syncSig(recentQuotes), lo = syncSig(recentOrders);
       recentQuotes = mergeSyncLists(recentQuotes, cloud && cloud.quotes);
       recentOrders = mergeSyncLists(recentOrders, cloud && cloud.orders);
-      saveRecentQuotesList();
-      saveRecentOrdersList();
-      renderRecentQuotesList();
-      renderRecentOrdersList();
-      renderDispatchQuoteSelect();
-      renderReceiptOrderSelect();
-      return window.__hhlcSync.push(passcode, { quotes: recentQuotes, orders: recentOrders });
+      if (syncSig(recentQuotes) !== lq || syncSig(recentOrders) !== lo){
+        saveRecentQuotesList();
+        saveRecentOrdersList();
+        renderRecentQuotesList();
+        renderRecentOrdersList();
+        renderDispatchQuoteSelect();
+        renderReceiptOrderSelect();
+      }
+      var cloudSame = cloud && syncSig(cloud.quotes) === syncSig(recentQuotes) && syncSig(cloud.orders) === syncSig(recentOrders) &&
+        JSON.stringify(cloud.deleted || {}) === JSON.stringify(syncDeleted);
+      if (cloudSame) return;
+      return window.__hhlcSync.push(passcode, { quotes: recentQuotes, orders: recentOrders, deleted: syncDeleted });
     }).then(function(){
       safeSet('hhlc_sync_passcode', passcode);
       var now = new Date();
@@ -7597,8 +7631,14 @@
       hhlcSyncStatus('同步失敗，請確認密碼或網路連線後再試一次', 'err');
     }).then(function(){
       hhlcSyncBusy = false;
+      if (hhlcSyncAgain){ hhlcSyncAgain = false; setTimeout(function(){ doFullSync(true); }, 300); }
     });
   }
+  // 手機／電腦切回這個頁面、或開著的時候每分鐘，自動跟雲端對一次（跟禮車系統一樣，不用手動按同步）
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden && Date.now() - hhlcLastSyncAt > 15000) doFullSync(true);
+  });
+  setInterval(function(){ if (!document.hidden && Date.now() - hhlcLastSyncAt > 55000) doFullSync(true); }, 60000);
 
   function initSyncBar(){
     var savedPasscode = safeGet('hhlc_sync_passcode');
@@ -7687,7 +7727,9 @@
       if (delBtn){
         var id = delBtn.getAttribute('data-del-order');
         recentOrders = recentOrders.filter(function(o){ return o.id !== id; });
+        markSyncDeleted([id]);
         saveRecentOrdersList();
+        doFullSync(true);
         if (editingOrderId === id) editingOrderId = null;
         updateOrderEditUI();
         renderRecentOrdersList();
