@@ -888,6 +888,9 @@
   .wk-day h3 span.tg{ background:var(--accent); color:var(--accent-ink); border-radius:999px; padding:1px 9px; font-size:.8rem; margin-left:6px; }
   @media (max-width:640px){ .grid7 .day{ min-height:58px; } .grid7 .day .it{ font-size:0; height:6px; padding:0; } .sync-bar.inline .sync-status{ max-width:120px; } .orderbar select{ max-width:100%; } }
   /* 喊單：司機在司機回報平台傳喊單碼 */
+  .drv-hits{ display:flex; flex-direction:column; gap:6px; margin:0 0 10px; }
+  .drv-hits button{ text-align:left; padding:10px 12px; border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:10px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+  .drv-hits .none{ opacity:.7; padding:4px 2px; }
   .claim-box{ margin:0 0 16px; padding:12px 14px; border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:10px; background:color-mix(in srgb, var(--accent) 7%, transparent); }
   .claim-title{ font-weight:600; margin-bottom:8px; }
   .claim-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px; }
@@ -1274,8 +1277,12 @@
             </div>
           </div>
           <div class="field">
-            <label for="dDriverSelect">指派司機</label>
+            <label for="dDriverSearch">指派司機</label>
+            <input type="search" id="dDriverSearch" placeholder="輸入司機名字或車牌快速找" autocomplete="off" style="margin-bottom:8px;">
+            <div class="drv-hits" id="dDriverHits" hidden></div>
             <select id="dDriverSelect"><option value="">－未指派－</option></select>
+            <p class="hint" id="dPlateRuleHint" style="margin-top:6px;"></p>
+            <label style="font-weight:400;font-size:.9em;"><input type="checkbox" id="dShowAllPlates"> 顯示全部車牌（含自用車）</label>
           </div>
           <div class="claim-box" id="dClaimBox" hidden></div>
           <div class="field" style="margin-bottom:0;">
@@ -3603,10 +3610,16 @@
     if (!els.dDriverSelect) return;
     var filter = currentCarFilter();
     var prevVal = els.dDriverSelect.value;
-    var list = drivers.filter(function(d){ return filter === 'all' || d.size === filter; });
+    var rule = plateRule(), q = driverQuery();
+    var okD = function(name, plate){ return plateAllowed(plate, rule) && driverMatches(q, name, plate); };
+    var list = drivers.filter(function(d){ return (filter === 'all' || d.size === filter) && okD(d.name, d.plate); });
     list = list.filter(function(d){ return !d.paused; }).concat(list.filter(function(d){ return d.paused; }));
+    // 已選的司機就算被篩掉也保留在選單裡，避免一改篩選就默默變成未指派
+    var keepSel = prevVal && !/^sh:/.test(prevVal) && !list.some(function(d){ return d.id === prevVal; }) ? drivers.find(function(d){ return d.id === prevVal; }) : null;
+    if (keepSel) list.unshift(keepSel);
     var shared = sharedDrivers.map(function(x, i){ return { x: x, i: i }; }).filter(function(o){
       if (!o.x || !o.x.name || sharedInLocal(o.x)) return false;
+      if (!okD(o.x.name, o.x.plate)) return false;
       var sz = sharedSize(o.x); return filter === 'all' || !sz || sz === filter;
     }).sort(function(a, b){ return (a.x.src === '司機總表' ? 0 : 1) - (b.x.src === '司機總表' ? 0 : 1) || String(a.x.name).localeCompare(String(b.x.name), 'zh-Hant'); });
     var html = '<option value="">－未指派－（可選 ' + (list.length + shared.length) + ' 位）</option>' +
@@ -3618,7 +3631,48 @@
       }).join('') + '</optgroup>' : '');
     els.dDriverSelect.innerHTML = html;
     if (list.some(function(d){ return d.id === prevVal; })) els.dDriverSelect.value = prevVal;
+    var hintEl = document.getElementById('dPlateRuleHint');
+    if (hintEl) hintEl.textContent = rule === 'R' ? '接機：只列 R 牌（短租）司機' : rule === 'RT' ? '送機：只列 R 牌（短租）或多元計程車牌司機' : '';
+    renderDriverHits(q, list, shared);
     updateDriverReadout();
+  }
+  function ensureDriverOpt(id){
+    if (!id || !els.dDriverSelect || /^sh:/.test(id)) return;
+    if ([].some.call(els.dDriverSelect.options, function(o){ return o.value === id; })) return;
+    var d = drivers.find(function(x){ return x.id === id; }); if (!d) return;
+    var op = document.createElement('option'); op.value = d.id; op.textContent = (d.paused ? '⛔暫停派車 ' : '') + driverOptLabel(d.name, d.car, d.plate);
+    els.dDriverSelect.insertBefore(op, els.dDriverSelect.options[1] || null);
+  }
+  // 機場接送不用自用車牌：接機（含接送來回）只能 R 牌短租；送機可 R 牌或多元計程車牌（T 開頭）
+  function plateRule(){
+    var all = document.getElementById('dShowAllPlates');
+    if (all && all.checked) return '';
+    var t = currentSvcType();
+    if (t === '接機' || t === '接送') return 'R';
+    if (t === '送機') return 'RT';
+    return '';
+  }
+  function plateAllowed(plate, rule){
+    if (!rule) return true;
+    var p = normPlate(plate);
+    if (/^R/.test(p)) return true;
+    return rule === 'RT' && /^T/.test(p);
+  }
+  function driverQuery(){ var el = document.getElementById('dDriverSearch'); return el ? el.value.trim() : ''; }
+  function driverMatches(q, name, plate){
+    if (!q) return true;
+    var qp = normPlate(q);
+    return String(name || '').indexOf(q) >= 0 || (qp && normPlate(plate).indexOf(qp) >= 0);
+  }
+  function renderDriverHits(q, list, shared){
+    var box = document.getElementById('dDriverHits'); if (!box) return;
+    if (!q){ box.hidden = true; box.innerHTML = ''; return; }
+    var items = list.map(function(d){ return { v: d.id, t: (d.paused ? '⛔暫停派車 ' : '') + driverOptLabel(d.name, d.car, d.plate) }; })
+      .concat(shared.map(function(o){ return { v: 'sh:' + o.i, t: driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate) }; }))
+      .filter(function(it){ return it.v; }).slice(0, 8);
+    box.hidden = false;
+    box.innerHTML = items.length ? items.map(function(it){ return '<button type="button" data-drv-pick="' + escapeHtml(it.v) + '">' + escapeHtml(it.t) + '</button>'; }).join('')
+      : '<div class="none">找不到符合的司機' + (plateRule() ? '（可勾「顯示全部車牌」再找）' : '') + '</div>';
   }
   // 從司機總表選到的司機：自動加進這台的司機資料庫，之後派車單、行事曆都照原本流程
   function adoptSharedDriver(i){
@@ -3686,7 +3740,7 @@
           if (allFilterEl) allFilterEl.checked = true;
           populateDriverSelect();
         }
-        els.dDriverSelect.value = d.id;
+        ensureDriverOpt(d.id); els.dDriverSelect.value = d.id;
         updateDriverReadout();
       }
       els.driverPaste.value = '';
@@ -3761,6 +3815,19 @@
   document.querySelectorAll('input[name="dCarFilter"]').forEach(function(r){
     r.addEventListener('change', populateDriverSelect);
   });
+  document.querySelectorAll('input[name="dSvcType"]').forEach(function(r){ r.addEventListener('change', populateDriverSelect); });
+  (function(){
+    var srch = document.getElementById('dDriverSearch'), all = document.getElementById('dShowAllPlates'), hits = document.getElementById('dDriverHits');
+    if (srch) srch.addEventListener('input', populateDriverSelect);
+    if (all) all.addEventListener('change', populateDriverSelect);
+    if (hits) hits.addEventListener('click', function(e){
+      var b = e.target.closest('[data-drv-pick]'); if (!b || !els.dDriverSelect) return;
+      els.dDriverSelect.value = b.getAttribute('data-drv-pick');
+      els.dDriverSelect.dispatchEvent(new Event('change'));
+      if (srch) srch.value = '';
+      populateDriverSelect();
+    });
+  })();
   if (els.dDriverSelect){
     els.dDriverSelect.addEventListener('change', function(){
       var v = els.dDriverSelect.value;
@@ -3769,7 +3836,7 @@
         if (d){
           var all = document.querySelector('input[name="dCarFilter"][value="all"]');
           if (all && !all.checked && d.size !== currentCarFilter()){ all.checked = true; populateDriverSelect(); }
-          els.dDriverSelect.value = d.id;
+          ensureDriverOpt(d.id); els.dDriverSelect.value = d.id;
         } else els.dDriverSelect.value = '';
       }
       updateDriverReadout();
@@ -4343,7 +4410,7 @@
     }
     var all = document.querySelector('input[name="dCarFilter"][value="all"]');
     if (all && !all.checked){ all.checked = true; populateDriverSelect(); }
-    els.dDriverSelect.value = d.id;
+    ensureDriverOpt(d.id); els.dDriverSelect.value = d.id;
     updateDriverReadout();
     setDispatchStatus(document.getElementById('dClaimStatus'), '已帶入「' + name + '」，確認後請按「💾 儲存司機指派」', 'ok');
   }
@@ -7592,7 +7659,7 @@
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = !!o.isKnownCustomer;
     updatePaymentUI();
     if (o.driverId && els.dDriverSelect){
-      els.dDriverSelect.value = o.driverId;
+      ensureDriverOpt(o.driverId); els.dDriverSelect.value = o.driverId;
       updateDriverReadout();
     }
     keptDriverSnap = (o.driverName && !(o.driverId && driverById(o.driverId)))
