@@ -1104,8 +1104,8 @@
             <label for="dCustNote">客人備註（只有自己看得到，不會出現在行程單）</label>
             <input type="text" id="dCustNote" placeholder="例如：王經理的朋友、阿明介紹、台積電">
           </div>
-          <div class="check-row">
-            <input type="checkbox" id="dIsKnownCustomer">
+          <div class="check-row" hidden>
+            <input type="checkbox" id="dIsKnownCustomer" checked>
             <label for="dIsKnownCustomer" style="margin:0;">設為熟客（存入熟客建議名單）</label>
           </div>
 
@@ -1362,8 +1362,14 @@
       <!-- LEFT: FORM -->
       <div class="form-col">
         <div class="card">
-          <h2><span class="dot"></span>載入訂單</h2>
-          <p class="hint">勾選要找「接機」司機、「送機」司機，或兩個都勾選（一起找，發同一則訊息）；來回通常是分開儲存的兩筆訂單，接機／送機請分別選擇對應的那一筆</p>
+          <h2><span class="dot"></span>要找司機的行程</h2>
+          <p class="hint">最上方選好的訂單會自動勾在這裡；也可以用編號、代碼、客人、地區搜尋，所有還沒派司機的單都找得到。可以勾多趟一起發</p>
+          <input type="text" id="fdQ" placeholder="搜尋編號、代碼、客人、地區、航班" style="margin-bottom:8px">
+          <div class="quick-picks" id="fdTypes" style="margin-bottom:8px">
+            <button type="button" class="chip on" data-fdt="">全部</button><button type="button" class="chip" data-fdt="接機">接機</button><button type="button" class="chip" data-fdt="送機">送機</button><button type="button" class="chip" data-fdt="接送">接送</button><button type="button" class="chip" data-fdt="包車">包車</button><button type="button" class="chip" data-fdt="其他">其他</button>
+          </div>
+          <div id="fdList" style="max-height:340px;overflow:auto;border:1px solid var(--line,#e4dbce);border-radius:10px;padding:4px 8px"></div>
+          <div hidden>
           <div class="field">
             <div class="check-row"><input type="checkbox" id="fdSvcArrival"><label for="fdSvcArrival" style="margin:0;">接機</label></div>
             <div class="field" id="fdArrivalOrderField" style="display:none; margin-top:6px; margin-bottom:0;">
@@ -1377,6 +1383,7 @@
               <label for="fdDepartureOrderSelect">送機訂單</label>
               <select id="fdDepartureOrderSelect"><option value="">－選擇訂單－</option></select>
             </div>
+          </div>
           </div>
         </div>
 
@@ -1486,8 +1493,8 @@
               <button type="button" class="secondary" id="qAddrAddBtn" style="padding:6px 14px;">＋ 新增地址</button>
             </div>
           </div>
-          <div class="check-row">
-            <input type="checkbox" id="qIsKnownCustomer">
+          <div class="check-row" hidden>
+            <input type="checkbox" id="qIsKnownCustomer" checked>
             <label for="qIsKnownCustomer" style="margin:0;">設為熟客（存入熟客建議名單）</label>
           </div>
           <div class="field" style="margin-bottom:0;">
@@ -3321,7 +3328,7 @@
       if (TAB_PANELS[key]) TAB_PANELS[key].hidden = (key !== name);
       if (TAB_BTNS[key]) TAB_BTNS[key].classList.toggle('active', key === name);
     });
-    if (name === 'findDriver') renderFindDriverDoc();
+    if (name === 'findDriver'){ if (editingOrderId && fdSel.indexOf(editingOrderId) === -1){ var eo = recentOrders.find(function(o){ return o.id === editingOrderId; }); if (eo && !eo.driverName) fdSel = [editingOrderId]; } renderFindDriverDoc(); }
     if (name === 'dispatch') { renderClaimBox(); fetchClaims(); }
     if (name === 'cal') { try { renderCal(); } catch(e){} }
   }
@@ -4211,6 +4218,7 @@
       custSource: q.custSource,
       custSourceName: q.custSourceName,
       contactName: q.custName,
+      quoteNo: q.quoteNo || '',
       savedAt: q.savedAt
     };
   }
@@ -4267,8 +4275,11 @@
     var svcArea;
     if (direction === '接機'){
       svcArea = dropoffArea ? ('接機' + dropoffArea) : '接機';
-    } else {
+    } else if (direction === '送機'){
       svcArea = pickupArea ? (pickupArea + '送機') : '送機';
+    } else {
+      svcArea = [pickupArea, dropoffArea].filter(Boolean).join('→') + (direction === '包車' ? ' 包車' : direction === '其他' || direction === '接送' ? '' : ' ' + direction);
+      svcArea = svcArea.trim() || direction;
     }
     var parts = [];
     if (dateStr && dateStr !== '—') parts.push(dateStr);
@@ -4290,7 +4301,9 @@
 
     // 兩個方向都勾選時，兩行照日期先後排序（通常送機在前、接機在後，但日期
     // 才是準確依據，避免固定順序在少數狀況下排反）
-    var entries = [];
+    var entries = wantedFindDriverLegs().map(function(x){ return { date: (x.order.date || '') + ' ' + (x.order.pickupTime || ''), line: buildFindDriverLegLine(x.order, x.svc, carStr, amountVal), code: (claimCodes || {})[x.ref] || '' }; });
+    entries.sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+    wantArrival = false; wantDeparture = false;
     if (wantArrival){
       var arrivalOrder = findOrderById(els.fdArrivalOrderSelect && els.fdArrivalOrderSelect.value);
       entries.push({ date: (arrivalOrder && arrivalOrder.date) || '', line: buildFindDriverLegLine(arrivalOrder, '接機', carStr, amountVal), code: arrivalOrder ? ((claimCodes || {})[arrivalOrder.id + '|接機'] || '') : '' });
@@ -4330,6 +4343,7 @@
   }
 
   function renderFindDriverDoc(){
+    try { renderFdList(); } catch(e){}
     if (!els.findDriverPreviewBody) return;
     els.findDriverPreviewBody.textContent = buildFindDriverText();
     ensureClaimCodes();
@@ -4340,7 +4354,47 @@
   var CLAIM_CODES_KEY = 'hhlc_claim_codes';
   var claimCodes = (function(){ try { return JSON.parse(safeGet(CLAIM_CODES_KEY) || '{}') || {}; } catch(e){ return {}; } })();
   var claimFetchBusy = {};
+  // ---------- 找司機：勾選要找的行程（所有還沒派司機的訂單＋還沒成單的報價段） ----------
+  var fdSel = [], fdType = '';
+  function fdDir(o){ return o.svcType === '接機' ? '接機' : o.svcType === '送機' ? '送機' : (o.svcType || '其他'); }
+  function fdCandidates(){
+    var t = todayStr();
+    var orders = recentOrders.filter(function(o){ return o && !o.driverName && !isWebCancelled(o) && (o.date || '') >= t; });
+    var quoteLegs = [];
+    recentQuotes.forEach(function(q){ if (!q || q.lost || quoteHasOrder(q)) return; (q.legs || []).forEach(function(leg, idx){ if ((leg.date || '') >= t) quoteLegs.push(quoteLegToFindDriverOrder(q, leg, idx)); }); });
+    return orders.concat(quoteLegs).sort(function(a, b){ return String(a.date || '').localeCompare(String(b.date || '')) || String(a.pickupTime || '').localeCompare(String(b.pickupTime || '')); });
+  }
+  function fdLabel(o){
+    var isQ = /^ql_/.test(o.id);
+    var area = shortAreaForFindDriver(o.svcType === '接機' ? (o.dropoffAddr || o.dropoffFullAddr || '') : (o.pickupAddr || o.pickupFullAddr || ''));
+    return (o.formalNo ? o.formalNo + ' ' : (o.quoteNo ? o.quoteNo + ' ' : '')) + (o.code ? '〔' + o.code + '〕' : '') + fmtMD(o.date) + ' ' + (o.pickupTime || '') + ' ' + (o.svcType || '') + (area ? ' ' + area : '') + '｜' + (o.contactName || o.custSourceName || '') + (isQ ? '（報價中）' : '');
+  }
+  function renderFdList(){
+    var box = document.getElementById('fdList'); if (!box) return;
+    var q = String((document.getElementById('fdQ') || {}).value || '').trim().toLowerCase();
+    var all = fdCandidates();
+    fdSel = fdSel.filter(function(id){ return all.some(function(o){ return o.id === id; }) || recentOrders.some(function(o){ return o.id === id; }); });
+    var list = all.filter(function(o){
+      if (fdSel.indexOf(o.id) !== -1) return true;
+      if (fdType && (o.svcType || '其他') !== fdType) return false;
+      if (q && (fdLabel(o) + ' ' + (o.flightNo || '') + ' ' + JSON.stringify(o)).toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    box.innerHTML = list.length ? list.map(function(o){
+      return '<label class="check-row" style="margin:6px 0;align-items:flex-start"><input type="checkbox" data-fdo="' + escapeHtml(o.id) + '"' + (fdSel.indexOf(o.id) !== -1 ? ' checked' : '') + '><span style="margin:0">' + escapeHtml(fdLabel(o)) + '</span></label>';
+    }).join('') : '<p class="list-empty" style="margin:8px 0">沒有符合的未派車行程</p>';
+    document.querySelectorAll('#fdTypes [data-fdt]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-fdt') === fdType); });
+  }
+  (function(){
+    var box = document.getElementById('fdList'), qi = document.getElementById('fdQ'), ty = document.getElementById('fdTypes');
+    if (box) box.addEventListener('change', function(e){ var c = e.target.closest('[data-fdo]'); if (!c) return; var id = c.getAttribute('data-fdo'); fdSel = fdSel.filter(function(x){ return x !== id; }); if (c.checked) fdSel.push(id); renderFindDriverDoc(); });
+    if (qi) qi.addEventListener('input', renderFdList);
+    if (ty) ty.addEventListener('click', function(e){ var b = e.target.closest('[data-fdt]'); if (!b) return; fdType = b.getAttribute('data-fdt'); renderFdList(); });
+  })();
   function wantedFindDriverLegs(){
+    return fdSel.map(function(id){ var o = findOrderById(id) || fdCandidates().find(function(x){ return x.id === id; }); return o ? { ref: o.id + '|' + fdDir(o), order: o, svc: fdDir(o) } : null; }).filter(Boolean);
+  }
+  function wantedFindDriverLegsOld(){
     var out = [];
     [['接機', els.fdSvcArrival, els.fdArrivalOrderSelect], ['送機', els.fdSvcDeparture, els.fdDepartureOrderSelect]].forEach(function(x){
       if (!x[1] || !x[1].checked || !x[2]) return;
@@ -6973,6 +7027,8 @@
     renderPriceList();
     loadRecentQuotes();
     try { dedupeQuotes(); } catch(e){}
+    // 所有訂單／報價的客人都存成客人資料（含訂單用過的完整地址），每次開啟補一次新的
+    setTimeout(function(){ try { backfillCustomers(); } catch(e){} }, 2500);
     // 包車報價併進「報價」：行程類型選「包車」即可；包車價目表搬到報價頁，原本的包車分頁收起來
     try {
       var cpCard = document.getElementById('charterPriceList') && document.getElementById('charterPriceList').closest('.card');
@@ -7121,7 +7177,9 @@
       if (!recentQuotes.length){
         els.recentQuoteList.innerHTML = '<p class="list-empty">尚未儲存報價</p>';
       } else {
-        var seenNo = {}, shown = recentQuotes.filter(function(q){ if (!q.quoteNo) return true; if (seenNo[q.quoteNo]) return false; seenNo[q.quoteNo] = 1; return true; });
+        // 用車日已經過的報價不列在這裡（資料還在，可以用上方搜尋找到）
+        var todayYmd = todayStr();
+        var seenNo = {}, shown = recentQuotes.filter(function(q){ var d = firstLegDate(q); if (d && d < todayYmd) return false; if (!q.quoteNo) return true; if (seenNo[q.quoteNo]) return false; seenNo[q.quoteNo] = 1; return true; });
         els.recentQuoteList.innerHTML = '<div style="display:flex;gap:8px;align-items:center"><select id="recentQuoteSel" style="flex:1;min-width:0"><option value="">－選擇報價（共 ' + shown.length + ' 筆）－</option>' + shown.map(function(q){
           var firstLeg = q.legs && q.legs[0];
           var legSummary = firstLeg ? (fmtMD(firstLeg.date) + ' ' + firstLeg.svc) : '';
@@ -7131,6 +7189,7 @@
     }
     // 報價存的每一段行程也是找司機的候選訂單來源，報價列表更新時要一併刷新
     renderFindDriverOrderSelects();
+    try { renderOrderSwitcher(); } catch(e){}
   }
 
   function serializeCurrentQuote(){
@@ -7170,7 +7229,7 @@
       overseasPay: !!(document.getElementById('qOverseasPay') && document.getElementById('qOverseasPay').checked),
       rawTotal: rawTotal,
       finalTotal: finalTotal,
-      isKnownCustomer: !!(els.qIsKnownCustomer && els.qIsKnownCustomer.checked),
+      isKnownCustomer: true,   // 2026-10-13 起所有客人都存客人資料，不再分熟客
       quoteNo: quoteSameCustomer() ? currentQuoteNo : '',
       formalNo: quoteSameCustomer() ? currentQuoteFormalNo : '',
       followN: quoteSameCustomer() ? (currentQuoteFlags.followN || 0) : 0,
@@ -7332,13 +7391,22 @@
       var nm = o.contactName || o.custSourceName || '未命名';
       return '<option value="' + escapeHtml(o.id) + '">' + escapeHtml((o.formalNo ? o.formalNo + ' ' : '') + fmtMD(o.date) + ' ' + (o.svcType || '') + ' ' + nm + (isWebOrder(o) ? (isWebCancelled(o) ? '（官網取消）' : '（官網）') : '') + (orderDriverLabel(o) || isWebCancelled(o) ? '' : ' ・未指派')) + '</option>';
     }
-    sel.innerHTML = '<option value="">切換訂單…（' + recentOrders.length + ' 筆）</option>' +
-      (up.length ? '<optgroup label="今天起">' + up.map(opt).join('') + '</optgroup>' : '') +
-      (past.length ? '<optgroup label="過去">' + past.map(opt).join('') + '</optgroup>' : '');
-    if (keep && recentOrders.some(function(o){ return o.id === keep; })) sel.value = keep;
+    // 報價和訂單放同一個選單：已成單的一區、還在報價的一區（用車日已過的報價不列）
+    var qs = (recentQuotes || []).filter(function(q){ var d = firstLegDate(q); return q && !q.lost && (!d || d >= t) && !quoteHasOrder(q); })
+      .sort(function(a, b){ return String(firstLegDate(a) || '9').localeCompare(String(firstLegDate(b) || '9')); });
+    function qopt(q){
+      var leg = (q.legs || [])[0] || {}, nm = q.custSourceName || q.custName || '未命名';
+      return '<option value="q:' + escapeHtml(q.id) + '">' + escapeHtml((q.quoteNo ? q.quoteNo + ' ' : '') + fmtMD(leg.date || '') + ' ' + (leg.svc || '') + ((q.legs || []).length > 1 ? ' 等 ' + q.legs.length + ' 段' : '') + ' ' + nm + ' NT$' + fmtNum(q.finalTotal || 0)) + '</option>';
+    }
+    sel.innerHTML = '<option value="">切換訂單／報價…（訂單 ' + up.length + '｜報價 ' + qs.length + '）</option>' +
+      (up.length ? '<optgroup label="📋 訂單（今天起）">' + up.map(opt).join('') + '</optgroup>' : '') +
+      (qs.length ? '<optgroup label="📝 報價中（還沒成單）">' + qs.map(qopt).join('') + '</optgroup>' : '') +
+      (past.length ? '<optgroup label="已完成的訂單">' + past.map(opt).join('') + '</optgroup>' : '');
+    if (keep && [].some.call(sel.options, function(o){ return o.value === keep; })) sel.value = keep;
   }
   if (els.orderSel) els.orderSel.addEventListener('change', function(){
     var id = els.orderSel.value; if (!id) return;
+    if (/^q:/.test(id)){ switchTab('quote'); loadQuoteIntoForm(id.slice(2)); try { window.scrollTo(0, 0); } catch(e){} return; }
     switchTab('dispatch'); loadOrderIntoDispatchForm(id);
     try { window.scrollTo(0, 0); } catch(e){}
   });
@@ -7461,7 +7529,7 @@
       quoteNo: currentOrderNos.quoteNo || '',
       formalNo: currentOrderNos.formalNo || '',
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
-      isKnownCustomer: !!(els.dIsKnownCustomer && els.dIsKnownCustomer.checked)
+      isKnownCustomer: true
     };
   }
 
@@ -8228,7 +8296,7 @@
   // 常用地址按鈕，不用再跑去「熟客常用地址管理」手動重複輸入一次。
   function learnKnownCustomerAddress(customer, fullAddress, shortAreaHint){
     var addr = (fullAddress || '').trim();
-    if (!customer || !addr) return false;
+    if (!customer || !addr || /機場|航廈|airport/i.test(addr)) return false;
     if (!customer.addresses) customer.addresses = [];
     var already = customer.addresses.some(function(a){ return a.address === addr; });
     if (already) return false;
@@ -8241,6 +8309,22 @@
     return true;
   }
 
+  function backfillCustomers(){
+    var before = JSON.stringify(knownCustomers), touched = false;
+    kcMerging = true;
+    try {
+      (recentOrders || []).forEach(function(o){
+        if (!o || (!o.contactPhone && !o.custSourceName && !o.contactName)) return;
+        var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone, note: o.custNote });
+        if (kc){ learnKnownCustomerAddress(kc, o.pickupFullAddr, o.pickupAddr); learnKnownCustomerAddress(kc, o.dropoffFullAddr, o.dropoffAddr); touched = true; }
+      });
+      (recentQuotes || []).forEach(function(q){
+        if (!q || (!q.custPhone && !q.custSourceName && !q.custName)) return;
+        if (upsertKnownCustomer({ source: q.custSource, sourceName: q.custSourceName, name: q.custName, phone: q.custPhone, note: q.custNote })) touched = true;
+      });
+    } finally { kcMerging = false; }
+    if (touched && JSON.stringify(knownCustomers) !== before){ saveKnownCustomersList(); try { renderCustPickSelects(); } catch(e){} }
+  }
   function custPickLabel(c){
     var name = c.sourceName || c.name || '未命名客戶';
     var extra = [];
@@ -8311,6 +8395,24 @@
     recentOrders.forEach(function(o){ if (ids.indexOf(o.id) !== -1){ Object.assign(o, patch); n++; } });
     if (n){ saveRecentOrdersList(); doFullSync(true); renderTodoBadge(); }
     return n;
+  }
+  // ---------- 報價追銷話術（第 1／2／3 次各一版，複製後自動記一次追蹤） ----------
+  function quoteFollowText(q){
+    var leg = (q.legs || [])[0] || {}, n = +q.followN || 0;
+    var nm = String(q.custName || q.custSourceName || '').split(/[-－(（]/)[0].trim();
+    var hi = nm ? nm + '您好' : '您好';
+    var when = fmtMD(leg.date || '') + ((q.legs || []).length > 1 ? ' 起' : '');
+    var svc = (q.legs || []).map(function(l){ return l.svc; }).filter(function(v, i, a){ return a.indexOf(v) === i; }).join('＋') || '接送';
+    var area = simplifyAddressArea((leg.svc === '接機' ? leg.dropoffArea : leg.pickupArea) || leg.pickupArea || leg.dropoffArea || '');
+    var trip = when + ' ' + (area ? area + ' ' : '') + svc;
+    var pl = null; try { var m = paylinkMap(), k = String(q.quoteNo || '').replace(/[^A-Za-z0-9_.:-]/g, ''); pl = k && m[k]; } catch (e) {}
+    var link = pl && pl.url && !pl.cancelled && !pl.paidAuto ? pl.url : '';
+    var expired = link && pl.deadline && Date.now() > (Date.parse(pl.deadline) || +pl.deadline || 0);
+    var payLine = q.cashPay ? '當天司機現場收現金即可，確認後我就幫您安排車輛。' : (link && !expired ? '確認的話用這個連結付款就完成預訂了：\n' + link : '確認的話跟我說一聲，我馬上開付款連結給您。');
+    var d = dayDiff(firstLegDate(q));
+    if (n === 0) return hi + ' 😊\n想跟您確認一下 ' + trip + ' 的行程，時間有確定了嗎？\n' + payLine + '\n時間、人數、行李有要調整也都可以直接跟我說 🙏';
+    if (n === 1) return hi + '～\n' + trip + ' 的報價（NT$' + fmtNum(q.finalTotal || 0) + '）還幫您保留著' + (d !== null && d <= 7 ? '，出發日快到了，' : '，') + '需要用車的話建議早點確認，我們好先幫您安排車輛和司機 😊\n' + payLine;
+    return hi + '，最後跟您確認一下 ' + trip + ' 還需要幫您安排嗎？\n如果已經有其他安排也沒關係，之後出國接送都很歡迎再找好好禮車 🙏';
   }
   function markQuotes(ids, fn){
     var n = 0;
@@ -8415,7 +8517,7 @@
     Object.keys(todoSel).forEach(function(id){ if (!rows.some(function(r){ return r.id === id; })) delete todoSel[id]; });
     var nSel = Object.keys(todoSel).length;
     var B = [['all', nSel && nSel === rows.length ? '取消全選' : '全選'], ['names', '複製客人名稱']];
-    if (todoF === 'quote') B.push(['follow', '標記已追蹤'], ['lost', '標記失單']);
+    if (todoF === 'quote') B.push(['followCopy', '複製追銷話術＋標記已追蹤'], ['follow', '標記已追蹤'], ['lost', '標記失單']);
     if (todoF === 'tt') B.push(['tt', '標記已記 TimeTree']);
     if (todoF === 'pax') B.push(['pax', '標記已傳乘客資訊']);
     if (todoF === 'receipt') B.push(['receipt', '標記已開收據']);
@@ -8424,7 +8526,8 @@
     document.getElementById('todoList').innerHTML = rows.length ? rows.map(function(r){
       var tags = r.T.filter(function(t){ return todoF === 'all' || t.k === todoF; }).map(function(t){ return '<span class="todo-tag' + (t.late ? ' late' : '') + '">' + TODO_ST[t.k] + (t.why ? '・' + escapeHtml(t.why) : '') + '</span>'; }).join('');
       return '<div class="todo-row" data-open="' + r.type + ':' + escapeHtml(r.id) + '"><input type="checkbox" data-sel="' + escapeHtml(r.id) + '"' + (todoSel[r.id] ? ' checked' : '') + '>' +
-        '<div class="m"><div>' + (r.no ? '<b>' + escapeHtml(r.no) + '</b>' : '') + escapeHtml(r.name) + '</div><div class="sub">' + escapeHtml(r.sub) + '</div></div><div class="tg">' + tags + '</div></div>';
+        '<div class="m"><div>' + (r.no ? '<b>' + escapeHtml(r.no) + '</b>' : '') + escapeHtml(r.name) + '</div><div class="sub">' + escapeHtml(r.sub) + '</div></div><div class="tg">' + tags + '</div>' +
+        (r.type === 'q' && r.T.some(function(t){ return t.k === 'quote'; }) ? '<button type="button" class="chip" data-fu="' + escapeHtml(r.id) + '" style="flex:none">📋 追銷話術（第 ' + ((+r.x.followN || 0) + 1) + ' 次）</button>' : '') + '</div>';
     }).join('') : '<p class="list-empty">這個類別目前沒有待辦 🎉</p>';
     renderTodoBadge();
   }
@@ -8438,6 +8541,10 @@
     var qIds = pick.filter(function(r){ return r.type === 'q'; }).map(function(r){ return r.id; });
     var oIds = pick.filter(function(r){ return r.type === 'o'; }).map(function(r){ return r.id; });
     var now = Date.now(), n = 0;
+    if (kind === 'followCopy'){
+      var txt = recentQuotes.filter(function(q){ return qIds.indexOf(q.id) !== -1; }).map(function(q){ return '【' + (q.custSourceName || q.custName || '') + '】\n' + quoteFollowText(q); }).join('\n\n');
+      copyToClipboard(txt, st); kind = 'follow';
+    }
     if (kind === 'follow') n = markQuotes(qIds, function(q){ q.followN = (+q.followN || 0) + 1; q.followAt = now; });
     if (kind === 'lost') n = markQuotes(qIds, function(q){ q.lost = true; });
     var wIds = pick.filter(function(r){ return r.type === 'w'; }).map(function(r){ return r.id; });
@@ -8465,6 +8572,11 @@
       var c = e.target.closest('[data-tf]'); if (c){ todoF = c.getAttribute('data-tf'); todoSel = {}; renderTodo(); return; }
       var b = e.target.closest('[data-tb]'); if (b){ todoAct(b.getAttribute('data-tb')); return; }
       var sel = e.target.closest('[data-sel]'); if (sel){ if (sel.checked) todoSel[sel.getAttribute('data-sel')] = 1; else delete todoSel[sel.getAttribute('data-sel')]; renderTodo(); return; }
+      var fu = e.target.closest('[data-fu]'); if (fu){
+        var fq = recentQuotes.find(function(q){ return q.id === fu.getAttribute('data-fu'); });
+        if (fq){ previewAndCopy(quoteFollowText(fq), document.getElementById('todoStatus'), '追銷話術（' + (fq.custSourceName || fq.custName || '') + '）'); markQuotes([fq.id], function(q){ q.followN = (+q.followN || 0) + 1; q.followAt = Date.now(); }); renderTodo(); }
+        return;
+      }
       var row = e.target.closest('[data-open]'); if (row){
         var v = row.getAttribute('data-open'), type = v.slice(0, 1), id = v.slice(2);
         modal.hidden = true;
