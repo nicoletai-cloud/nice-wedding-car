@@ -4746,7 +4746,13 @@
       '<label><input type="radio" name="qSvc' + quoteLegSeq + '" class="q-svc" value="送機" checked> 送機</label>' +
       '<label><input type="radio" name="qSvc' + quoteLegSeq + '" class="q-svc" value="接機"> 接機</label>' +
       '<label><input type="radio" name="qSvc' + quoteLegSeq + '" class="q-svc" value="接送"> 接送</label>' +
+      '<label><input type="radio" name="qSvc' + quoteLegSeq + '" class="q-svc" value="包車"> 包車</label>' +
       '</div></div>' +
+      '<div class="q-charter-box" style="display:none">' +
+      '<div class="field"><label>包車車型</label><select class="q-c-model c-model"></select></div>' +
+      '<div class="row2"><div class="field"><label>每小時價格（可手動調整）</label><input type="number" class="q-c-rate" min="0"></div>' +
+      '<div class="field"><label>時數</label><input type="number" class="q-c-hours" min="0" step="0.5" value="3"></div></div>' +
+      '<p class="hint" style="margin-top:-6px;">車型價格在下方「包車每小時價目表」修改</p></div>' +
       '<div class="row2"><div class="field"><label>日期</label><input type="date" class="q-date"></div>' +
       '<div class="field"><label>班機號</label><input type="text" class="q-flight" placeholder="選填"></div></div>' +
       '<div class="row2"><div class="field"><label>出發時間</label><input type="time" class="q-dep"></div>' +
@@ -4816,6 +4822,13 @@
       var svcInput = row.querySelector('.q-svc[value="' + prefill.svc + '"]');
       if (svcInput) svcInput.checked = true;
     }
+    if (prefill.svc === '包車'){
+      populateAllCharterModelSelects();
+      if (prefill.modelId && Array.prototype.some.call(row.querySelector('.q-c-model').options, function(o){ return o.value === prefill.modelId; })) row.querySelector('.q-c-model').value = prefill.modelId;
+      if (prefill.rate != null) row.querySelector('.q-c-rate').value = prefill.rate;
+      if (prefill.hours != null) row.querySelector('.q-c-hours').value = prefill.hours;
+    }
+    try { qCharterMode(row); } catch (e) {}
     if (prefill.date) row.querySelector('.q-date').value = prefill.date;
     if (prefill.dep) row.querySelector('.q-dep').value = prefill.dep;
     if (prefill.arr) row.querySelector('.q-arr').value = prefill.arr;
@@ -4970,6 +4983,7 @@
   var ARRIVAL_PICKUP_BUFFER_MIN = 0; // 接機：上車時間直接用飛機落地時間（每位客人出關時間不同，不另外加時間）
 
   function autoPickupTime(row){
+    if (isCharterRow(row)) return;
     if (row.dataset.pickupTimeManual === 'true') return;
     var svcInput = row.querySelector('.q-svc:checked');
     var svc = svcInput ? svcInput.value : '';
@@ -5240,6 +5254,27 @@
     row._extraFeeTimer = setTimeout(function(){ updateExtraStopFee(row); }, 700);
   }
 
+  // 行程類型選「包車」：顯示包車車型／時數，收起航班與機場加成欄位
+  function isCharterRow(row){ var c = row.querySelector('.q-svc:checked'); return !!c && c.value === '包車'; }
+  function qCharterMode(row){
+    var on = isCharterRow(row), box = row.querySelector('.q-charter-box');
+    if (box) box.style.display = on ? '' : 'none';
+    var hideSel = ['.q-flight', '.q-dep', '.q-terminal', '.q-flight-lookup-btn', '.q-fixed-pickup', '.q-model', '.q-base', '.q-friend-chk', '.q-air-chk', '.q-night-chk', '.q-sign-chk'];
+    hideSel.forEach(function(s){
+      var el = row.querySelector(s); if (!el) return;
+      var w = s === '.q-flight-lookup-btn' ? el.closest('.trip-add-row') : (/chk|fixed/.test(s) ? el.closest('.check-row') : el.closest('.field'));
+      if (s === '.q-dep') w = el.closest('.row2');
+      if (w) w.style.display = on ? 'none' : '';
+    });
+    var st = row.querySelector('.q-flight-lookup-status'); if (st) st.style.display = on ? 'none' : '';
+    var pl = row.querySelector('.q-pickup-time'); if (pl){ var lb = pl.closest('.field').querySelector('label'); if (lb) lb.textContent = on ? '開始時間（司機到上車地點的時間）' : '上車時間（送機提前3小時／接機＝落地時間）'; var qp = pl.closest('.field').querySelector('.quick-picks'); if (qp) qp.style.display = on ? 'none' : ''; }
+    if (on){
+      var cm = row.querySelector('.q-c-model'), cr = row.querySelector('.q-c-rate');
+      if (cm && !cm.options.length) populateAllCharterModelSelects();
+      if (cm && cr && !cr.value){ var pp = charterPriceList.find(function(x){ return x.id === cm.value; }) || charterPriceList[0]; if (pp){ cm.value = pp.id; cr.value = pp.rate; } }
+      ['.q-air-chk', '.q-night-chk', '.q-sign-chk'].forEach(function(s){ var el = row.querySelector(s); if (el) el.checked = false; });
+    }
+  }
   function bindQuoteLegEvents(row){
     row.querySelector('.remove-trip').addEventListener('click', function(){
       if (els.quoteLegsContainer.querySelectorAll('.trip-row').length <= 1) return;
@@ -5267,7 +5302,12 @@
       }
       renderQuoteDoc();
     });
-    row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ autoPickupTime(row); autoNight(row); autoAirSurcharge(row); autoRoundTrip(); renderQuoteDoc(); }); });
+    row.querySelectorAll('.q-svc').forEach(function(r){ r.addEventListener('change', function(){ qCharterMode(row); autoPickupTime(row); autoNight(row); autoAirSurcharge(row); autoRoundTrip(); renderQuoteDoc(); }); });
+    (function(){
+      var cm = row.querySelector('.q-c-model'), cr = row.querySelector('.q-c-rate'), ch = row.querySelector('.q-c-hours');
+      if (cm) cm.addEventListener('change', function(){ var pp = charterPriceList.find(function(x){ return x.id === cm.value; }); if (pp) cr.value = pp.rate; renderQuoteDoc(); });
+      [cr, ch].forEach(function(el){ if (el) el.addEventListener('input', renderQuoteDoc); });
+    })();
     // 上／下車地區原本沒有接 input 監聽，使用者打字或用快速按鈕帶入地址時，
     // 報價文字預覽不會馬上更新（要等其他欄位剛好也觸發才會一起更新），
     // 容易讓人誤以為地址沒存到。這裡補上，輸入當下就即時反映在預覽裡。
@@ -5750,6 +5790,7 @@
   // 接機加成 +200：服務類型選「接機」就自動勾選（送機／接送則取消）；
   // 使用者手動勾選／取消之後（row.dataset.airManual）就以手動為準。
   function autoAirSurcharge(row){
+    if (isCharterRow(row)) return;
     if (row.dataset.airManual === 'true' || isFriendRow(row)) return;
     var svcInput = row.querySelector('.q-svc:checked');
     row.querySelector('.q-air-chk').checked = !!(svcInput && svcInput.value === '接機');
@@ -5793,6 +5834,7 @@
   }
 
   function autoNight(row){
+    if (isCharterRow(row)) return;
     if (row.dataset.nightManual === 'true' || isFriendRow(row)) return;
     var pickup = row.querySelector('.q-pickup-time').value;
     if (!pickup) return;
@@ -5832,10 +5874,16 @@
       var seatAmt = Number(row.querySelector('.q-seat-amt').value) || 0;
       var extraAmt = Number(row.querySelector('.q-extra-amt').value) || 0;
       var remoteAmt = Number(row.querySelector('.q-remote-amt').value) || 0;
+      var charter = isCharterRow(row), cHours = 0, cRate = 0, cModel = '';
+      if (charter){
+        cHours = Number(row.querySelector('.q-c-hours').value) || 0; cRate = Number(row.querySelector('.q-c-rate').value) || 0;
+        var cmSel = row.querySelector('.q-c-model'), cmP = charterPriceList.find(function(x){ return x.id === cmSel.value; });
+        cModel = cmP ? cmP.model : ''; base = Math.round(cRate * cHours); airChk = false; nightChk = false; signChk = false; friendChk = false;
+      }
       var subtotal = base + (airChk ? airAmt : 0) + (nightChk ? nightAmt : 0) + (signChk ? signAmt : 0) + (seatChk ? seatAmt : 0) + (extraChk ? extraAmt : 0) + (remoteChk ? remoteAmt : 0);
       row.querySelector('.q-subtotal').textContent = 'NT$ ' + fmtNum(subtotal);
       var modelSel = row.querySelector('.q-model');
-      var modelOpt = modelSel.options[modelSel.selectedIndex];
+      var modelOpt = charter ? { textContent: cModel } : modelSel.options[modelSel.selectedIndex];
       legs.push({
         svc: (row.querySelector('.q-svc:checked') || {}).value || '送機',
         date: row.querySelector('.q-date').value,
@@ -5851,7 +5899,8 @@
         extraStopAddr: row.querySelector('.q-extra-stop-addr') ? row.querySelector('.q-extra-stop-addr').value.trim() : '',
         pax: row.querySelector('.q-pax').value,
         luggageCount: row.querySelector('.q-luggage').value,
-        modelId: modelSel.value,
+        modelId: charter ? (row.querySelector('.q-c-model').value || '') : modelSel.value,
+        hours: charter ? cHours : undefined, rate: charter ? cRate : undefined,
         modelLabel: modelOpt ? modelOpt.textContent.split('　')[0] : '',
         base: base, friendChk: friendChk, airChk: airChk, nightChk: nightChk, signChk: signChk, seatChk: seatChk, extraChk: extraChk, remoteChk: remoteChk,
         airAmt: airAmt, nightAmt: nightAmt, signAmt: signAmt, seatAmt: seatAmt, extraAmt: extraAmt, remoteAmt: remoteAmt, subtotal: subtotal
@@ -5962,6 +6011,19 @@
         areaLabel = legAreas.length ? (legAreas.join('+') + svcLabel) : svcLabel;
         lineParts.push(areaLabel);
         if (showModel) lineParts.push(modelLabel);
+      }
+      if (leg.svc === '包車'){
+        var cParts = [fmtMD(leg.date)]; if (timeStr) cParts.push(timeStr);
+        var cArea = [pickupAreaShort].concat(extraAreas).filter(Boolean).join('+'); if (cArea) cParts.push(cArea);
+        if (modelLabel) cParts.push(modelLabel);
+        cParts.push(svcLabel + ' ' + (leg.hours || 0) + ' 小時');
+        var cPrice = '$' + fmtNum(leg.rate || 0) + ' x ' + (leg.hours || 0) + ' = $' + fmtNum(leg.base);
+        var cExtra = '';
+        if (leg.seatChk) cExtra += '+' + fmtNum(leg.seatAmt) + '(' + L.seat + ')';
+        if (leg.extraChk) cExtra += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
+        if (leg.remoteChk && leg.remoteAmt) cExtra += '+' + fmtNum(leg.remoteAmt) + '(' + L.remote + ')';
+        lines.push(cParts.join(' ') + ' ' + cPrice + (cExtra ? cExtra + '=$' + fmtNum(leg.subtotal) : ''));
+        return;
       }
       var priceStr = '$' + fmtNum(leg.base);
       var breakdown = '';
@@ -6742,7 +6804,7 @@
         var m = paylinkMap(); Object.keys(m).forEach(function(k){ if (m[k].id === oldLink.id) m[k].cancelled = true; }); paylinkSave(m);
       }).catch(function(e){ setDispatchStatus(els.quoteStatusMsg, '舊付款連結取消失敗：' + e.message + '（請再按一次「重新報價」或聯絡我）', 'err'); });
     }
-    requotePrev = old;
+    requotePrev = old; currentQuoteId = '';
     currentQuoteNo = ''; currentQuoteFormalNo = ''; currentQuoteFlags = {};
     var pc = document.getElementById('qPaymentConfirmed'); if (pc) pc.checked = false;
     try { renderQuoteDoc(); renderNoLines(); } catch (e) {}
@@ -6910,6 +6972,15 @@
     loadPriceList();
     renderPriceList();
     loadRecentQuotes();
+    try { dedupeQuotes(); } catch(e){}
+    // 包車報價併進「報價」：行程類型選「包車」即可；包車價目表搬到報價頁，原本的包車分頁收起來
+    try {
+      var cpCard = document.getElementById('charterPriceList') && document.getElementById('charterPriceList').closest('.card');
+      var qCol = document.querySelector('#tabPanelQuote .form-col');
+      if (cpCard && qCol) qCol.appendChild(cpCard);
+      var tbc = document.getElementById('tabBtnCharter'); if (tbc) tbc.hidden = true;
+      var nn = 0; document.querySelectorAll('.tab-btn').forEach(function(b){ if (b.hidden) return; var s = b.querySelector('.n'); if (s) s.textContent = ++nn; });
+    } catch(e){}
     renderRecentQuotesList();
     loadRecentOrders();
     renderRecentOrdersList();
@@ -6999,6 +7070,39 @@
     } catch(e){ recentQuotes = []; }
   }
   function saveRecentQuotesList(){ safeSet(RECENT_QUOTES_KEY, JSON.stringify(recentQuotes)); }
+  // 同一張報價只留最新一版：同編號只留最新；沒編號的，同客人＋同行程只留最新。
+  // 只整理「最近報價」清單，不會動到付款連結（已經傳給客人的連結照樣有效）
+  var currentQuoteId = '';
+  function quoteSig(q){ return (q.custSource || '') + '|' + String(q.custSourceName || q.custName || '').trim().toLowerCase() + '|' + (q.legs || []).map(function(l){ return (l.date || '') + (l.svc || ''); }).join('+'); }
+  function dedupeQuotes(){
+    var keep = {}, drop = [];
+    recentQuotes.slice().sort(function(a, b){ return String(b.savedAt || '').localeCompare(String(a.savedAt || '')); }).forEach(function(q){
+      if (!q || !q.id) return;
+      var k = q.quoteNo ? 'n:' + q.quoteNo : 'c:' + quoteSig(q);
+      var w = keep[k];
+      if (!w){ keep[k] = q; return; }
+      ['paymentConfirmed', 'formalNo', 'followN', 'followAt', 'lost'].forEach(function(f){ if (q[f] && !w[f]) w[f] = q[f]; });
+      drop.push(q.id);
+    });
+    if (!drop.length) return 0;
+    recentQuotes = recentQuotes.filter(function(q){ return drop.indexOf(q.id) < 0; });
+    markSyncDeleted(drop); saveRecentQuotesList();
+    return drop.length;
+  }
+  // 這張報價已經有訂單（付款後自動成單、收現成單、或同客人同日期的單）→ 不用再追
+  function quoteHasOrder(q){
+    if (!q) return false;
+    var no = q.quoteNo || '', d = firstLegDate(q), nm = String(q.custSourceName || q.custName || '').trim().toLowerCase(), ph = String(q.custPhone || '').replace(/\D/g, '');
+    try { var pl = no && paylinkMap()[String(no).replace(/[^A-Za-z0-9_.:-]/g, '')]; if (pl && pl.paidAuto) return true; } catch (e) {}
+    return recentOrders.some(function(o){
+      if (!o || isWebCancelled(o)) return false;
+      if (no && o.quoteNo === no) return true;
+      if (!d || o.date !== d) return false;
+      var on = String(o.custSourceName || o.contactName || '').trim().toLowerCase(), op = String(o.contactPhone || '').replace(/\D/g, '');
+      if (ph && op) return ph === op;
+      return !!(nm && on && (on === nm || on.indexOf(nm) >= 0 || nm.indexOf(on) >= 0));
+    });
+  }
 
   function fmtSavedAt(iso){
     var d = new Date(iso);
@@ -7039,7 +7143,7 @@
     var bankChoiceEl = document.querySelector('input[name="qBankChoice"]:checked');
     var sourceEl = document.querySelector('input[name="qCustSource"]:checked');
     return {
-      id: 'q_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      id: (currentQuoteId && quoteSameCustomer()) ? currentQuoteId : 'q_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       savedAt: new Date().toISOString(),
       custSource: sourceEl ? sourceEl.value : 'LINE',
       custSourceName: els.qCustSourceName.value.trim(),
@@ -7086,6 +7190,10 @@
     // 同一張報價（同編號）再存一次就是更新，不另外多一筆
     if (q.quoteNo){ markSyncDeleted(recentQuotes.filter(function(x){ return x.quoteNo === q.quoteNo && x.id !== q.id; }).map(function(x){ return x.id; }));
       recentQuotes = recentQuotes.filter(function(x){ return x.quoteNo !== q.quoteNo; }); }
+    var prevSame = recentQuotes.find(function(x){ return x.id === q.id; });
+    if (prevSame){ ['quoteNo', 'formalNo', 'paymentConfirmed', 'followN', 'followAt'].forEach(function(f){ if (prevSame[f] && !q[f]) q[f] = prevSame[f]; }); }
+    recentQuotes = recentQuotes.filter(function(x){ return x.id !== q.id; });
+    currentQuoteId = q.id;
     recentQuotes.unshift(q);
     if (recentQuotes.length > 50) recentQuotes = recentQuotes.slice(0, 50);
     saveRecentQuotesList();
@@ -7104,7 +7212,7 @@
     var q = recentQuotes.find(function(x){ return x.id === id; });
     if (!q) return;
     setTimeout(function(){ try { renderPaylink(); paylinkCheck(true); } catch (e) {} }, 300);
-    currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || ''; requotePrev = '';
+    currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || ''; requotePrev = ''; currentQuoteId = q.id;
     currentQuoteFlags = { followN: q.followN || 0, followAt: q.followAt || 0 };
     currentQuoteKey = friendCustomerKey(q.custPhone, q.custSourceName, q.custName);
     roundTripManual = true; // 載入已存報價：優惠勾選以當時存的為準，不被自動判斷改掉
@@ -7648,6 +7756,7 @@
       var lq = syncSig(recentQuotes), lo = syncSig(recentOrders);
       recentQuotes = mergeSyncLists(recentQuotes, cloud && cloud.quotes);
       recentOrders = mergeSyncLists(recentOrders, cloud && cloud.orders);
+      try { if (dedupeQuotes()) lq = ''; } catch(e){}
       try { mergeKnownCustomers(cloud && cloud.knownCustomers); } catch(e){}
       if (syncSig(recentQuotes) !== lq || syncSig(recentOrders) !== lo){
         saveRecentQuotesList();
@@ -7859,7 +7968,7 @@
   function orderFromQuoteLeg(q, i, prev){
     var leg = q.legs[i], amts = quoteLegPayableAmounts(q), amt = amts[i];
     if (typeof amt !== 'number') amt = leg.subtotal;
-    var svcMap = { '送機': '送機', '接機': '接機', '接送': '接送' };
+    var svcMap = { '送機': '送機', '接機': '接機', '接送': '接送', '包車': '包車' };
     var o = prev ? JSON.parse(JSON.stringify(prev)) : { id: 'o_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7), driverId: '', driverName: '', driverPhone: '', driverCar: '', driverPlate: '', driverFee: null, formalNo: '', note: '', luggageSize: '', pickupAddr: '', dropoffAddr: '', otherAirport: '' };
     o.savedAt = new Date().toISOString();
     o.custSource = q.custSource || 'LINE'; o.custSourceName = q.custSourceName || ''; o.foundVia = q.foundVia || ''; o.custNote = q.custNote || '';
@@ -7945,7 +8054,7 @@
     if (q.custName) els.dContactName.value = q.custName;
     if (q.custPhone) els.dContactPhone.value = q.custPhone;
     if (leg){
-      var svcMap = { '送機': '送機', '接機': '接機', '接送': '接送' };
+      var svcMap = { '送機': '送機', '接機': '接機', '接送': '接送', '包車': '包車' };
       var svcVal = svcMap[leg.svc] || '其他';
       var r = document.querySelector('input[name="dSvcType"][value="' + svcVal + '"]');
       if (r) r.checked = true;
@@ -8244,6 +8353,7 @@
   function quoteTasks(q){
     if (!q || q.lost || q.paymentConfirmed) return [];
     var d = dayDiff(firstLegDate(q)); if (d !== null && d < 0) return [];
+    if (quoteHasOrder(q)) return [];
     var fn = +q.followN || 0; if (fn >= 3) return [];
     var soon = d !== null && d <= 7, gap = soon ? [1, 2, 2][fn] : [2, 5, 14][fn];
     var base = Math.max(Date.parse(q.savedAt || '') || 0, +q.followAt || 0);
