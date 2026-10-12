@@ -999,7 +999,7 @@
 
         <div class="card">
           <h2><span class="dot"></span>從報價單帶入（選填）</h2>
-          <p class="hint">通常不用來這裡：在「報價」頁按「➜ 客人確認了，轉成訂單」就會自動帶入。這裡是補帶入（例如來回報價的第 2 段行程）用的</p>
+          <p class="hint">通常不用來這裡：客人線上付款、或收現／月結報價一送出，系統就會自動成單。這裡只列還在報價中、還沒成單的報價，需要手動先成單時才用</p>
           <div class="field">
             <label for="dQuoteSelect">選擇報價</label>
             <select id="dQuoteSelect"><option value="">－不使用－</option></select>
@@ -7523,7 +7523,10 @@
       if (!recentOrders.length){
         els.recentOrderList.innerHTML = '<p class="list-empty">尚未儲存訂單</p>';
       } else {
-        els.recentOrderList.innerHTML = recentOrders.map(function(o){
+        // 只列今天起的訂單（過去的單用最上方選單「已完成的訂單」或搜尋找）
+        var tOrd = todayStr();
+        var upOrders = recentOrders.filter(function(o){ return !o.date || o.date >= tOrd; }).sort(function(a, b){ return String(a.date || '9').localeCompare(String(b.date || '9')) || String(a.pickupTime || '').localeCompare(String(b.pickupTime || '')); });
+        els.recentOrderList.innerHTML = (upOrders.length ? '' : '<p class="list-empty">今天起沒有訂單</p>') + upOrders.map(function(o){
           var summary = fmtMD(o.date) + ' ' + o.svcType + (o.flightNo ? ' ' + o.flightNo : '');
           return '<div class="list-row' + (isWebCancelled(o) ? ' cx' : '') + '" data-id="' + o.id + '">' +
             '<div class="li-main"><div class="li-name">' + webTagHtml(o) + escapeHtml(orderSourceLabel(o)) + '</div>' +
@@ -8015,13 +8018,17 @@
   function renderDispatchQuoteSelect(){
     if (!els.dQuoteSelect) return;
     var prevVal = els.dQuoteSelect.value;
-    var opts = ['<option value="">－不使用－</option>'].concat(recentQuotes.map(function(q){
+    // 只列「還在報價中」的：用車日還沒過、還沒成單（跟最上方選單的「報價中」同一份）
+    var t0 = todayStr();
+    var live = recentQuotes.filter(function(q){ var d = firstLegDate(q); return q && !q.lost && (!d || d >= t0) && !quoteHasOrder(q); })
+      .sort(function(a, b){ return String(firstLegDate(a) || '9').localeCompare(String(firstLegDate(b) || '9')); });
+    var opts = ['<option value="">－不使用－（報價中 ' + live.length + ' 筆）</option>'].concat(live.map(function(q){
       var firstLeg = q.legs && q.legs[0];
-      var label = quoteSourceLabel(q) + '　' + (firstLeg ? fmtMD(firstLeg.date) + ' ' + firstLeg.svc : '') + '　$' + fmtNum(q.finalTotal);
+      var label = (q.quoteNo ? q.quoteNo + '　' : '') + (firstLeg ? fmtMD(firstLeg.date) + ' ' + firstLeg.svc : '') + ((q.legs || []).length > 1 ? ' 等 ' + q.legs.length + ' 段' : '') + '　' + quoteSourceLabel(q) + '　$' + fmtNum(q.finalTotal);
       return '<option value="' + q.id + '">' + escapeHtml(label) + '</option>';
     }));
     els.dQuoteSelect.innerHTML = opts.join('');
-    if (recentQuotes.some(function(q){ return q.id === prevVal; })) els.dQuoteSelect.value = prevVal;
+    if (live.some(function(q){ return q.id === prevVal; })) els.dQuoteSelect.value = prevVal;
     updateDispatchLegSelect();
   }
 
