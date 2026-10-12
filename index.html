@@ -7400,7 +7400,8 @@
       note: o.note || '', custSource: o.custSource || '', custSourceName: o.custSourceName || '', custNote: o.custNote || '',
       amount: (typeof o.amount === 'number') ? o.amount : null,
       driverName: o.driverName || (d ? d.name : ''), driverPhone: o.driverPhone || (d ? d.phone : ''),
-      driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : '')
+      driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : ''),
+      revSkip: !!o.revSkip, revAskAt: o.revAskAt || ''
     };
   }
   var botReadyUrl = '';
@@ -7454,6 +7455,8 @@
     o.extraStopChk = !!b.extraStopChk;
     o.fixedPickup = !!b.fixedPickup;
     o.amount = (typeof b.amount === 'number') ? b.amount : null;
+    if (b.revAskAt) o.revAskAt = String(b.revAskAt);
+    if (b.revSkip) o.revSkip = true;
     if (!o.custSource) o.custSource = 'LINE';
     o.driverId = '';
     o.luggageSize = '';
@@ -7477,6 +7480,8 @@
         var idx = -1; recentOrders.forEach(function(x, i){ if (x && x.id === b.id) idx = i; });
         if (idx < 0){ recentOrders.push(botOrderToLocal(b)); added++; return; }
         var cur = recentOrders[idx];
+        // 機器人隔天自動問過評價 → 這裡也標成「已問」，待辦就不會再出現
+        if (b.revAskAt && !cur.revAskAt){ cur.revAskAt = String(b.revAskAt); updated++; }
         if ((Date.parse(cur.savedAt) || 0) < bTs){
           var nb = botOrderToLocal(b);
           Object.keys(nb).forEach(function(k){
