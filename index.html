@@ -1429,7 +1429,7 @@
     <div class="layout">
       <!-- LEFT: FORM -->
       <div class="form-col">
-        <div class="card">
+        <div class="card" hidden>
           <h2><span class="dot"></span>最近報價</h2>
           <p class="hint" style="margin-bottom:8px">從下拉選單選一筆就會直接載入；同一個報價編號只顯示最新存的那一版</p>
           <div id="recentQuoteList"></div>
@@ -1661,6 +1661,7 @@
         <div class="actions">
           <button type="button" class="secondary" id="saveQuoteBtn">💾 儲存報價</button>
           <button type="button" class="secondary" id="requoteBtn" title="客人要修改時按：改完會給新的報價編號">🔄 重新報價（新編號）</button>
+          <button type="button" class="secondary" id="delQuoteBtn" title="刪除目前這張報價（打錯、不要的）">🗑 刪除這張報價</button>
           <button type="button" class="secondary" id="copyQuoteBtn">複製文字</button>
           <button type="button" class="primary" id="printQuoteBtn">下載 PDF</button>
         </div>
@@ -6884,6 +6885,16 @@
       b.disabled = false; try { renderQuoteDoc(); } catch (e) {}
       previewAndCopy(buildQuoteText(), els.quoteStatusMsg, '預覽報價訊息');
     });
+  });
+  // 刪除目前載入的這張報價（最近報價選單拿掉後，刪錯報價改在這裡）；付款連結不會被取消
+  if (document.getElementById('delQuoteBtn')) document.getElementById('delQuoteBtn').addEventListener('click', function(){
+    var q = currentQuoteId && recentQuotes.find(function(x){ return x.id === currentQuoteId; });
+    if (!q){ setDispatchStatus(els.quoteStatusMsg, '目前沒有載入已存的報價（從最上方選單選一張報價再刪）', 'err'); return; }
+    if (!confirm('刪除這張報價' + (q.quoteNo ? '（' + q.quoteNo + '）' : '') + '？')) return;
+    var fake = document.createElement('button'); fake.setAttribute('data-del-quote', q.id);
+    els.recentQuoteList.appendChild(fake); fake.click(); fake.remove();
+    currentQuoteId = ''; currentQuoteNo = ''; try { renderNoLines(); renderOrderSwitcher(); } catch (e) {}
+    setDispatchStatus(els.quoteStatusMsg, '已刪除這張報價', 'ok');
   });
   // 客人有疑慮或要修改：改完按這顆，下次複製／儲存會給一個新的報價編號（舊的那版保留在最近報價裡）
   if (document.getElementById('requoteBtn')) document.getElementById('requoteBtn').addEventListener('click', function(){
