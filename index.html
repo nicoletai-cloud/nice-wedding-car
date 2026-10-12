@@ -4259,6 +4259,15 @@
     return pad2(h) + ':' + m + suffix;
   }
 
+  // 地址 → 「北投光明路」：鄉鎮區（去掉區字）＋路／街名（含段），跳過里、鄰
+  function fdAreaRoad(addr){
+    var s = String(addr || '').replace(/\s/g, '').replace(/^(臺灣|台灣)/, '').replace(/^\d{3,6}/, '');
+    if (!s) return '';
+    var area = shortAreaForFindDriver(s);
+    var rest = s.replace(/^.*?[^市縣]{1,3}?[區鄉鎮市](?=[^區鄉鎮市]*[路街道])/, '').replace(/^[^路街]{1,4}?[里村]/, '').replace(/^\d+鄰/, '');
+    var m = /^([^0-9０-９巷弄號]{1,10}?(?:大道|路|街)(?:[一二三四五六七八九十]+段)?)/.exec(rest);
+    return (area || '') + (m ? m[1] : '');
+  }
   function buildFindDriverLegLine(order, direction, carStr, amountVal){
     var o = order || {};
     var dateStr = fmtMD(o.date || '');
@@ -4273,12 +4282,16 @@
     var pickupArea = shortAreaForFindDriver(o.pickupAddr || o.pickupFullAddr || '');
     var dropoffArea = shortAreaForFindDriver(o.dropoffAddr || o.dropoffFullAddr || '');
     var svcArea;
+    // 司機要知道在哪條路才能算距離：一律寫到「鄉鎮區＋路名」（例：接機大安信義路三段、北投光明路送機）
+    var pRoad = fdAreaRoad(o.pickupFullAddr || o.pickupAddr || '') || pickupArea, dRoad = fdAreaRoad(o.dropoffFullAddr || o.dropoffAddr || '') || dropoffArea;
     if (direction === '接機'){
-      svcArea = dropoffArea ? ('接機' + dropoffArea) : '接機';
+      svcArea = dRoad ? ('接機' + dRoad) : '接機';
     } else if (direction === '送機'){
-      svcArea = pickupArea ? (pickupArea + '送機') : '送機';
+      svcArea = pRoad ? (pRoad + '送機') : '送機';
     } else {
-      svcArea = [pickupArea, dropoffArea].filter(Boolean).join('→') + (direction === '包車' ? ' 包車' : direction === '其他' || direction === '接送' ? '' : ' ' + direction);
+      // 非機場（接送／包車／其他）：寫「北投光明路-中壢環西路二段」，鄉鎮區＋路名（Nicole 2026-10-13）
+      var pr = fdAreaRoad(o.pickupFullAddr || o.pickupAddr || ''), dr = fdAreaRoad(o.dropoffFullAddr || o.dropoffAddr || '');
+      svcArea = [pr, dr].filter(Boolean).join('-') + (direction === '包車' ? ' 包車' : '');
       svcArea = svcArea.trim() || direction;
     }
     var parts = [];
@@ -4301,7 +4314,7 @@
 
     // 兩個方向都勾選時，兩行照日期先後排序（通常送機在前、接機在後，但日期
     // 才是準確依據，避免固定順序在少數狀況下排反）
-    var entries = wantedFindDriverLegs().map(function(x){ return { date: (x.order.date || '') + ' ' + (x.order.pickupTime || ''), line: buildFindDriverLegLine(x.order, x.svc, carStr, amountVal), code: (claimCodes || {})[x.ref] || '' }; });
+    var entries = wantedFindDriverLegs().map(function(x){ return { date: (x.order.date || '') + ' ' + (x.order.pickupTime || ''), line: buildFindDriverLegLine(x.order, x.svc, carStr, amountVal), code: fdCodeFor(x.order) }; });
     entries.sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
     wantArrival = false; wantDeparture = false;
     if (wantArrival){
@@ -4315,10 +4328,8 @@
     if (entries.length > 1 && entries[0].date && entries[1].date){
       entries.sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
     }
-    var lines = entries.map(function(e){ return e.line + (e.code ? ' 【喊單碼 ' + e.code + '】' : ''); });
-    var firstCode = entries.map(function(e){ return e.code; }).filter(String)[0];
-    if (firstCode) lines.push('要接的司機請到「好好禮車司機回報平台」傳喊單碼（例：' + firstCode + '）');
-    return lines.join('\n');
+    // 格式（Nicole 2026-10-13）：每趟兩行「單號：XXXX」＋車趟，多趟之間空一行；不再附喊單碼說明
+    return entries.map(function(e){ return (e.code ? '單號：' + e.code + '\n' : '') + e.line; }).join('\n\n');
   }
 
   function fdOrderOptionLabel(o){
@@ -4346,7 +4357,35 @@
     try { renderFdList(); } catch(e){}
     if (!els.findDriverPreviewBody) return;
     els.findDriverPreviewBody.textContent = buildFindDriverText();
-    ensureClaimCodes();
+  }
+  // ---------- 單號代碼（英數 4 碼）：找司機訊息每趟一組，司機喊到後把單號＋車趟貼到司機回報平台 ----------
+  var FD_CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function fdUsedCodes(){
+    var u = {};
+    recentOrders.forEach(function(o){ if (o && o.code) u[String(o.code).split('-')[0]] = 1; });
+    recentQuotes.forEach(function(q){ Object.keys((q && q.fdCodes) || {}).forEach(function(k){ u[q.fdCodes[k]] = 1; }); });
+    return u;
+  }
+  function newFdCode(){
+    var u = fdUsedCodes();
+    for (var i = 0; i < 300; i++){
+      var c = ''; for (var k = 0; k < 4; k++) c += FD_CODE_ABC.charAt(Math.floor(Math.random() * FD_CODE_ABC.length));
+      if (/[A-Z]/.test(c) && !u[c]) return c;   // 一定含英文字母，不會跟舊的 4 位數喊單碼混淆
+    }
+    return '';
+  }
+  function fdCodeFor(o){
+    if (!o) return '';
+    var m = /^ql_(.+)_(\d+)$/.exec(o.id || '');
+    if (m){
+      var q = recentQuotes.find(function(x){ return x.id === m[1]; }); if (!q) return '';
+      q.fdCodes = q.fdCodes || {};
+      if (!q.fdCodes[m[2]]){ q.fdCodes[m[2]] = newFdCode(); saveRecentQuotesList(); doFullSync(true); }
+      return q.fdCodes[m[2]];
+    }
+    var real = recentOrders.find(function(x){ return x.id === o.id; }) || o;
+    if (!real.code){ real.code = newFdCode(); real.savedAt = new Date().toISOString(); saveRecentOrdersList(); doFullSync(true); scheduleBotPush(); }
+    return real.code;
   }
 
   // ---------- 喊單碼（找司機訊息每趟附一組 4 位數；司機在「司機回報平台」傳喊單碼，
@@ -4571,7 +4610,6 @@
   });
   if (els.copyFindDriverBtn) els.copyFindDriverBtn.addEventListener('click', function(){
     renderFindDriverDoc();
-    if (claimCodesPending()){ setDispatchStatus(els.findDriverStatusMsg, '喊單碼產生中，請 1～2 秒後再按一次', 'err'); return; }
     copyToClipboard(buildFindDriverText(), els.findDriverStatusMsg);
   });
   // 接機／送機勾選才顯示對應的「選擇訂單」欄位，兩個都勾就兩個欄位都顯示，
@@ -8047,6 +8085,7 @@
     o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || '';
     o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign';
     o.quoteNo = q.quoteNo || ''; o.quoteLeg = i; o.autoFromQuote = true;
+    if (!o.code && q.fdCodes && q.fdCodes[i]) o.code = q.fdCodes[i];
     if (q.formalNo && !o.formalNo) o.formalNo = q.formalNo + ((q.legs || []).length > 1 ? '-' + (i + 1) : '');
     o.isKnownCustomer = !!q.isKnownCustomer;
     return o;
