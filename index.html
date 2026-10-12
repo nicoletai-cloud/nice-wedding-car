@@ -7626,6 +7626,7 @@
       var lq = syncSig(recentQuotes), lo = syncSig(recentOrders);
       recentQuotes = mergeSyncLists(recentQuotes, cloud && cloud.quotes);
       recentOrders = mergeSyncLists(recentOrders, cloud && cloud.orders);
+      try { mergeKnownCustomers(cloud && cloud.knownCustomers); } catch(e){}
       if (syncSig(recentQuotes) !== lq || syncSig(recentOrders) !== lo){
         saveRecentQuotesList();
         saveRecentOrdersList();
@@ -7635,9 +7636,10 @@
         renderReceiptOrderSelect();
       }
       var cloudSame = cloud && syncSig(cloud.quotes) === syncSig(recentQuotes) && syncSig(cloud.orders) === syncSig(recentOrders) &&
-        JSON.stringify(cloud.deleted || {}) === JSON.stringify(syncDeleted);
+        JSON.stringify(cloud.deleted || {}) === JSON.stringify(syncDeleted) &&
+        JSON.stringify(cloud.knownCustomers || []) === JSON.stringify(knownCustomers);
       if (cloudSame) return;
-      return window.__hhlcSync.push(passcode, { quotes: recentQuotes, orders: recentOrders, deleted: syncDeleted });
+      return window.__hhlcSync.push(passcode, { quotes: recentQuotes, orders: recentOrders, deleted: syncDeleted, knownCustomers: knownCustomers });
     }).then(function(){
       safeSet('hhlc_sync_passcode', passcode);
       var now = new Date();
@@ -7898,11 +7900,9 @@
     // 如果這位客人已經是熟客、有存常用地址，匯入報價時就自動比對出來，讓
     // 完整地址欄位下方直接出現可點選的按鈕，不用再另外去「選擇熟客」那邊
     // 按一次（客人這次臨時改地址時還是可以自己蓋掉）
-    var matchedCustomer = findKnownCustomerByContact(els.dContactName.value, els.dContactPhone.value);
-    if (matchedCustomer){
-      if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
-      applyKnownCustomerAddressChips(matchedCustomer);
-    }
+    var matchedCustomer = findKnownCustomerByContact((els.dCustSourceName && els.dCustSourceName.value) || els.dContactName.value, els.dContactPhone.value) || findKnownCustomerByContact(els.dContactName.value, '');
+    if (matchedCustomer && els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
+    applyKnownCustomerAddressChips(matchedCustomer);
     renderPassengerDoc();
     renderDispatchSheet();
     var importMsg = (matchedCustomer && matchedCustomer.addresses && matchedCustomer.addresses.length)
@@ -7957,7 +7957,40 @@
       if (!Array.isArray(knownCustomers)) knownCustomers = [];
     } catch(e){ knownCustomers = []; }
   }
-  function saveKnownCustomersList(){ safeSet(KNOWN_CUSTOMERS_KEY, JSON.stringify(knownCustomers)); }
+  function saveKnownCustomersList(){
+    safeSet(KNOWN_CUSTOMERS_KEY, JSON.stringify(knownCustomers));
+    // 熟客＋常用地址也跟著雲端同步，手機、電腦存的地址兩邊都看得到
+    try { if (typeof doFullSync === 'function' && !kcMerging) { clearTimeout(saveKnownCustomersList._t); saveKnownCustomersList._t = setTimeout(function(){ doFullSync(true); }, 800); } } catch(e){}
+  }
+  var kcMerging = false;
+  function kcKey(c){
+    var p = String((c && c.phone) || '').replace(/\D/g, '');
+    if (p) return 'p:' + p;
+    var n = String((c && (c.sourceName || c.name)) || '').trim();
+    return n ? 'n:' + n : '';
+  }
+  // 雲端那份熟客名單併進來：同一位客人（電話優先，其次名稱）合併成一筆，常用地址取聯集，刪掉的地址不會被補回來
+  function mergeKnownCustomers(cloudList){
+    if (!Array.isArray(cloudList) || !cloudList.length) return false;
+    var before = JSON.stringify(knownCustomers), byKey = {};
+    knownCustomers.forEach(function(c){ var k = kcKey(c); if (k && !byKey[k]) byKey[k] = c; });
+    cloudList.forEach(function(cc){
+      if (!cc) return;
+      var k = kcKey(cc); if (!k) return;
+      var c = byKey[k] || knownCustomers.find(function(x){ return x.id === cc.id; });
+      if (!c){ c = JSON.parse(JSON.stringify(cc)); c.addresses = c.addresses || []; knownCustomers.push(c); byKey[k] = c; return; }
+      ['source', 'sourceName', 'name', 'phone', 'note'].forEach(function(f){ if (!c[f] && cc[f]) c[f] = cc[f]; });
+      var rm = {}; (c.removedAddrs || []).concat(cc.removedAddrs || []).forEach(function(a){ rm[a] = 1; });
+      c.removedAddrs = Object.keys(rm);
+      var have = {}; c.addresses = (c.addresses || []).filter(function(a){ if (rm[a.address] || have[a.address]) return false; have[a.address] = 1; return true; });
+      (cc.addresses || []).forEach(function(a){ if (a && a.address && !rm[a.address] && !have[a.address]){ have[a.address] = 1; c.addresses.push({ id: a.id, label: a.label, address: a.address }); } });
+    });
+    if (JSON.stringify(knownCustomers) === before) return false;
+    kcMerging = true; try { saveKnownCustomersList(); } finally { kcMerging = false; }
+    try { renderCustPickSelects(); } catch(e){}
+    return true;
+  }
+  function kcRememberRemoved(c, addr){ if (!c || !addr) return; c.removedAddrs = c.removedAddrs || []; if (c.removedAddrs.indexOf(addr) < 0) c.removedAddrs.push(addr); }
   function findKnownCustomer(id){
     return knownCustomers.find(function(c){ return c.id === id; });
   }
@@ -7967,11 +8000,10 @@
     var p = (phone || '').trim();
     var n = (name || '').trim();
     if (!p && !n) return null;
-    return knownCustomers.find(function(c){
-      if (p && c.phone && c.phone === p) return true;
-      if (!p && n && (c.sourceName || c.name) === n) return true;
-      return false;
-    }) || null;
+    var pd = p.replace(/\D/g, '');
+    return knownCustomers.find(function(c){ return pd && String(c.phone || '').replace(/\D/g, '') === pd; })
+      || (n ? knownCustomers.find(function(c){ return (c.sourceName && c.sourceName.trim() === n) || (c.name && c.name.trim() === n); }) : null)
+      || null;
   }
   // called when a quote/order is saved with "設為熟客" checked — finds the
   // same person by phone (or by name when there's no phone) and updates
@@ -8385,8 +8417,9 @@
       } else {
         els.dCustSourceName.value = e.sourceName || ''; els.dContactName.value = e.name || ''; els.dContactPhone.value = e.phone || '';
         if (els.dCustNote) els.dCustNote.value = e.note || '';
+        var _al = applyKnownCustomerAddressChips(findKnownCustomerByContact(e.sourceName || e.name, e.phone));
         renderPassengerDoc(); renderDispatchSheet();
-        setDispatchStatus(els.dispatchStatusMsg, '已帶入客戶資料', 'ok');
+        setDispatchStatus(els.dispatchStatusMsg, _al.length ? '已帶入客戶資料，上／下車地址下方可點選這位客人用過的 ' + _al.length + ' 個地址' : '已帶入客戶資料', 'ok');
       }
     }
     input.addEventListener('input', function(){ active = -1; render(); });
@@ -8444,12 +8477,52 @@
   // 點選常用地址——完整地址那兩欄尤其重要，司機單／乘客單就是靠它，沒填就會
   // 退回顯示簡易地區
   function applyKnownCustomerAddressChips(c){
-    if (!c) return;
-    injectAddressChips('dPickupAddr', c.addresses);
-    injectAddressChips('dDropoffAddr', c.addresses);
-    injectAddressChips('dPickupFullAddr', c.addresses);
-    injectAddressChips('dDropoffFullAddr', c.addresses);
+    var list = customerAddressBook(c, els.dContactPhone && els.dContactPhone.value, (els.dCustSourceName && els.dCustSourceName.value) || '', els.dContactName && els.dContactName.value);
+    injectAddressChips('dPickupAddr', list);
+    injectAddressChips('dDropoffAddr', list);
+    injectAddressChips('dPickupFullAddr', list);
+    injectAddressChips('dDropoffFullAddr', list);
+    return list;
   }
+  // 這位客人的常用地址：熟客存的地址＋以前訂單／報價用過的地址（機場不算），同一個地址只列一次
+  function customerAddressBook(c, phone, sname, name){
+    var out = [], seen = {};
+    function push(label, addr){
+      addr = String(addr || '').trim();
+      if (!addr || /機場|航廈|airport/i.test(addr) || (typeof isTaoyuanAirportAddress === 'function' && isTaoyuanAirportAddress(addr))) return;
+      var k = stripFloor(addr).replace(/\s/g, ''); if (seen[k]) return; seen[k] = 1;
+      out.push({ label: label, address: addr });
+    }
+    ((c && c.addresses) || []).forEach(function(a){ push(a.label, a.address); });
+    var pd = String(phone || '').replace(/\D/g, ''), names = [sname, name].map(function(s){ return String(s || '').trim(); }).filter(String);
+    if (!pd && !names.length) return out;
+    var rm = {}; ((c && c.removedAddrs) || []).forEach(function(a){ rm[stripFloor(a).replace(/\s/g, '')] = 1; });
+    function same(ph, sn, nm){
+      var op = String(ph || '').replace(/\D/g, '');
+      if (pd && op) return op === pd;
+      return names.some(function(n){ return n === String(sn || '').trim() || n === String(nm || '').trim(); });
+    }
+    var past = [];
+    (recentOrders || []).forEach(function(o){ if (o && same(o.contactPhone, o.custSourceName, o.contactName)) [o.pickupFullAddr || o.pickupAddr, o.dropoffFullAddr || o.dropoffAddr].forEach(function(a){ past.push({ a: a, at: o.savedAt || '' }); }); });
+    (recentQuotes || []).forEach(function(q){ if (q && same(q.custPhone, q.custSourceName, q.custName)) (q.legs || []).forEach(function(l){ [l.pickupFullAddr || l.pickupArea || l.pickup, l.dropoffFullAddr || l.dropoffArea || l.dropoff].forEach(function(a){ past.push({ a: a, at: q.savedAt || '' }); }); }); });
+    past.sort(function(x, y){ return String(y.at).localeCompare(String(x.at)); });
+    past.forEach(function(x){
+      var a = String(x.a || '').trim(); if (!a || rm[stripFloor(a).replace(/\s/g, '')]) return;
+      var s = stripFloor(a).replace(/^(台灣|臺灣)/, '').replace(/^\d{3,5}/, '').replace(/^[^\s\d]{2,3}[市縣]/, '');
+      push('曾用｜' + (s.length > 12 ? s.slice(0, 12) + '…' : s), a);
+    });
+    return out;
+  }
+  // 客人電話／暱稱／姓名填好（或改了）就自動找出常用地址，不用再去「選擇熟客」按一次
+  ['dContactPhone', 'dCustSourceName', 'dContactName'].forEach(function(id){
+    var el = document.getElementById(id); if (!el) return;
+    el.addEventListener('change', function(){
+      var c = findKnownCustomerByContact((els.dCustSourceName && els.dCustSourceName.value) || els.dContactName.value, els.dContactPhone.value)
+        || findKnownCustomerByContact(els.dContactName.value, '');
+      var list = applyKnownCustomerAddressChips(c);
+      if (list.length) setDispatchStatus(els.dispatchStatusMsg, '找到這位客人 ' + list.length + ' 個常用地址，上／下車地址下方可直接點選', 'ok');
+    });
+  });
 
 
   // ---------- 客人地址（報價頁）：存在熟客資料裡，上下車地區可直接點選，自動去掉樓層 ----------
@@ -8474,7 +8547,7 @@
       var w = document.createElement('span'); w.className = 'chip addr-chip'; w.title = a.address;
       w.textContent = a.label + '｜' + stripFloor(a.address);
       var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '✕'; x.title = '刪除這個地址';
-      x.onclick = function(){ if (!confirm('刪除「' + a.label + '」地址？')) return; c.addresses = c.addresses.filter(function(z){ return z.id !== a.id; }); saveKnownCustomersList(); renderQuoteAddresses(); };
+      x.onclick = function(){ if (!confirm('刪除「' + a.label + '」地址？')) return; kcRememberRemoved(c, a.address); c.addresses = c.addresses.filter(function(z){ return z.id !== a.id; }); saveKnownCustomersList(); renderQuoteAddresses(); };
       w.appendChild(x); box.appendChild(w);
     });
     renderQuoteAddrChips(list);
@@ -8594,6 +8667,7 @@
       var c = els.kcAddrCustSelect ? findKnownCustomer(els.kcAddrCustSelect.value) : null;
       if (!c) return;
       var id = delBtn.getAttribute('data-del-kc-addr');
+      (c.addresses || []).forEach(function(a){ if (a.id === id) kcRememberRemoved(c, a.address); });
       c.addresses = (c.addresses || []).filter(function(a){ return a.id !== id; });
       saveKnownCustomersList();
       renderKcAddrList();
