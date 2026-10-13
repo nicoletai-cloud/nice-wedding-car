@@ -1167,8 +1167,9 @@
               <input type="number" id="dPax" min="0" value="1">
             </div>
             <div class="field">
-              <label for="dLuggageCount">行李箱數量</label>
-              <input type="number" id="dLuggageCount" min="0" placeholder="待確認">
+              <label for="dLugBig">行李（大箱／小箱）</label>
+              <div style="display:flex;gap:6px"><input type="number" id="dLugBig" min="0" placeholder="大箱"><input type="number" id="dLugSmall" min="0" placeholder="小箱"></div>
+              <input type="hidden" id="dLuggageCount">
             </div>
           </div>
           <div class="field">
@@ -1494,6 +1495,7 @@
             <label>客人地址（可存多個，報價的上下車地區可直接點選）</label>
             <div class="quick-picks" id="qAddrList"></div>
             <input type="text" id="qAddrInput" placeholder="完整地址，例如：台北市大同區萬全街 10 號 5 樓" style="margin-top:8px;">
+            <input type="text" id="qAddrNoteInput" placeholder="給司機的地址提醒（選填），例如：要開進地下室停車場" style="margin-top:6px;">
             <div class="quick-picks" id="qAddrLabels" style="margin-top:8px;">
               <button type="button" class="chip" data-addr-label="住家">住家</button>
               <button type="button" class="chip" data-addr-label="公司">公司</button>
@@ -4064,6 +4066,38 @@
   // opts.compact：派車單（給司機）版面要緊湊、不留空行；乘客資訊版面則維持
   // 原本段落間的空行分隔。opts.driverInfoHeader：司機資訊那段的標題文字兩邊
   // 版面用的符號不一樣（乘客版是［司機資訊］，司機版是｜司機資訊｜），可個別指定。
+  // 行李分大箱／小箱：總數照舊存在「行李件數」，尺寸欄自動寫成「大箱 2、小箱 1」
+  function lugTotal(b, s){ if (String(b || '') === '' && String(s || '') === '') return ''; return String((+b || 0) + (+s || 0)); }
+  function lugText(b, s){ var L = []; if (String(b || '') !== '') L.push('大箱 ' + (+b || 0)); if (String(s || '') !== '') L.push('小箱 ' + (+s || 0)); return L.join('、'); }
+  function setDispatchLug(b, s){
+    var B = document.getElementById('dLugBig'), S = document.getElementById('dLugSmall'); if (!B || !S) return;
+    B.value = (b != null) ? b : ''; S.value = (s != null) ? s : ''; syncDispatchLug(true);
+  }
+  function syncDispatchLug(quiet){
+    var B = document.getElementById('dLugBig'), S = document.getElementById('dLugSmall'); if (!B || !S) return;
+    var tot = lugTotal(B.value, S.value), txt = lugText(B.value, S.value);
+    if (tot === '') return;
+    els.dLuggageCount.value = tot;
+    els.dLuggageSize.value = txt; if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = false;
+    try { syncLuggageSizeTBD(); } catch (e) {}
+    if (!quiet) els.dLuggageSize.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  setTimeout(function(){ ['dLugBig', 'dLugSmall'].forEach(function(id){ var e = document.getElementById(id); if (e) e.addEventListener('input', function(){ syncDispatchLug(false); }); }); }, 0);
+  // 熟客地址上的「給司機的提醒」（例如：要開進地下室）：派車單上的地址只要對得上，就自動帶給司機
+  function addrNoteFor(addr){
+    var k = stripFloor(String(addr || '')).replace(/\s/g, '').replace(/^\d{3,5}/, '').replace(/臺/g, '台').replace(/(區)[^區路街道段巷號]{1,4}里/, '$1').replace(/\d+鄰/, ''); if (k.length < 6) return '';
+    var hit = '';
+    (knownCustomers || []).some(function(c){ return (c.addresses || []).some(function(a){
+      if (!a || !a.note) return false;
+      var ak = stripFloor(String(a.address || '')).replace(/\s/g, '').replace(/^\d{3,5}/, '').replace(/臺/g, '台').replace(/(區)[^區路街道段巷號]{1,4}里/, '$1').replace(/\d+鄰/, '');
+      if (ak && (ak === k || ak.indexOf(k) >= 0 || k.indexOf(ak) >= 0)){ hit = a.note; return true; } return false; }); });
+    return hit;
+  }
+  function orderAddrNote(pu, dr){
+    var a = addrNoteFor(pu), b = addrNoteFor(dr), L = [];
+    if (a) L.push('上車地點：' + a); if (b && b !== a) L.push('下車地點：' + b); else if (b && !a) L.push('下車地點：' + b);
+    return L.join('｜');
+  }
   function buildTripInfoLines(L, lang, opts){
     opts = opts || {};
     var compact = !!opts.compact;
@@ -4099,6 +4133,7 @@
     if (terminalNote && isTaoyuanAirportAddress(dropoffAddrVal)) dropoffAddrVal += '（' + terminalNote + '）';
     lines.push(L.pickupAddr + pickupAddrVal);
     lines.push(L.dropoffAddr + dropoffAddrVal);
+    if (opts.forDriver){ var an = orderAddrNote(els.dPickupFullAddr && els.dPickupFullAddr.value, els.dDropoffFullAddr && els.dDropoffFullAddr.value); if (an) lines.push('📍 地址提醒｜' + an); }
     // 客人途中還要多上／下車一個地方（增加地點）——勾選了才算數，貼的地址可以
     // 多行、一行一個加點地址，逐行列出來。
     if (els.dExtraStopChk && els.dExtraStopChk.checked && els.dExtraStopAddr && els.dExtraStopAddr.value.trim()){
@@ -4174,7 +4209,7 @@
     // 派車單上半段（行程資料）跟乘客資訊欄位、順序完全一樣，段落間一樣留空行
     // 分隔（緊湊、不留空行反而讓司機看不清楚段落），司機資訊標題用「｜司機
     // 資訊｜」（乘客版是［司機資訊］）
-    var lines = buildTripInfoLines(PLABELS['zh-TW'], 'zh-TW', { compact: false, driverInfoHeader: '｜司機資訊｜' });
+    var lines = buildTripInfoLines(PLABELS['zh-TW'], 'zh-TW', { compact: false, driverInfoHeader: '｜司機資訊｜', forDriver: true });
     lines.push('');
     var payMethod = currentPaymentMethod();
     var amount = Number(els.dAmount && els.dAmount.value) || 0;
@@ -4892,7 +4927,7 @@
       '<div class="hint q-extra-km-note" style="display:none; margin-top:4px;"></div>' +
       '</div>' +
       '<div class="row2"><div class="field"><label>搭乘人數</label><input type="number" class="q-pax" min="0" placeholder="選填"></div>' +
-      '<div class="field"><label>行李件數</label><input type="number" class="q-luggage" min="0" placeholder="選填"></div></div>' +
+      '<div class="field"><label>行李（大箱／小箱）</label><div style="display:flex;gap:6px"><input type="number" class="q-lug-big" min="0" placeholder="大箱"><input type="number" class="q-lug-small" min="0" placeholder="小箱"></div><input type="hidden" class="q-luggage"></div></div>' +
       '<div class="field"><label>車型</label><select class="q-model"></select></div>' +
       '<div class="field"><label>基本價格（可手動調整）</label><input type="number" class="q-base" min="0"></div>' +
       '<div class="check-row"><input type="checkbox" class="q-friend-chk"><label style="margin:0;">親友一口價（不加接機、夜間加成）</label></div>' +
@@ -4953,6 +4988,11 @@
     if (prefill.dropoffArea) row.querySelector('.q-dropoff-area').value = prefill.dropoffArea;
     if (prefill.pax != null) row.querySelector('.q-pax').value = prefill.pax;
     if (prefill.luggageCount != null) row.querySelector('.q-luggage').value = prefill.luggageCount;
+    if (prefill.lugBig != null) row.querySelector('.q-lug-big').value = prefill.lugBig;
+    if (prefill.lugSmall != null) row.querySelector('.q-lug-small').value = prefill.lugSmall;
+    if (prefill.lugBig == null && prefill.lugSmall == null && prefill.luggageCount) row.querySelector('.q-lug-big').placeholder = '大箱（原共 ' + prefill.luggageCount + ' 件）';
+    (function(r){ var f = function(){ r.querySelector('.q-luggage').value = lugTotal(r.querySelector('.q-lug-big').value, r.querySelector('.q-lug-small').value); };
+      r.querySelector('.q-lug-big').addEventListener('input', f); r.querySelector('.q-lug-small').addEventListener('input', f); })(row);
     // 接機加成：選「接機」就自動勾選；已存報價／明確帶入的布林值視為手動決定，不被覆蓋
     if (typeof prefill.airChk === 'boolean'){
       row.querySelector('.q-air-chk').checked = prefill.airChk;
@@ -5023,7 +5063,7 @@
     // 日期也算進「有沒有填過」，那個預設列永遠不會被判斷成空白，貼上資料就
     // 永遠只會往下新增一列，而不是填進使用者眼前那個看起來空白的列。
     var emptyFieldSelectors = ['.q-flight', '.q-dep', '.q-arr', '.q-terminal',
-      '.q-pickup-time', '.q-pickup-area', '.q-dropoff-area', '.q-pax', '.q-luggage', '.q-extra-stop-addr'];
+      '.q-pickup-time', '.q-pickup-area', '.q-dropoff-area', '.q-pax', '.q-luggage', '.q-lug-big', '.q-lug-small', '.q-extra-stop-addr'];
     for (var i = 0; i < emptyFieldSelectors.length; i++){
       var el = row.querySelector(emptyFieldSelectors[i]);
       if (el && el.value && el.value.trim()) return false;
@@ -6010,6 +6050,7 @@
         extraStopAddr: row.querySelector('.q-extra-stop-addr') ? row.querySelector('.q-extra-stop-addr').value.trim() : '',
         pax: row.querySelector('.q-pax').value,
         luggageCount: row.querySelector('.q-luggage').value,
+        lugBig: row.querySelector('.q-lug-big') ? row.querySelector('.q-lug-big').value : '', lugSmall: row.querySelector('.q-lug-small') ? row.querySelector('.q-lug-small').value : '',
         modelId: charter ? (row.querySelector('.q-c-model').value || '') : modelSel.value,
         hours: charter ? cHours : undefined, rate: charter ? cRate : undefined,
         modelLabel: modelOpt ? modelOpt.textContent.split('　')[0] : '',
@@ -6399,7 +6440,7 @@
       return { svcType: l.svc, date: l.date, pickupTime: l.pickupTime || (l.svc === '接機' ? '' : l.dep) || '', flightNo: l.flight, terminal: l.terminal,
         flightDepTime: l.dep || '', flightArrTime: l.arr || '', contactName: q.custName || q.custSourceName, contactPhone: q.custPhone,
         pickupAddr: sa(l.pickupArea), dropoffAddr: sa(l.dropoffArea), pickupFullAddr: l.pickupArea, dropoffFullAddr: l.dropoffArea,
-        extraStopChk: !!l.extraStopChk, extraStopAddr: l.extraStopAddr || '', pax: l.pax || '', luggageCount: l.luggageCount || '',
+        extraStopChk: !!l.extraStopChk, extraStopAddr: l.extraStopAddr || '', pax: l.pax || '', luggageCount: l.luggageCount || '', lugBig: l.lugBig || '', lugSmall: l.lugSmall || '', luggageSize: lugText(l.lugBig, l.lugSmall),
         note: [(src ? '[' + src.value + ']' : ''), l.modelLabel ? '車款 ' + l.modelLabel : '', q.quoteNo ? '報價 ' + q.quoteNo : ''].filter(Boolean).join(' '),
         custSourceName: q.custSourceName || q.custName, amount: typeof amts[i] === 'number' ? amts[i] : l.subtotal };
     });
@@ -6528,6 +6569,8 @@
       var luggage = last.querySelector('.q-luggage').value;
       if (pax !== '') prefill.pax = pax;
       if (luggage !== '') prefill.luggageCount = luggage;
+      if (last.querySelector('.q-lug-big') && last.querySelector('.q-lug-big').value !== '') prefill.lugBig = last.querySelector('.q-lug-big').value;
+      if (last.querySelector('.q-lug-small') && last.querySelector('.q-lug-small').value !== '') prefill.lugSmall = last.querySelector('.q-lug-small').value;
       prefill.modelId = last.querySelector('.q-model').value;
       // 親友一口價：回程同樣是一口價、同金額
       if (isFriendRow(last)){ prefill.friendChk = true; prefill.base = last.querySelector('.q-base').value; }
@@ -7354,7 +7397,7 @@
     (q.legs || []).forEach(function(leg){
       addQuoteLegRow({
         svc: leg.svc, date: leg.date, dep: leg.dep, arr: leg.arr, pickupTime: leg.pickupTime, fixedPickup: !!leg.fixedPickup, flight: leg.flight, terminal: leg.terminal,
-        pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pax: leg.pax, luggageCount: leg.luggageCount,
+        pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pax: leg.pax, luggageCount: leg.luggageCount, lugBig: leg.lugBig, lugSmall: leg.lugSmall,
         modelId: leg.modelId, base: leg.base, friendChk: !!leg.friendChk,
         airChk: leg.airChk, airAmt: leg.airAmt,
         nightChk: leg.nightChk, nightAmt: leg.nightAmt,
@@ -7620,8 +7663,10 @@
       extraStopAddr: els.dExtraStopAddr ? els.dExtraStopAddr.value.trim() : '',
       pax: els.dPax.value,
       luggageCount: els.dLuggageCount.value,
+      lugBig: (document.getElementById('dLugBig') || {}).value || '', lugSmall: (document.getElementById('dLugSmall') || {}).value || '',
       luggageSize: els.dLuggageSize.value,
       note: els.dNote.value.trim(),
+      addrNote: orderAddrNote(els.dPickupFullAddr ? els.dPickupFullAddr.value : '', els.dDropoffFullAddr ? els.dDropoffFullAddr.value : ''),
       driverId: els.dDriverSelect ? els.dDriverSelect.value : '',
       driverName: orderDriverSnap().name,
       driverPhone: orderDriverSnap().phone,
@@ -7707,8 +7752,8 @@
       flightNo: o.flightNo || '', terminal: o.terminal || '', flightDepTime: o.flightDepTime || '', flightArrTime: o.flightArrTime || '',
       otherAirport: o.otherAirport || '', contactName: o.contactName || '', contactPhone: o.contactPhone || '',
       pickupAddr: o.pickupAddr || '', dropoffAddr: o.dropoffAddr || '', pickupFullAddr: o.pickupFullAddr || '', dropoffFullAddr: o.dropoffFullAddr || '',
-      extraStopChk: !!o.extraStopChk, extraStopAddr: o.extraStopAddr || '', pax: o.pax || '', luggageCount: o.luggageCount || '',
-      note: o.note || '', custSource: o.custSource || '', custSourceName: o.custSourceName || '', custNote: o.custNote || '',
+      extraStopChk: !!o.extraStopChk, extraStopAddr: o.extraStopAddr || '', pax: o.pax || '', luggageCount: o.luggageCount || '', luggageSize: o.luggageSize || '',
+      note: o.note || '', addrNote: o.addrNote || '', custSource: o.custSource || '', custSourceName: o.custSourceName || '', custNote: o.custNote || '',
       amount: (typeof o.amount === 'number') ? o.amount : null,
       driverName: o.driverName || (d ? d.name : ''), driverPhone: o.driverPhone || (d ? d.phone : ''),
       driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : ''),
@@ -8007,6 +8052,7 @@
     if (els.dExtraStopAddr) els.dExtraStopAddr.value = o.extraStopAddr || '';
     if (o.pax != null) els.dPax.value = o.pax;
     if (o.luggageCount != null) els.dLuggageCount.value = o.luggageCount;
+    (function(){ var b = document.getElementById('dLugBig'), s = document.getElementById('dLugSmall'); if (!b || !s) return; b.value = o.lugBig || ''; s.value = o.lugSmall || ''; b.placeholder = (!o.lugBig && !o.lugSmall && o.luggageCount) ? '大箱（原共 ' + o.luggageCount + ' 件）' : '大箱'; })();
     if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = !o.luggageSize || o.luggageSize === '待確認';
     els.dLuggageSize.value = o.luggageSize || '';
     syncLuggageSizeTBD();
@@ -8151,7 +8197,7 @@
     o.flightNo = leg.flight || ''; o.terminal = leg.terminal || ''; o.flightDepTime = leg.dep || ''; o.flightArrTime = leg.arr || '';
     o.contactName = q.custName || ''; o.contactPhone = q.custPhone || '';
     o.pickupFullAddr = leg.pickupArea || ''; o.dropoffFullAddr = leg.dropoffArea || '';
-    o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || '';
+    o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || ''; o.lugBig = leg.lugBig || ''; o.lugSmall = leg.lugSmall || ''; if (lugText(leg.lugBig, leg.lugSmall)) o.luggageSize = lugText(leg.lugBig, leg.lugSmall);
     o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign';
     o.quoteNo = q.quoteNo || ''; o.quoteLeg = i; o.autoFromQuote = true;
     if (!o.code && q.fdCodes && q.fdCodes[i]) o.code = q.fdCodes[i];
@@ -8250,6 +8296,7 @@
       if (leg.dropoffArea) els.dDropoffFullAddr.value = leg.dropoffArea;
       if (leg.pax) els.dPax.value = leg.pax;
       els.dLuggageCount.value = (leg.luggageCount != null && leg.luggageCount !== '') ? leg.luggageCount : '';
+      setDispatchLug(leg.lugBig, leg.lugSmall);
       // 訂單金額要帶「這一段行程實際該收的金額」，不是折扣前的小計：
       // 來回優惠等 95 折與營業稅依各段小計比例分攤；指定 eSIM 的 NT$30 整張報價只
       // 折一次，固定算在報價的第一段行程上。各段加總一定等於報價的總金額。
@@ -8955,7 +9002,10 @@
     box.innerHTML = list.length ? '' : '<span class="hint" style="margin:0">尚未存地址</span>';
     list.forEach(function(a){
       var w = document.createElement('span'); w.className = 'chip addr-chip'; w.title = a.address;
-      w.textContent = a.label + '｜' + stripFloor(a.address);
+      w.textContent = a.label + '｜' + stripFloor(a.address) + (a.note ? '｜📍' + a.note : '');
+      var en = document.createElement('button'); en.type = 'button'; en.className = 'x'; en.textContent = '✎'; en.title = '給司機的地址提醒（例如：要開進地下室）';
+      en.onclick = function(){ var v = window.prompt('「' + stripFloor(a.address) + '」給司機的提醒（留空＝刪除）：', a.note || ''); if (v === null) return; a.note = String(v).trim(); c.updatedAt = Date.now(); saveKnownCustomersList(); renderQuoteAddresses(); setDispatchStatus(els.quoteStatusMsg, a.note ? '已存地址提醒，派車單會自動帶給司機' : '已刪除地址提醒', 'ok'); };
+      w.appendChild(en);
       var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '✕'; x.title = '刪除這個地址';
       x.onclick = function(){ if (!confirm('刪除「' + a.label + '」地址？')) return; kcRememberRemoved(c, a.address); c.addresses = c.addresses.filter(function(z){ return z.id !== a.id; }); saveKnownCustomersList(); renderQuoteAddresses(); };
       w.appendChild(x); box.appendChild(w);
@@ -8990,7 +9040,9 @@
       if (!c){ setDispatchStatus(els.quoteStatusMsg, '請先填客戶暱稱、姓名或電話', 'err'); return; }
       if (!c.addresses) c.addresses = [];
       if (c.addresses.some(function(a){ return a.address === addr; })){ setDispatchStatus(els.quoteStatusMsg, '這個地址已經存過了', 'err'); return; }
-      c.addresses.push({ id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), label: label, address: addr });
+      var anote = (document.getElementById('qAddrNoteInput') || {}).value; anote = String(anote || '').trim();
+      c.addresses.push({ id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), label: label, address: addr, note: anote });
+      if (document.getElementById('qAddrNoteInput')) document.getElementById('qAddrNoteInput').value = '';
       saveKnownCustomersList();
       if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = true;
       document.getElementById('qAddrInput').value = ''; document.getElementById('qAddrLabelOther').value = '';
