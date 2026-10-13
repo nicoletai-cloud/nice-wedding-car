@@ -2887,10 +2887,17 @@
       var fallback = (pred.text && pred.text.text) || '';
       hide();
       var place = pred.toPlace();
-      place.fetchFields({ fields: ['formattedAddress', 'location'] }).then(function(){
+      var bizName = '';
+      place.fetchFields({ fields: ['formattedAddress', 'location', 'displayName', 'types'] }).then(function(){
+        // 2026-10-13：選到的是商家／地標（酒店、餐廳…）就記下名稱，報價可用名稱代替地區
+        var ty = place.types || [];
+        var isBiz = ty.indexOf('establishment') >= 0 || ty.indexOf('point_of_interest') >= 0 || ty.indexOf('lodging') >= 0;
+        if (isBiz && ty.indexOf('street_address') < 0 && ty.indexOf('route') < 0 && ty.indexOf('premise') < 0) bizName = String(place.displayName || '').trim();
         return place.formattedAddress || fallback;
       }, function(){ return fallback; }).then(function(addr){
         token = null;
+        inputEl.dataset.placeName = bizName;
+        inputEl.dataset.placeAddr = addr || '';
         if (addr){
           picking = true;
           inputEl.value = addr;
@@ -2902,6 +2909,7 @@
     }
     inputEl.addEventListener('input', function(){
       if (picking) return;
+      if (inputEl.dataset.placeName && inputEl.value.trim() !== inputEl.dataset.placeAddr) inputEl.dataset.placeName = '';
       clearTimeout(timer);
       var q = inputEl.value.trim();
       if (q.length < 2){ hide(); return; }
@@ -5062,6 +5070,9 @@
     }
     if (prefill.pickupArea) row.querySelector('.q-pickup-area').value = prefill.pickupArea;
     if (prefill.dropoffArea) row.querySelector('.q-dropoff-area').value = prefill.dropoffArea;
+    [['.q-pickup-area', prefill.pickupPlace, prefill.pickupArea], ['.q-dropoff-area', prefill.dropoffPlace, prefill.dropoffArea]].forEach(function(x){
+      if (x[1]){ var el = row.querySelector(x[0]); el.dataset.placeName = x[1]; el.dataset.placeAddr = String(x[2] || '').trim(); }
+    });
     if (prefill.pax != null) row.querySelector('.q-pax').value = prefill.pax;
     if (prefill.luggageCount != null) row.querySelector('.q-luggage').value = prefill.luggageCount;
     if (prefill.lugBig != null) row.querySelector('.q-lug-big').value = prefill.lugBig;
@@ -5928,12 +5939,12 @@
     var m1 = /^(?:\d{3,6}\s*)?([一-鿿]{1,3}?)([市縣])([一-鿿]{1,3}[市區鄉鎮])/.exec(s);
     if (m1){
       var cityFull = m1[1] + m1[2];
-      return { cityShort: CITY_SHORT_NAME[cityFull] || m1[1], district: m1[3] };
+      return { cityShort: CITY_SHORT_NAME[cityFull] || m1[1], cityFull: cityFull, district: m1[3] };
     }
     var m2 = DISTRICT_START_RE.exec(s);
     if (m2){
       var cityFull2 = DISTRICT_TO_CITY[m2[1]];
-      return { cityShort: CITY_SHORT_NAME[cityFull2] || '', district: m2[1] };
+      return { cityShort: CITY_SHORT_NAME[cityFull2] || '', cityFull: cityFull2 || '', district: m2[1] };
     }
     return null;
   }
@@ -6009,14 +6020,21 @@
   // 「新竹北區」、「新店區中正路700巷80號」（沒寫「新北市」）->「新北新店」。
   // 如果不是看得出來的標準地址格式（例如本來就是「桃園國際機場」這種地
   // 名），就原樣保留，不做處理。
-  function simplifyAddressArea(addr){
+  function placeNameOf(el){
+    if (!el || !el.dataset.placeName) return '';
+    return el.value.trim() === el.dataset.placeAddr ? el.dataset.placeName : '';
+  }
+  function simplifyAddressArea(addr, keepCounty){
     // 2026-10-13：Google 地址常帶郵遞區號（303新竹县湖口乡…）和簡體字，報價不顯示郵遞區號
     var s = String(addr || '').trim().replace(/^(台灣|臺灣)\s*/, '').replace(/^\d{3,6}\s*/, '')
       .replace(/县/g, '縣').replace(/乡/g, '鄉').replace(/镇/g, '鎮').replace(/区/g, '區').replace(/长/g, '長').replace(/东/g, '東').replace(/门/g, '門').replace(/兴/g, '興').replace(/华/g, '華').replace(/园/g, '園');
     if (!s) return s;
     var hit = extractCityDistrict(s);
     if (!hit) return s;
-    return (hit.cityShort || '') + shortDistrictName(hit.district);
+    // keepCounty：一般接送兩端都列時，縣要寫出來（新竹縣湖口-嘉義縣太保）
+    var cs = hit.cityShort || '';
+    if (keepCounty && cs && /縣$/.test(hit.cityFull || '')) cs += '縣';
+    return cs + shortDistrictName(hit.district);
   }
 
   function parseFlightPasteText(text){
@@ -6209,6 +6227,8 @@
         terminal: row.querySelector('.q-terminal').value.trim(),
         pickupArea: row.querySelector('.q-pickup-area').value.trim(),
         dropoffArea: row.querySelector('.q-dropoff-area').value.trim(),
+        pickupPlace: placeNameOf(row.querySelector('.q-pickup-area')),
+        dropoffPlace: placeNameOf(row.querySelector('.q-dropoff-area')),
         extraStopChk: row.querySelector('.q-extra-stop-chk') ? row.querySelector('.q-extra-stop-chk').checked : false,
         extraStopAddr: row.querySelector('.q-extra-stop-addr') ? row.querySelector('.q-extra-stop-addr').value.trim() : '',
         pax: row.querySelector('.q-pax').value,
@@ -6294,7 +6314,7 @@
       // 也簡化後用「+」接在後面（例如「新竹北區+新竹香山區」），不再另外列一行、
       // 也不顯示完整地址。
       var extraAreas = (leg.extraStopChk && leg.extraStopAddr)
-        ? leg.extraStopAddr.split('\n').map(simplifyAddressArea).map(function(s){ return s.trim(); }).filter(Boolean)
+        ? leg.extraStopAddr.split('\n').map(function(a){ return simplifyAddressArea(a); }).map(function(s){ return s.trim(); }).filter(Boolean)
         : [];
       var pickupAreaShort = simplifyAddressArea(leg.pickupArea);
       var dropoffAreaShort = simplifyAddressArea(leg.dropoffArea);
@@ -6322,7 +6342,11 @@
           lineParts.push(depAreaStr ? (depAreaStr + svcLabel) : svcLabel);
         }
       } else {
-        var legAreas = [pickupAreaShort || dropoffAreaShort].concat(extraAreas).filter(Boolean);
+        // 2026-10-13 一般接送：上、下車都有填就寫「上車-下車」（例：新竹縣湖口-嘉義縣太保接送）
+        // 選到商家（酒店等）就用商家名稱
+        var puC = leg.pickupPlace || simplifyAddressArea(leg.pickupArea, true), doC = leg.dropoffPlace || simplifyAddressArea(leg.dropoffArea, true);
+        var endStr = (puC && doC && puC !== doC) ? (puC + '-' + doC) : (puC || doC);
+        var legAreas = [endStr].concat(extraAreas).filter(Boolean);
         areaLabel = legAreas.length ? (legAreas.join('+') + svcLabel) : svcLabel;
         lineParts.push(areaLabel);
         if (showModel) lineParts.push(modelLabel);
@@ -7567,7 +7591,7 @@
     (q.legs || []).forEach(function(leg){
       addQuoteLegRow({
         svc: leg.svc, date: leg.date, dep: leg.dep, arr: leg.arr, pickupTime: leg.pickupTime, fixedPickup: !!leg.fixedPickup, flight: leg.flight, terminal: leg.terminal,
-        pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pax: leg.pax, luggageCount: leg.luggageCount, lugBig: leg.lugBig, lugSmall: leg.lugSmall,
+        pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pickupPlace: leg.pickupPlace || '', dropoffPlace: leg.dropoffPlace || '', pax: leg.pax, luggageCount: leg.luggageCount, lugBig: leg.lugBig, lugSmall: leg.lugSmall,
         modelId: leg.modelId, base: leg.base, friendChk: !!leg.friendChk,
         airChk: leg.airChk, airAmt: leg.airAmt,
         nightChk: leg.nightChk, nightAmt: leg.nightAmt,
