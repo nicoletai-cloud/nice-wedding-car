@@ -951,6 +951,7 @@
       <select id="orderSel" aria-label="切換訂單"><option value="">切換訂單…</option></select>
       <div class="sync-bar inline">
         <input type="password" id="syncPasscodeInput" placeholder="同步密碼" autocomplete="off">
+        <button type="button" class="add-btn" id="newQuoteBtn" title="清空報價頁，開一張全新的報價">＋ 新報價</button>
         <button type="button" class="add-btn ghost" id="syncNowBtn">同步</button>
         <button type="button" class="add-btn ghost" id="todoBtn">待辦</button>
         <span class="sync-status" id="syncStatusMsg">尚未設定同步</span>
@@ -3347,7 +3348,7 @@
     if (name === 'quote') { try { orderQuoteOnTab(); } catch(e){} }
   }
   // 在上方選了訂單後切到「報價」：自動帶出這張訂單的報價（報價表單是空的時候）；不是空的就顯示一條「載入這張訂單的報價」提示
-  var oqLoadedFor = '';
+  var oqLoadedFor = '', oqBlank = false;
   function orderQuoteFor(o){
     if (!o) return null;
     return recentQuotes.find(function(q){ return o.quoteId && q.id === o.quoteId; })
@@ -3359,7 +3360,7 @@
   }
   function openOrderQuote(o){
     var q = orderQuoteFor(o);
-    oqLoadedFor = o.id;
+    oqLoadedFor = o.id; oqBlank = false;
     if (q){ loadQuoteIntoForm(q.id); setDispatchStatus(els.quoteStatusMsg, '已載入訂單 ' + (o.formalNo || '') + ' 的報價' + (q.quoteNo ? '（' + q.quoteNo + '）' : '') + '，可直接修改', 'ok'); renderOrderQuoteBar(); return; }
     // 沒有報價（直接建的訂單）：用訂單資料帶出一張新報價，改完按「儲存報價」或「複製文字」
     currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = o.formalNo || ''; requotePrev = '';
@@ -3381,15 +3382,33 @@
   function renderOrderQuoteBar(){
     var bar = document.getElementById('oqBar'); if (!bar) return;
     var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
-    if (!o || oqLoadedFor === o.id){ bar.hidden = true; return; }
+    if (!o || (oqLoadedFor === o.id && !oqBlank)){ bar.hidden = true; return; }
     document.getElementById('oqText').textContent = '目前選的訂單：' + [o.formalNo, fmtMD(o.date), o.svcType, o.contactName || o.custSourceName].filter(Boolean).join(' ');
     bar.hidden = false;
   }
   function orderQuoteOnTab(){
     var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
     if (!o || oqLoadedFor === o.id){ renderOrderQuoteBar(); return; }
-    if (quoteFormEmpty()) openOrderQuote(o); else renderOrderQuoteBar();
+    openOrderQuote(o);   // 點了訂單 → 一律帶出這張訂單的報價／原本資料
   }
+  // ＋ 新報價：清空報價頁（不載入任何訂單或報價）
+  function newQuote(){
+    var src = document.querySelector('input[name="qCustSource"][value="LINE"]'); if (src) src.checked = true;
+    ['qCustSourceName','qCustName','qCustPhone','qCustNote','qFoundVia'].forEach(function(k){ var e = els[k] || document.getElementById(k); if (e) e.value = ''; });
+    els.quoteLegsContainer.innerHTML = '';
+    addQuoteLegRow({});
+    [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay')].forEach(function(e){ if (e) e.checked = false; });
+    currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = ''; requotePrev = ''; currentQuoteKey = ''; currentQuoteFlags = {};
+    currentPaymentReceiptNo = ''; currentPaymentConfirmedAt = ''; roundTripManual = false;
+    oqLoadedFor = editingOrderId || '';   // 不要自動帶入目前選的訂單（上方黃條還可以手動載入）
+    switchTab('quote');
+    try { renderQuoteDoc(); } catch (e) {}
+    try { renderPaylink(); } catch (e) {}
+    oqBlank = true; renderOrderQuoteBar();   // 黃條仍在，需要時可一鍵載入訂單
+    setDispatchStatus(els.quoteStatusMsg, '已開新報價（空白）', 'ok');
+    try { window.scrollTo(0, 0); } catch (e) {}
+  }
+  setTimeout(function(){ var b = document.getElementById('newQuoteBtn'); if (b) b.addEventListener('click', newQuote); }, 0);
   setTimeout(function(){ var b = document.getElementById('oqBtn'); if (b) b.addEventListener('click', function(){ var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null; if (o) openOrderQuote(o); }); }, 0);
   [els.tabBtnDispatch, els.tabBtnFindDriver, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt, els.tabBtnCal].forEach(function(btn){
     if (btn) btn.addEventListener('click', function(){ switchTab(btn.dataset.tab); });
@@ -7465,6 +7484,7 @@
     var q = recentQuotes.find(function(x){ return x.id === id; });
     if (!q) return;
     setTimeout(function(){ try { renderPaylink(); paylinkCheck(true); } catch (e) {} }, 300);
+    oqLoadedFor = editingOrderId || ''; oqBlank = false;   // 手動載入了報價 → 切分頁時不要再被訂單蓋掉
     currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || ''; requotePrev = ''; currentQuoteId = q.id;
     currentQuoteFlags = { followN: q.followN || 0, followAt: q.followAt || 0 };
     currentQuoteKey = friendCustomerKey(q.custPhone, q.custSourceName, q.custName);
@@ -8108,6 +8128,7 @@
   function loadOrderIntoDispatchForm(id){
     var o = recentOrders.find(function(x){ return x.id === id; });
     if (!o) return;
+    oqLoadedFor = '';   // 換了訂單 → 下次到報價頁重新帶出這張訂單
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (o.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.dCustSourceName.value = o.custSourceName || '';
