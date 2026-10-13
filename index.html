@@ -615,6 +615,7 @@
   }
   /* display:flex 會蓋掉 hidden 屬性，非月結收據的「月結期間」那一行會多出一條「—」 */
   .r-line[hidden]{ display:none; }
+  .card[hidden]{ display:none !important; }
   .r-line:last-child{ border-bottom:none; }
   .r-line .k{ color:#6B5B42; flex-shrink:0; }
   .r-line .v{ color:#2B241C; text-align:right; font-weight:500; }
@@ -1232,10 +1233,6 @@
               <label><input type="radio" name="dPaymentMethod" class="d-payment-method" value="cash"> 收現金</label>
             </div>
           </div>
-          <div class="field" id="dDriverFeeField" hidden>
-            <label for="dDriverFee">司機酬勞（回金＝訂單金額－司機酬勞）</label>
-            <input type="number" id="dDriverFee" min="0">
-          </div>
           <div class="field" id="dReturnAmountField" hidden style="margin-bottom:0;">
             <label>回金金額</label>
             <div class="driver-readout" id="dReturnAmountReadout">—</div>
@@ -1291,13 +1288,18 @@
             <label>司機資訊預覽</label>
             <div class="driver-readout" id="dDriverReadout"><span class="empty">尚未選擇司機</span></div>
           </div>
+          <div class="field" id="dDriverFeeField" style="margin:12px 0 0;">
+            <label for="dDriverFee">司機酬勞</label>
+            <input type="number" id="dDriverFee" min="0" step="50" inputmode="numeric" placeholder="例如 1100">
+            <p class="hint" style="margin:4px 0 0">直接安排司機時在這裡填；收現金的單，回金＝訂單金額－司機酬勞</p>
+          </div>
           <div class="trip-add-row" style="margin-top:14px;margin-bottom:0;">
             <button type="button" class="add-btn" id="saveAssignBtn">💾 儲存司機指派</button>
           </div>
           <p class="hint" style="margin-top:6px;">選好司機後按這裡，會把司機記錄在這張訂單上（已載入的訂單會更新原本那一筆）。已指派的訂單會寫進 Google 日曆；未指派的訂單，機器人會在用車日前 2 天起每天早上 9 點提醒。</p>
         </div>
 
-        <div class="card">
+        <div class="card" hidden>  <!-- 2026-10-13 起都用 Google 日曆，TimeTree 複製區不用了（保留元素避免程式找不到） -->
           <h2><span class="dot"></span>TimeTree 行程（複製貼上）</h2>
           <p class="hint">TimeTree 沒辦法自動寫入，所以這裡把目前表單的內容整理好：先複製標題、再複製內容，貼到 TimeTree 的新行程就好。Google 日曆則由機器人自動寫入（已指派司機的訂單）。</p>
           <div class="trip-add-row" style="margin-bottom:0;">
@@ -4001,7 +4003,6 @@
   }
   function updatePaymentUI(){
     var isCash = currentPaymentMethod() === 'cash';
-    if (els.dDriverFeeField) els.dDriverFeeField.hidden = !isCash;
     if (els.dReturnAmountField) els.dReturnAmountField.hidden = !isCash;
     if (isCash && els.dReturnAmountReadout){
       var amount = Number(els.dAmount && els.dAmount.value) || 0;
