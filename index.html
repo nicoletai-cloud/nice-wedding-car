@@ -1295,7 +1295,10 @@
           </div>
           <div class="trip-add-row" style="margin-top:14px;margin-bottom:0;">
             <button type="button" class="add-btn" id="saveAssignBtn">💾 儲存司機指派</button>
+            <button type="button" class="add-btn" id="redispatchBtn" hidden style="margin-left:8px;background:#fff3e6;border-color:#e0a050;color:#8a4b00;">🔁 重派（原司機不能跑）</button>
           </div>
+          <p class="hint" id="redispatchHist" hidden style="margin-top:6px;color:#8a4b00;"></p>
+          <button type="button" class="add-btn" id="redispatchCopyBtn" hidden style="margin-top:6px;">📋 複製給客人的司機更新</button>
           <p class="hint" style="margin-top:6px;">選好司機後按這裡，會把司機記錄在這張訂單上（已載入的訂單會更新原本那一筆）。已指派的訂單會寫進 Google 日曆；未指派的訂單，機器人會在用車日前 2 天起每天早上 9 點提醒。</p>
         </div>
 
@@ -5290,10 +5293,33 @@
     return true;
   }
 
+  // 2026-10-13：新竹（新竹市／新竹縣）起價＝台北⇄桃園價格 +200，基本價格自動加上去。
+  var HSINCHU_ADD = 200;
+  function isHsinchuArea(addr){
+    var s = String(addr || '').trim();
+    if (!s) return false;
+    if (s.indexOf('新竹') !== -1) return true;
+    var hit = extractCityDistrict(s);
+    return !!(hit && String(hit.cityShort || '') === '新竹');
+  }
+  function rowIsHsinchu(row){
+    return isHsinchuArea(row.querySelector('.q-pickup-area').value) || isHsinchuArea(row.querySelector('.q-dropoff-area').value);
+  }
   function updateQuoteModelBase(row){
     var sel = row.querySelector('.q-model');
     var p = priceList.find(function(x){ return x.id === sel.value; });
-    if (p) row.querySelector('.q-base').value = p.price;
+    if (!p) return;
+    var hc = p.model.indexOf('（台中）') === -1 && rowIsHsinchu(row);
+    row.dataset.hsinchu = hc ? '1' : '';
+    row.querySelector('.q-base').value = p.price + (hc ? HSINCHU_ADD : 0);
+  }
+  function autoHsinchuBase(row){
+    if (isFriendRow(row)) return;
+    var sel = row.querySelector('.q-model');
+    var p = priceList.find(function(x){ return x.id === sel.value; });
+    if (!p) return;
+    var hc = p.model.indexOf('（台中）') === -1 && rowIsHsinchu(row);
+    if ((row.dataset.hsinchu === '1') !== hc) updateQuoteModelBase(row);
   }
 
   // 上／下車地區只要有一邊落在偏遠地區加價表，就自動幫忙勾選「偏遠地區加價」
@@ -5599,7 +5625,7 @@
     ['.q-pickup-area','.q-dropoff-area'].forEach(function(sel){
       row.querySelector(sel).addEventListener('input', function(){
         autoApplyRemoteSurcharge(row);
-        autoTaichungModel(row);
+        if (!autoTaichungModel(row)) autoHsinchuBase(row);
         renderQuoteDoc();
         scheduleExtraStopFee(row, false);
       });
@@ -7742,7 +7768,47 @@
     if (els.saveOrderAsNewBtn) els.saveOrderAsNewBtn.style.display = editing ? '' : 'none';
     if (els.orderEditNote) els.orderEditNote.style.display = editing ? '' : 'none';
     if (els.saveAssignBtn) els.saveAssignBtn.textContent = editing ? '💾 儲存司機指派（更新這筆訂單）' : '💾 儲存司機指派';
+    updateRedispatchUI();
   }
+  // 2026-10-13 重派：司機車子有狀況或臨時不能跑 → 撤下原司機、回到找司機；
+  // 換好新司機按儲存後，機器人會通知原司機不用出車、把行程發給新司機（客人也會收到司機異動）。
+  function updateRedispatchUI(){
+    var btn = document.getElementById('redispatchBtn'), hist = document.getElementById('redispatchHist');
+    var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+    if (btn) btn.hidden = !(o && o.driverName);
+    var cb = document.getElementById('redispatchCopyBtn');
+    if (cb) cb.hidden = !(o && o.driverName && (o.prevDrivers || []).length);
+    if (hist){
+      var P = (o && o.prevDrivers) || [];
+      hist.hidden = !P.length;
+      hist.textContent = P.length ? '重派紀錄：' + P.map(function(p){ var d = new Date(p.at || 0); return p.name + '（' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ' 撤下）'; }).join('、') : '';
+    }
+  }
+  function redispatchCurrent(){
+    var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+    if (!o || !o.driverName) return;
+    if (!window.confirm('確定把「' + o.driverName + '」從這趟撤下、重新找司機？\n\n儲存後機器人會通知 ' + o.driverName + ' 這趟不用出車。')) return;
+    if (els.dDriverSelect){ els.dDriverSelect.value = ''; els.dDriverSelect.dispatchEvent(new Event('change')); }
+    keptDriverSnap = null;
+    if (els.dDriverFee) els.dDriverFee.value = '';
+    try { updateDriverReadout(); } catch(e){}
+    saveCurrentOrder(false);
+    switchTab('findDriver');
+  }
+  // 重派後給客人：只告知司機異動，不再重複行程與注意事項
+  function redispatchCustText(o){
+    var car = [o.driverCar, o.driverPlate].filter(Boolean).join(' ');
+    return '您好，我是好好禮車的客服 Kate 😊\n因原車輛無法執行任務，為您更新 ' + fmtMD(o.date) + ' ' + (o.pickupTime || '') + ' ' + (o.svcType || '') + ' 的司機資料：\n\n'
+      + '司機：' + o.driverName + (o.driverPhone ? '\n電話：' + o.driverPhone : '') + (car ? '\n車輛：' + car : '')
+      + '\n\n造成不便請見諒，有任何問題歡迎直接在這裡留言 🙏';
+  }
+  (function(){
+    var b = document.getElementById('redispatchBtn'); if (b) b.addEventListener('click', redispatchCurrent);
+    var c = document.getElementById('redispatchCopyBtn'); if (c) c.addEventListener('click', function(){
+      var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+      if (o && o.driverName) copyToClipboard(redispatchCustText(o), els.dispatchStatusMsg);
+    });
+  })();
 
   function renderRecentOrdersList(){
     renderOrderAssignTag();
@@ -7826,7 +7892,7 @@
     if (!asNew && editingOrderId){
       var idx = -1;
       recentOrders.forEach(function(x, i){ if (x.id === editingOrderId) idx = i; });
-      if (idx >= 0){ o.id = editingOrderId; carryOrderFlags(recentOrders[idx], o); recentOrders[idx] = o; updated = true; }
+      if (idx >= 0){ o.id = editingOrderId; carryOrderFlags(recentOrders[idx], o); noteDriverChange(recentOrders[idx], o); recentOrders[idx] = o; updated = true; }
     }
     // 同一張報價已經轉過訂單（例如另一台裝置轉過）：更新原本那筆，不另外多一筆
     if (!updated && !asNew && o.quoteNo){
@@ -7852,6 +7918,8 @@
     renderReceiptOrderSelect();
     renderCustPickSelects();
     var assignNote = o.driverName ? '（司機：' + o.driverName + '）' : '（尚未指派司機）';
+    var lastPrev = (o.prevDrivers || []).slice(-1)[0];
+    if (lastPrev && Date.now() - (lastPrev.at || 0) < 5000) assignNote += '；已撤下 ' + lastPrev.name + '，機器人會通知他不用出車' + (o.driverName ? '，並把行程發給 ' + o.driverName : '，請在「找司機」找新司機');
     setDispatchStatus(els.dispatchStatusMsg, (updated ? '已更新這筆訂單' : '已儲存這筆訂單') + assignNote + (learnedAddress ? '，並記住這位熟客的完整地址' : ''), 'ok');
     updateOrderEditUI();
     doFullSync(true);
@@ -8686,8 +8754,15 @@
       doFullSync(true); scheduleBotPush(); renderTodoBadge();
     }).catch(function(e){ setDispatchStatus(els.dispatchStatusMsg, '訂單已儲存，但訂單編號還沒產生：' + (e && e.message ? e.message : e), 'err'); });
   }
-  var ORDER_FLAGS = ['ttAt', 'paxSentAt', 'receiptAt', 'revAskAt', 'revSkip', 'formalNo', 'quoteNo', 'code'];   // code＝喊單單號：存檔時要保留，不然司機貼單號會對不到
+  var ORDER_FLAGS = ['ttAt', 'paxSentAt', 'receiptAt', 'revAskAt', 'revSkip', 'formalNo', 'quoteNo', 'code', 'prevDrivers', 'ttDel', 'ttDelAt'];   // code＝喊單單號：存檔時要保留，不然司機貼單號會對不到
   function carryOrderFlags(from, to){ ORDER_FLAGS.forEach(function(k){ if (from[k] && !to[k]) to[k] = from[k]; }); }
+  // 司機換人（重派或直接改選）：記下原司機；Vincent 的 TimeTree 已記過的要提醒刪掉，新司機若是 Vincent 要重記
+  function noteDriverChange(prev, o){
+    if (!prev || !prev.driverName || prev.driverName === o.driverName) return;
+    o.prevDrivers = (prev.prevDrivers || []).concat([{ name: prev.driverName, at: Date.now() }]);
+    if (prev.ttAt && /vincent|答維正/i.test(prev.driverName)){ o.ttDel = 1; o.ttDelAt = 0; }
+    o.ttAt = 0;
+  }
   function markOrders(ids, patch){
     var n = 0;
     recentOrders.forEach(function(o){ if (ids.indexOf(o.id) !== -1){ Object.assign(o, patch); n++; } });
@@ -8724,7 +8799,7 @@
   // TimeTree／乘客資訊／收據／評價只追蹤 2026/10/9 之後存的訂單（之前的單當作已處理）
   // =====================================================================
   var TODO_SINCE = Date.parse('2026-10-09T00:00:00+08:00');
-  var TODO_ST = { quote: '報價追蹤', nodrv: '未指派司機', tt: '未記 TimeTree', pax: '未傳乘客資訊', receipt: '用車後未開收據', rev: '用車後追評價' };
+  var TODO_ST = { quote: '報價追蹤', nodrv: '未指派司機', tt: '未記 TimeTree', ttdel: 'TimeTree 要刪（已改派）', pax: '未傳乘客資訊', receipt: '用車後未開收據', rev: '用車後追評價' };
   var REV_ASK_AIR = '請問這次的接送服務還滿意嗎？\n\n如果您對我們的服務感到滿意，誠摯邀請您抽空寫幾句話留下寶貴評價，或是對司機的鼓勵，這會是我們最大的動力 🙏\n\n👉 Google 評價：https://goo.gl/maps/WsAvwhXy1eQPqk5f6';
   var todoF = 'all', todoSel = {};
   // 官網待付款（機器人轉來，只放在「報價追蹤」）；追蹤次數／失單記在這個瀏覽器（會跟著同步）
@@ -8771,6 +8846,7 @@
       }
       // 2026-10-13 起都用 Google 日曆；只有 Vincent（REA-2768）的行程要進 TimeTree 2768（排程每小時自動補）
       if (recent && !o.ttAt && /vincent|答維正/i.test(o.driverName || '')) T.push({ k: 'tt', late: daysAgo(o.savedAt) >= 1 });
+      if (o.ttDel && !o.ttDelAt) T.push({ k: 'ttdel', late: true });
       if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
     } else if (d >= -30 && recent){
       if (!o.receiptAt) T.push({ k: 'receipt', late: d <= -3 });
@@ -8818,6 +8894,7 @@
     var B = [['all', nSel && nSel === rows.length ? '取消全選' : '全選'], ['names', '複製客人名稱']];
     if (todoF === 'quote') B.push(['followCopy', '複製追銷話術＋標記已追蹤'], ['follow', '標記已追蹤'], ['lost', '標記失單']);
     if (todoF === 'tt') B.push(['tt', '標記已記 TimeTree']);
+    if (todoF === 'ttdel') B.push(['ttdel', '標記已刪 TimeTree']);
     if (todoF === 'pax') B.push(['pax', '標記已傳乘客資訊']);
     if (todoF === 'receipt') B.push(['receipt', '標記已開收據']);
     if (todoF === 'rev') B.push(['revCopy', '複製評價詢問＋標記已問'], ['revAsked', '標記已問'], ['revSkip', '不需要問']);
@@ -8852,6 +8929,7 @@
       safeSet(WEB_FLAGS_KEY, JSON.stringify(webFlags)); n += wIds.length;
     }
     if (kind === 'tt') n = markOrders(oIds, { ttAt: now });
+    if (kind === 'ttdel') n = markOrders(oIds, { ttDelAt: now });
     if (kind === 'pax') n = markOrders(oIds, { paxSentAt: now });
     if (kind === 'receipt') n = markOrders(oIds, { receiptAt: now });
     if (kind === 'revAsked' || kind === 'revCopy') n = markOrders(oIds, { revAskAt: now });
