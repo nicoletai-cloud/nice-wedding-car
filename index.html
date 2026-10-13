@@ -1436,6 +1436,7 @@
   </section>
 
   <section id="tabPanelQuote" class="tab-panel">
+    <div id="oqBar" hidden style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:#fbf6ec;border:1px solid #e4d3b4;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span id="oqText" style="flex:1;min-width:200px"></span><button type="button" class="secondary" id="oqBtn" style="padding:6px 14px">📝 載入這張訂單的報價</button></div>
     <div class="layout">
       <!-- LEFT: FORM -->
       <div class="form-col">
@@ -3343,7 +3344,53 @@
     if (name === 'findDriver'){ if (editingOrderId && fdSel.indexOf(editingOrderId) === -1){ var eo = recentOrders.find(function(o){ return o.id === editingOrderId; }); if (eo && !eo.driverName) fdSel = [editingOrderId]; } renderFindDriverDoc(); }
     if (name === 'dispatch') { renderClaimBox(); fetchClaims(); }
     if (name === 'cal') { try { renderCal(); } catch(e){} }
+    if (name === 'quote') { try { orderQuoteOnTab(); } catch(e){} }
   }
+  // 在上方選了訂單後切到「報價」：自動帶出這張訂單的報價（報價表單是空的時候）；不是空的就顯示一條「載入這張訂單的報價」提示
+  var oqLoadedFor = '';
+  function orderQuoteFor(o){
+    if (!o) return null;
+    return recentQuotes.find(function(q){ return o.quoteId && q.id === o.quoteId; })
+      || (o.quoteNo ? recentQuotes.find(function(q){ return q.quoteNo && quoteBaseKey(q.quoteNo) === quoteBaseKey(o.quoteNo); }) : null) || null;
+  }
+  function quoteFormEmpty(){
+    var legsFilled = [].some.call(els.quoteLegsContainer.querySelectorAll('.q-pickup-area, .q-dropoff-area, .q-flight'), function(e){ return e.value && e.value.trim(); });
+    return !els.qCustName.value.trim() && !els.qCustPhone.value.trim() && !els.qCustSourceName.value.trim() && !legsFilled;
+  }
+  function openOrderQuote(o){
+    var q = orderQuoteFor(o);
+    oqLoadedFor = o.id;
+    if (q){ loadQuoteIntoForm(q.id); setDispatchStatus(els.quoteStatusMsg, '已載入訂單 ' + (o.formalNo || '') + ' 的報價' + (q.quoteNo ? '（' + q.quoteNo + '）' : '') + '，可直接修改', 'ok'); renderOrderQuoteBar(); return; }
+    // 沒有報價（直接建的訂單）：用訂單資料帶出一張新報價，改完按「儲存報價」或「複製文字」
+    currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = o.formalNo || ''; requotePrev = '';
+    var src = document.querySelector('input[name="qCustSource"][value="' + (o.custSource || 'LINE') + '"]'); if (src) src.checked = true;
+    els.qCustSourceName.value = o.custSourceName || ''; els.qCustName.value = o.contactName || ''; els.qCustPhone.value = o.contactPhone || '';
+    if (els.qCustNote) els.qCustNote.value = o.custNote || '';
+    els.quoteLegsContainer.innerHTML = '';
+    var air = o.svcType === '送機' ? 'drop' : o.svcType === '接機' ? 'pick' : '';
+    addQuoteLegRow({ svc: o.svcType || '送機', date: o.date || '', dep: o.flightDepTime || '', arr: o.flightArrTime || '', pickupTime: o.pickupTime || '', fixedPickup: !!o.fixedPickup,
+      flight: o.flightNo || '', terminal: o.terminal || '',
+      pickupArea: air === 'pick' ? '' : (o.pickupFullAddr || o.pickupAddr || ''), dropoffArea: air === 'drop' ? '' : (o.dropoffFullAddr || o.dropoffAddr || ''),
+      pax: o.pax || '', luggageCount: o.luggageCount || '', lugBig: o.lugBig, lugSmall: o.lugSmall });
+    if (els.quoteLegsContainer.querySelector('.q-pickup-area')) els.quoteLegsContainer.querySelectorAll('.q-pickup-area, .q-dropoff-area, .q-date, .q-flight').forEach(function(e){ e.dispatchEvent(new Event('change', { bubbles: true })); });
+    var cash = document.getElementById('qCashPay'); if (cash) cash.checked = o.paymentMethod === 'cash';
+    try { renderQuoteDoc(); } catch (e) {}
+    setDispatchStatus(els.quoteStatusMsg, '這張訂單（' + (o.formalNo || '') + '）沒有存過報價，已用訂單資料帶出；訂單金額 $' + fmtNum(o.amount || 0) + '，報價金額請再確認', 'ok');
+    renderOrderQuoteBar();
+  }
+  function renderOrderQuoteBar(){
+    var bar = document.getElementById('oqBar'); if (!bar) return;
+    var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+    if (!o || oqLoadedFor === o.id){ bar.hidden = true; return; }
+    document.getElementById('oqText').textContent = '目前選的訂單：' + [o.formalNo, fmtMD(o.date), o.svcType, o.contactName || o.custSourceName].filter(Boolean).join(' ');
+    bar.hidden = false;
+  }
+  function orderQuoteOnTab(){
+    var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+    if (!o || oqLoadedFor === o.id){ renderOrderQuoteBar(); return; }
+    if (quoteFormEmpty()) openOrderQuote(o); else renderOrderQuoteBar();
+  }
+  setTimeout(function(){ var b = document.getElementById('oqBtn'); if (b) b.addEventListener('click', function(){ var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null; if (o) openOrderQuote(o); }); }, 0);
   [els.tabBtnDispatch, els.tabBtnFindDriver, els.tabBtnQuote, els.tabBtnCharter, els.tabBtnReceipt, els.tabBtnCal].forEach(function(btn){
     if (btn) btn.addEventListener('click', function(){ switchTab(btn.dataset.tab); });
   });
