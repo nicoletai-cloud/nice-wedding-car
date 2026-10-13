@@ -6250,6 +6250,10 @@
     } else {
       lines.push(L.total + fmtNum(rawTotal));
     }
+    // 有加點的報價才加一句加點費說明（2026-10-13 Nicole）
+    if (legs.some(function(l){ return l.extraChk && l.extraAmt; })){
+      lines.push(({ en: '*Extra-stop fee is based on the additional distance and drive time (Google Maps), charged in units of NT$50.', ja: '※追加立寄り料金は、Googleマップで算出した追加の走行距離と所要時間に基づき、50元単位で計算しています。' })[currentQuoteLang] || '＊加點費依 Google 導航多繞的里程與時間計算，以 $50 為單位。');
+    }
     // 匯款資訊、刷卡連結是否附上，看這筆報價自己勾選的「附上匯款資訊」／
     // 「附上刷卡付款連結」——刷卡有手續費，客人習慣匯款的話可以只附匯款資訊，
     // 不用把刷卡連結也貼給客人。
