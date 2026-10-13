@@ -7754,6 +7754,7 @@
   // （例如在別的裝置指派的）——先把雲端那份司機資料留著，避免一存檔就把司機洗掉。
   var editingOrderId = null;
   var keptDriverSnap = null;
+  var redispatchConfirmed = false;
   function driverById(id){ return drivers.find(function(d){ return d.id === id; }) || null; }
   function orderDriverSnap(){
     var d = selectedDriver();
@@ -7825,7 +7826,9 @@
     keptDriverSnap = null;
     if (els.dDriverFee) els.dDriverFee.value = '';
     try { updateDriverReadout(); } catch(e){}
+    redispatchConfirmed = true;   // 重派按鈕已經確認過，存檔時不再問第二次
     saveCurrentOrder(false);
+    redispatchConfirmed = false;
     switchTab('findDriver');
   }
   // 重派後給客人：只告知司機異動，不再重複行程與注意事項
@@ -7940,7 +7943,26 @@
     if (!asNew && editingOrderId){
       var idx = -1;
       recentOrders.forEach(function(x, i){ if (x.id === editingOrderId) idx = i; });
-      if (idx >= 0){ o.id = editingOrderId; carryOrderFlags(recentOrders[idx], o); noteDriverChange(recentOrders[idx], o); recentOrders[idx] = o; updated = true; }
+      if (idx >= 0){
+        var prevO = recentOrders[idx];
+        // 2026-10-13 直接改選／清掉司機（不是按「重派」）：存檔前再確認一次，避免誤觸就通知原司機不用出車
+        if (prevO.driverName && prevO.driverName !== o.driverName && !redispatchConfirmed){
+          var msg = o.driverName
+            ? '確定把這趟司機從「' + prevO.driverName + '」換成「' + o.driverName + '」？\n\n儲存後機器人會通知 ' + prevO.driverName + ' 這趟不用出車，並把行程發給 ' + o.driverName + '。'
+            : '確定撤銷「' + prevO.driverName + '」這趟的派單？\n\n儲存後機器人會通知 ' + prevO.driverName + ' 這趟不用出車，這單會回到待指派。';
+          if (!window.confirm(msg)){
+            var back = drivers.find(function(x){ return x.name === prevO.driverName; });
+            if (els.dDriverSelect){ if (back){ ensureDriverOpt(back.id); els.dDriverSelect.value = back.id; } else els.dDriverSelect.value = ''; }
+            if (!back) keptDriverSnap = { id: '', name: prevO.driverName, phone: prevO.driverPhone || '', car: prevO.driverCar || '', plate: prevO.driverPlate || '' };
+            if (els.dDriverFee) els.dDriverFee.value = (typeof prevO.driverFee === 'number') ? prevO.driverFee : '';
+            try { updateDriverReadout(); } catch(e){}
+            setDispatchStatus(els.dispatchStatusMsg, '已取消，司機維持「' + prevO.driverName + '」，訂單沒有變更', 'ok');
+            return;
+          }
+        }
+        redispatchConfirmed = false;
+        o.id = editingOrderId; carryOrderFlags(prevO, o); noteDriverChange(prevO, o); recentOrders[idx] = o; updated = true;
+      }
     }
     // 同一張報價已經轉過訂單（例如另一台裝置轉過）：更新原本那筆，不另外多一筆
     if (!updated && !asNew && o.quoteNo){
@@ -8498,7 +8520,9 @@
   if (document.getElementById('quoteToOrderBtn')) document.getElementById('quoteToOrderBtn').addEventListener('click', function(){
     var plr = null; try { plr = paylinkMap()[paylinkRef()]; } catch (e) {}
     if (plr && plr.paidAuto){ if (!confirm('這張報價的客人已線上付款，系統已自動建立訂單。還要再手動建一筆嗎？')) return; }
-    else if (!qCash() && !isMonthlyChoice() && !(els.qPaymentConfirmed && els.qPaymentConfirmed.checked)){ if (!confirm(plr ? '客人還沒付款。付款完成後系統會自動轉成訂單；只有熟客先出車後付款才需要現在轉。確定要現在轉成訂單嗎？' : '這張還沒產生付款連結、也不是收現。確定要現在轉成訂單嗎？')) return; }
+    else if (!qCash() && !isMonthlyChoice() && !(els.qPaymentConfirmed && els.qPaymentConfirmed.checked)){ if (!confirm(plr ? '客人還沒付款。付款完成後系統會自動轉成訂單；只有熟客先出車後付款才需要現在轉。確定要現在轉成訂單嗎？' : '這張還沒產生付款連結、也不是收現。確定要現在轉成訂單嗎？')) return;
+      // 2026-10-13 熟客先出車後付款：先轉的訂單算手動單，之後客人付款就不會再自動多建一筆（避免重複派車通知）
+      if (plr) paylinkApi('paylink-manual', { ids: [plr.id] }).catch(function(){}); }
     else if (plr){ paylinkApi('paylink-manual', { ids: [plr.id] }).catch(function(){}); }
     var before = recentQuotes[0] && recentQuotes[0].savedAt;
     saveCurrentQuote();
