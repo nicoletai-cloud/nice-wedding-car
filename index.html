@@ -4150,6 +4150,10 @@
   }
   setTimeout(function(){ ['dLugBig', 'dLugSmall'].forEach(function(id){ var e = document.getElementById(id); if (e) e.addEventListener('input', function(){ syncDispatchLug(false); }); }); }, 0);
   // 熟客地址上的「給司機的提醒」（例如：要開進地下室）：派車單上的地址只要對得上，就自動帶給司機
+  // 給客人／司機看的地址：去掉開頭郵遞區號、「○○里」「○鄰」（例：111臺北市士林區天和里中山北路… → 臺北市士林區中山北路…）
+  function cleanAddrText(a){
+    return String(a || '').trim().replace(/^\d{3,6}\s*/, '').replace(/((?:區|鄉|鎮|市))\s*[^\s區鄉鎮市村里路街道段巷弄號\d]{1,4}[里村](?=[^\s]{2,})/, '$1').replace(/\d+\s*鄰/, '').trim();
+  }
   function addrNoteFor(addr){
     var k = stripFloor(String(addr || '')).replace(/\s/g, '').replace(/^\d{3,5}/, '').replace(/臺/g, '台').replace(/(區)[^區路街道段巷號]{1,4}里/, '$1').replace(/\d+鄰/, ''); if (k.length < 6) return '';
     var hit = '';
@@ -4197,16 +4201,13 @@
     var dropoffAddrVal = (els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '—';
     if (terminalNote && isTaoyuanAirportAddress(pickupAddrVal)) pickupAddrVal += '（' + terminalNote + '）';
     if (terminalNote && isTaoyuanAirportAddress(dropoffAddrVal)) dropoffAddrVal += '（' + terminalNote + '）';
-    lines.push(L.pickupAddr + pickupAddrVal);
-    lines.push(L.dropoffAddr + dropoffAddrVal);
+    // 地址照行車順序列：上車 1 → 加點 2、3… → 下車；沒有加點就維持「上車地址／下車地址」。地址去掉郵遞區號和「○○里」「○鄰」
+    var extras = (els.dExtraStopChk && els.dExtraStopChk.checked && els.dExtraStopAddr) ? els.dExtraStopAddr.value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean) : [];
+    var numL = function(lbl, n){ return extras.length ? String(lbl).replace(/([：:]\s*)$/, ' ' + n + '$1') : lbl; };
+    lines.push(numL(L.pickupAddr, 1) + cleanAddrText(pickupAddrVal));
+    extras.forEach(function(addr, i){ lines.push(numL(L.extraStop, i + 2) + cleanAddrText(addr)); });
+    lines.push(L.dropoffAddr + cleanAddrText(dropoffAddrVal));
     if (opts.forDriver){ var an = orderAddrNote(els.dPickupFullAddr && els.dPickupFullAddr.value, els.dDropoffFullAddr && els.dDropoffFullAddr.value); if (an) lines.push('📍 地址提醒｜' + an); }
-    // 客人途中還要多上／下車一個地方（增加地點）——勾選了才算數，貼的地址可以
-    // 多行、一行一個加點地址，逐行列出來。
-    if (els.dExtraStopChk && els.dExtraStopChk.checked && els.dExtraStopAddr && els.dExtraStopAddr.value.trim()){
-      els.dExtraStopAddr.value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(addr){
-        lines.push(L.extraStop + addr);
-      });
-    }
     if (!compact) lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
     lines.push(L.luggageCount + (els.dLuggageCount.value !== '' ? els.dLuggageCount.value : L.tbd));
@@ -8496,8 +8497,15 @@
       ['source', 'sourceName', 'name', 'phone', 'note'].forEach(function(f){ if (!c[f] && cc[f]) c[f] = cc[f]; });
       var rm = {}; (c.removedAddrs || []).concat(cc.removedAddrs || []).forEach(function(a){ rm[a] = 1; });
       c.removedAddrs = Object.keys(rm);
-      var have = {}; c.addresses = (c.addresses || []).filter(function(a){ if (rm[a.address] || have[a.address]) return false; have[a.address] = 1; return true; });
-      (cc.addresses || []).forEach(function(a){ if (a && a.address && !rm[a.address] && !have[a.address]){ have[a.address] = 1; c.addresses.push({ id: a.id, label: a.label, address: a.address }); } });
+      var have = {}; c.addresses = (c.addresses || []).filter(function(a){ if (rm[a.address] || have[a.address]) return false; have[a.address] = a; return true; });
+      (cc.addresses || []).forEach(function(a){
+        if (!a || !a.address || rm[a.address]) return;
+        var mine = have[a.address];
+        if (!mine){ var na = { id: a.id, label: a.label, address: a.address }; if (a.note) na.note = a.note; if (a.at) na.at = a.at; have[a.address] = na; c.addresses.push(na); return; }
+        // 同一個地址：哪邊改得比較新（名稱／司機提醒），就用哪邊的 → 一台改名，其他裝置同步後也跟著改
+        if ((+a.at || 0) > (+mine.at || 0)){ mine.label = a.label; if (a.note) mine.note = a.note; else delete mine.note; mine.at = a.at; }
+        else if (!mine.note && a.note && !mine.at) mine.note = a.note;
+      });
     });
     if (JSON.stringify(knownCustomers) === before) return false;
     kcMerging = true; try { saveKnownCustomersList(); } finally { kcMerging = false; }
@@ -9108,8 +9116,9 @@
     list.forEach(function(a){
       var w = document.createElement('span'); w.className = 'chip addr-chip'; w.title = a.address;
       w.textContent = a.label + '｜' + stripFloor(a.address) + (a.note ? '｜📍' + a.note : '');
-      var en = document.createElement('button'); en.type = 'button'; en.className = 'x'; en.textContent = '✎'; en.title = '給司機的地址提醒（例如：要開進地下室）';
-      en.onclick = function(){ var v = window.prompt('「' + stripFloor(a.address) + '」給司機的提醒（留空＝刪除）：', a.note || ''); if (v === null) return; a.note = String(v).trim(); c.updatedAt = Date.now(); saveKnownCustomersList(); renderQuoteAddresses(); setDispatchStatus(els.quoteStatusMsg, a.note ? '已存地址提醒，派車單會自動帶給司機' : '已刪除地址提醒', 'ok'); };
+      var en = document.createElement('button'); en.type = 'button'; en.className = 'x'; en.textContent = '✎'; en.title = '改地址名稱、給司機的地址提醒（例如：要開進地下室）';
+      en.onclick = function(){ var nm = window.prompt('地址名稱（例如：住家、公司、乾媽家）：', a.label || ''); if (nm === null) return; nm = String(nm).trim(); if (nm) a.label = nm;
+        var v = window.prompt('「' + stripFloor(a.address) + '」給司機的提醒（留空＝刪除）：', a.note || ''); if (v === null) v = a.note || ''; a.note = String(v).trim(); if (!a.note) delete a.note; a.at = Date.now(); c.updatedAt = Date.now(); saveKnownCustomersList(); renderQuoteAddresses(); setDispatchStatus(els.quoteStatusMsg, a.note ? '已存地址提醒，派車單會自動帶給司機' : '已刪除地址提醒', 'ok'); };
       w.appendChild(en);
       var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '✕'; x.title = '刪除這個地址';
       x.onclick = function(){ if (!confirm('刪除「' + a.label + '」地址？')) return; kcRememberRemoved(c, a.address); c.addresses = c.addresses.filter(function(z){ return z.id !== a.id; }); saveKnownCustomersList(); renderQuoteAddresses(); };
