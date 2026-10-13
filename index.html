@@ -1293,7 +1293,7 @@
             <div class="driver-readout" id="dDriverReadout"><span class="empty">尚未選擇司機</span></div>
           </div>
           <div class="field" id="dDriverFeeField" style="margin:12px 0 0;">
-            <label for="dDriverFee">司機酬勞</label>
+            <label for="dDriverFee">司機酬勞 <span style="color:#c0392b">*必填</span></label>
             <input type="number" id="dDriverFee" min="0" step="50" inputmode="numeric" placeholder="例如 1100">
             <p class="hint" style="margin:4px 0 0">直接安排司機時在這裡填；收現金的單，回金＝訂單金額－司機酬勞</p>
           </div>
@@ -7937,6 +7937,18 @@
     var o = serializeCurrentOrder();
     if (!o.contactName && !o.pickupAddr && !o.dropoffAddr && !o.pickupFullAddr && !o.dropoffFullAddr){
       setDispatchStatus(els.dispatchStatusMsg, '請先填寫訂單資訊', 'err');
+      return;
+    }
+    // 2026-10-14 Nicole：有指派司機時「司機酬勞」必填，沒填就提醒、不儲存
+    if (o.driverName && (o.driverFee === null || o.driverFee === undefined || isNaN(o.driverFee))){
+      setDispatchStatus(els.dispatchStatusMsg, '請先填寫「司機酬勞」再儲存（已指派司機的訂單必填）', 'err');
+      if (els.dDriverFee){
+        els.dDriverFee.style.outline = '2px solid #c0392b';
+        try { els.dDriverFee.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e){}
+        els.dDriverFee.focus();
+        els.dDriverFee.addEventListener('input', function clr(){ els.dDriverFee.style.outline = ''; els.dDriverFee.removeEventListener('input', clr); });
+      }
+      try { window.alert('請先填寫「司機酬勞」再儲存。\n\n已指派司機的訂單，司機酬勞是必填。'); } catch(e){}
       return;
     }
     var updated = false;
