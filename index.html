@@ -5224,7 +5224,7 @@
   }
 
   // =====================================================================
-  // 加點里程加價（階梯式）：以「因加點而實際增加的總里程」計費，費用已含起跳。
+  // （舊）加點里程加價（階梯式，2026-10-13 起改用下方 extraStopFeeUber）：以「因加點而實際增加的總里程」計費，費用已含起跳。
   //   0.1～3.0 公里 → $200　3.1～7.0 → $250　7.1～12.0 → $300
   //   超過 12.0 公里：每滿 5 公里再 +$100（12.1～17.0 → $400，依此類推）
   // 沒有多繞（增加里程 < 0.1 公里）只收起跳 $100。
@@ -5238,6 +5238,21 @@
     if (k <= 7.0) return 250;
     if (k <= 12.0) return 300;
     return 300 + 100 * Math.ceil((k - 12.0) / 5);
+  }
+  // 2026-10-13 起：比照菁英優步（UberX）計算加點費（Nicole 定）
+  //   起跳 $50 ＋ 多繞里程 × $25／公里 ＋ 多花時間（Google 導航預估）× $3.4／分鐘（尖峰 $3.7）
+  //   算完無條件進位到 $50，最低 $100。尖峰＝平日 07:00–09:59、17:00–19:59（看上車時間）
+  var EXTRA_FEE_ = { start: 50, perKm: 25, perMin: 3.4, perMinPeak: 3.7, unit: 50, min: 100 };
+  function isPeakTime(dateStr, hm){
+    var m = /^(\d{1,2}):/.exec(String(hm || '')); if (!m) return false; var h = +m[1];
+    var d = dateStr ? new Date(dateStr + 'T12:00:00') : null, wd = d && !isNaN(d) ? d.getDay() : 1;
+    if (wd === 0 || wd === 6) return false;
+    return (h >= 7 && h <= 9) || (h >= 17 && h <= 19);
+  }
+  function extraStopFeeUber(km, min, peak){
+    var k = Math.max(0, Number(km) || 0), mi = Math.max(0, Number(min) || 0);
+    var raw = EXTRA_FEE_.start + k * EXTRA_FEE_.perKm + mi * (peak ? EXTRA_FEE_.perMinPeak : EXTRA_FEE_.perMin);
+    return Math.max(EXTRA_FEE_.min, Math.ceil(raw / EXTRA_FEE_.unit) * EXTRA_FEE_.unit);
   }
 
   function parseExtraStopLines(text){
@@ -5263,7 +5278,7 @@
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': key,
-        'X-Goog-FieldMask': 'originIndex,destinationIndex,distanceMeters,condition'
+        'X-Goog-FieldMask': 'originIndex,destinationIndex,distanceMeters,duration,condition'
       },
       body: JSON.stringify({
         origins: origins.map(wp),
@@ -5283,13 +5298,16 @@
       var arr;
       try { arr = JSON.parse(r.text); } catch (e){ cb('routes-fail'); return; }
       if (!Array.isArray(arr)) arr = [arr];
-      var grid = {};
+      var grid = {}, secs = {};
       arr.forEach(function(el){
         if (el && el.condition === 'ROUTE_EXISTS' && el.distanceMeters != null){
           grid[(el.originIndex || 0) + ',' + (el.destinationIndex || 0)] = el.distanceMeters;
+          secs[(el.originIndex || 0) + ',' + (el.destinationIndex || 0)] = parseFloat(String(el.duration || '').replace(/s$/, ''));
         }
       });
-      cb(null, function(i, j){ return grid[i + ',' + j]; });
+      var f = function(i, j){ return grid[i + ',' + j]; };
+      f.secs = function(i, j){ var v = secs[i + ',' + j]; return isNaN(v) ? undefined : v; };
+      cb(null, f);
     }).catch(function(){ cb('routes-fail'); });
   }
 
@@ -5304,17 +5322,22 @@
         region: 'tw'
       }, function(res, status){
         if (status !== 'OK' || !res || !res.rows){ cb('fail'); return; }
-        cb(null, function(i, j){
+        var f = function(i, j){
           var el = res.rows[i] && res.rows[i].elements && res.rows[i].elements[j];
           return (el && el.status === 'OK' && el.distance) ? el.distance.value : undefined;
-        });
+        };
+        f.secs = function(i, j){
+          var el = res.rows[i] && res.rows[i].elements && res.rows[i].elements[j];
+          return (el && el.status === 'OK' && el.duration) ? el.duration.value : undefined;
+        };
+        cb(null, f);
       });
     });
   }
 
   function computeExtraStopKm(pickup, stops, dropoff, cb){
     var key = JSON.stringify([pickup, stops, dropoff]);
-    if (extraStopKmCache[key] != null){ cb(null, extraStopKmCache[key]); return; }
+    if (extraStopKmCache[key] != null){ var c0 = extraStopKmCache[key]; cb(null, c0.km, c0.min); return; }
     var mapsKey = currentGmapsKey();
     if (!mapsKey){ cb('nomaps'); return; }
     var origins = [pickup].concat(stops);
@@ -5331,8 +5354,15 @@
       if (direct == null){ cb('fail'); return; }
       var extraKm = (via - direct) / 1000;
       if (extraKm < 0) extraKm = 0;
-      extraStopKmCache[key] = extraKm;
-      cb(null, extraKm);
+      var extraMin = null;
+      if (meters.secs){
+        var vs = 0, ok = true;
+        for (i = 0; i <= n; i++){ var s = meters.secs(i, i); if (s == null){ ok = false; break; } vs += s; }
+        var ds = meters.secs(0, n);
+        if (ok && ds != null) extraMin = Math.max(0, (vs - ds) / 60);
+      }
+      extraStopKmCache[key] = { km: extraKm, min: extraMin };
+      cb(null, extraKm, extraMin);
     }
     routesApiMatrix(mapsKey, origins, dests, function(err, meters){
       if (!err){ finish(null, meters); return; }
@@ -5375,7 +5405,7 @@
     var seq = (Number(row.dataset.extraSeq) || 0) + 1;
     row.dataset.extraSeq = String(seq);
     setExtraKmNote(row, '計算加點多繞里程中…');
-    computeExtraStopKm(pickup, stops, dropoff, function(err, km){
+    computeExtraStopKm(pickup, stops, dropoff, function(err, km, mins){
       if (!row.isConnected || Number(row.dataset.extraSeq) !== seq || row.dataset.extraManual === 'true') return;
       if (err){
         chkEl.checked = true;
@@ -5388,12 +5418,15 @@
         renderQuoteDoc();
         return;
       }
-      var fee = extraStopFeeForKm(km);
+      var dEl = row.querySelector('.q-date'), tEl = row.querySelector('.q-pickup-time');
+      var peak = isPeakTime(dEl && dEl.value, tEl && tEl.value);
+      var mm = (mins == null) ? Math.round(km * 2.5) : Math.round(mins);   // 沒拿到時間就用每公里約 2.5 分鐘估
+      var fee = extraStopFeeUber(km, mm, peak);
       chkEl.checked = true;
       amtEl.value = fee;
       row.dataset.extraAuto = 'true';
       var kmTxt = (Math.round(km * 10) / 10).toFixed(1);
-      setExtraKmNote(row, '加點多繞約 ' + kmTxt + ' 公里 → 加點加價 $' + fmtNum(fee) + '（含起跳，可手動修改金額）');
+      setExtraKmNote(row, '加點多繞約 ' + kmTxt + ' 公里、' + mm + ' 分鐘' + (mins == null ? '（時間為估算）' : '') + (peak ? '（尖峰）' : '') + ' → $50＋' + kmTxt + '×25＋' + mm + '×' + (peak ? '3.7' : '3.4') + '，進位到 $50 → 加點加價 $' + fmtNum(fee) + '（最低 $100，可手動修改金額）');
       renderQuoteDoc();
     });
   }
