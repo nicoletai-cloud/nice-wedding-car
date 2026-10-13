@@ -6010,7 +6010,9 @@
   // 如果不是看得出來的標準地址格式（例如本來就是「桃園國際機場」這種地
   // 名），就原樣保留，不做處理。
   function simplifyAddressArea(addr){
-    var s = String(addr || '').trim();
+    // 2026-10-13：Google 地址常帶郵遞區號（303新竹县湖口乡…）和簡體字，報價不顯示郵遞區號
+    var s = String(addr || '').trim().replace(/^(台灣|臺灣)\s*/, '').replace(/^\d{3,6}\s*/, '')
+      .replace(/县/g, '縣').replace(/乡/g, '鄉').replace(/镇/g, '鎮').replace(/区/g, '區').replace(/长/g, '長').replace(/东/g, '東').replace(/门/g, '門').replace(/兴/g, '興').replace(/华/g, '華').replace(/园/g, '園');
     if (!s) return s;
     var hit = extractCityDistrict(s);
     if (!hit) return s;
