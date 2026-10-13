@@ -8740,7 +8740,8 @@
         var cl = (claimList || []).filter(function(c){ return String(c.ref || '').split('|')[0] === o.id || (c.date === o.date && (o.svcType === '接送' || c.svc === o.svcType)); }).reduce(function(a, c){ return a + (c.claims || []).length; }, 0);
         T.push({ k: 'nodrv', late: d <= 2, why: cl ? cl + ' 人喊單' : '' });
       }
-      if (recent && !o.ttAt) T.push({ k: 'tt', late: daysAgo(o.savedAt) >= 1 });
+      // 2026-10-13 起都用 Google 日曆；只有 Vincent（REA-2768）的行程要進 TimeTree 2768（排程每小時自動補）
+      if (recent && !o.ttAt && /vincent|答維正/i.test(o.driverName || '')) T.push({ k: 'tt', late: daysAgo(o.savedAt) >= 1 });
       if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
     } else if (d >= -30 && recent){
       if (!o.receiptAt) T.push({ k: 'receipt', late: d <= -3 });
