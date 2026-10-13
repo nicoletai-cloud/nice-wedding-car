@@ -1196,12 +1196,16 @@
 
         <div class="card">
           <details class="settings">
-            <summary><span class="dot"></span>熟客常用地址管理<span class="chev">▾</span></summary>
+            <summary><span class="dot"></span>熟客常用地址・慣用語言<span class="chev">▾</span></summary>
             <p class="hint">幫熟客建立常用地址（例如：住家、公司、親戚家），之後選這位熟客並「帶入這位客戶資料」時，上車／下車地址欄下方就會出現可直接點選的快速按鈕</p>
             <div class="settings-body">
               <div class="field">
                 <label for="kcAddrCustSelect">選擇熟客</label>
                 <select id="kcAddrCustSelect"><option value="">－選擇熟客－</option></select>
+              </div>
+              <div class="field" id="kcLangField" hidden>
+                <label for="kcLangSelect">慣用語言（報價、乘客資訊、行程確認、司機異動通知預設用這個語言）</label>
+                <select id="kcLangSelect"><option value="zh-TW">繁中</option><option value="en">English</option><option value="ja">日本語</option></select>
               </div>
               <div class="row2">
                 <div class="field">
@@ -3961,6 +3965,7 @@
       btn.addEventListener('click', function(){
         currentPassengerLang = btn.dataset.lang;
         safeSet('hhlc_passenger_lang', currentPassengerLang);
+        dLangPickedFor = editingOrderId || 'new';
         updatePassengerLangButtons();
         renderPassengerDoc();
       });
@@ -7512,6 +7517,7 @@
 
   function saveCurrentQuote(){
     var q = serializeCurrentQuote();
+    q.lang = currentQuoteLang;
     if (!q.legs.length){
       setDispatchStatus(els.quoteStatusMsg, '請先填寫行程', 'err');
       return;
@@ -7527,7 +7533,7 @@
     if (recentQuotes.length > 50) recentQuotes = recentQuotes.slice(0, 50);
     saveRecentQuotesList();
     if (q.isKnownCustomer){
-      upsertKnownCustomer({ source: q.custSource, sourceName: q.custSourceName, name: q.custName, phone: q.custPhone, note: q.custNote });
+      learnCustLang(upsertKnownCustomer({ source: q.custSource, sourceName: q.custSourceName, name: q.custName, phone: q.custPhone, note: q.custNote }), q.lang);
     }
     renderRecentQuotesList();
     renderDispatchQuoteSelect();
@@ -7554,6 +7560,7 @@
     els.qCustName.value = q.custName || '';
     els.qCustPhone.value = q.custPhone || '';
     if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = !!q.isKnownCustomer;
+    if (q.lang) setQuoteLang(q.lang); else applyCustLang(findKnownCustomerByContact(q.custSourceName || q.custName, q.custPhone));
     els.quoteLegsContainer.innerHTML = '';
     (q.legs || []).forEach(function(leg){
       addQuoteLegRow({
@@ -7798,7 +7805,21 @@
   // 重派後給客人：只告知司機異動，不再重複行程與注意事項
   function redispatchCustText(o){
     var car = [o.driverCar, o.driverPlate].filter(Boolean).join(' ');
-    return '您好，我是好好禮車的客服 Kate 😊\n因原車輛無法執行任務，為您更新 ' + fmtMD(o.date) + ' ' + (o.pickupTime || '') + ' ' + (o.svcType || '') + ' 的司機資料：\n\n'
+    var lang = o.lang || currentPassengerLang || 'zh-TW';
+    var when = fmtMD(o.date) + ' ' + (o.pickupTime || '');
+    if (lang === 'en'){
+      var svcEn = ({ '送機': 'airport drop-off', '接機': 'airport pickup', '接送': 'transfer', '包車': 'charter' })[o.svcType] || 'transfer';
+      return 'Hello, this is Kate from Nice Wedding Car 😊\nAs the originally assigned vehicle is unable to complete the trip, here is your updated driver information for your ' + when + ' ' + svcEn + ':\n\n'
+        + 'Driver: ' + o.driverName + (o.driverPhone ? '\nPhone: ' + o.driverPhone : '') + (car ? '\nCar: ' + car : '')
+        + '\n\nWe apologize for any inconvenience. Feel free to message us here with any questions 🙏';
+    }
+    if (lang === 'ja'){
+      var svcJa = ({ '送機': '空港お送り', '接機': '空港お迎え', '接送': '送迎', '包車': '貸切' })[o.svcType] || '送迎';
+      return 'こんにちは、好好禮車（Nice Wedding Car）のKateです😊\n当初の車両が運行できなくなったため、' + when + ' ' + svcJa + 'のドライバー情報を更新いたします：\n\n'
+        + 'ドライバー：' + o.driverName + (o.driverPhone ? '\n電話：' + o.driverPhone : '') + (car ? '\n車両：' + car : '')
+        + '\n\nご不便をおかけし申し訳ございません。ご不明な点はこちらにメッセージをお送りください🙏';
+    }
+    return '您好，我是好好禮車的客服 Kate 😊\n因原車輛無法執行任務，為您更新 ' + when + ' ' + (o.svcType || '') + ' 的司機資料：\n\n'
       + '司機：' + o.driverName + (o.driverPhone ? '\n電話：' + o.driverPhone : '') + (car ? '\n車輛：' + car : '')
       + '\n\n造成不便請見諒，有任何問題歡迎直接在這裡留言 🙏';
   }
@@ -7878,6 +7899,7 @@
       quoteNo: currentOrderNos.quoteNo || '',
       formalNo: currentOrderNos.formalNo || '',
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
+      lang: orderLangFor(),
       isKnownCustomer: true
     };
   }
@@ -7909,6 +7931,7 @@
     var learnedAddress = false;
     if (o.isKnownCustomer){
       var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone, note: o.custNote });
+      learnCustLang(kc, o.lang);
       var learnedPickup = learnKnownCustomerAddress(kc, o.pickupFullAddr, o.pickupAddr);
       var learnedDropoff = learnKnownCustomerAddress(kc, o.dropoffFullAddr, o.dropoffAddr);
       learnedAddress = learnedPickup || learnedDropoff;
@@ -8228,6 +8251,7 @@
     var o = recentOrders.find(function(x){ return x.id === id; });
     if (!o) return;
     oqLoadedFor = '';   // 換了訂單 → 下次到報價頁重新帶出這張訂單
+    if (o.lang) setPassengerLang(o.lang); else applyCustLang(findKnownCustomerByContact(o.custSourceName || o.contactName, o.contactPhone));
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (o.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
     els.dCustSourceName.value = o.custSourceName || '';
@@ -8404,6 +8428,7 @@
     o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || ''; o.lugBig = leg.lugBig || ''; o.lugSmall = leg.lugSmall || ''; if (lugText(leg.lugBig, leg.lugSmall)) o.luggageSize = lugText(leg.lugBig, leg.lugSmall);
     o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign';
     o.quoteNo = q.quoteNo || ''; o.quoteLeg = i; o.autoFromQuote = true;
+    o.lang = q.lang || o.lang || '';
     if (!o.code && q.fdCodes && q.fdCodes[i]) o.code = q.fdCodes[i];
     if (q.formalNo && !o.formalNo) o.formalNo = q.formalNo + ((q.legs || []).length > 1 ? '-' + (i + 1) : '');
     o.isKnownCustomer = !!q.isKnownCustomer;
@@ -8593,6 +8618,7 @@
       var c = byKey[k] || knownCustomers.find(function(x){ return x.id === cc.id; });
       if (!c){ c = JSON.parse(JSON.stringify(cc)); c.addresses = c.addresses || []; knownCustomers.push(c); byKey[k] = c; return; }
       ['source', 'sourceName', 'name', 'phone', 'note'].forEach(function(f){ if (!c[f] && cc[f]) c[f] = cc[f]; });
+      if (cc.lang && (+cc.langAt || 0) > (+c.langAt || 0)){ c.lang = cc.lang; c.langAt = cc.langAt; }
       var rm = {}; (c.removedAddrs || []).concat(cc.removedAddrs || []).forEach(function(a){ rm[a] = 1; });
       c.removedAddrs = Object.keys(rm);
       var have = {}; c.addresses = (c.addresses || []).filter(function(a){ if (rm[a.address] || have[a.address]) return false; have[a.address] = a; return true; });
@@ -9285,7 +9311,8 @@
     els.qCustPhone.value = c.phone || '';
     if (els.qCustNote) els.qCustNote.value = c.note || custNoteLookup(c.phone, c.sourceName, c.name);
     if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = true;
-    setDispatchStatus(els.quoteStatusMsg, '已帶入熟客資料', 'ok');
+    applyCustLang(c);
+    setDispatchStatus(els.quoteStatusMsg, '已帶入熟客資料' + (c.lang && c.lang !== 'zh-TW' ? '（慣用語言：' + ({ en: 'English', ja: '日本語' })[c.lang] + '）' : ''), 'ok');
     renderQuoteAddresses();
   });
 
@@ -9300,6 +9327,7 @@
     els.dContactPhone.value = c.phone || '';
     if (els.dCustNote) els.dCustNote.value = c.note || custNoteLookup(c.phone, c.sourceName, c.name);
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;
+    applyCustLang(c);
     applyKnownCustomerAddressChips(c);
     renderPassengerDoc();
     renderDispatchSheet();
@@ -9329,6 +9357,32 @@
   }
 
   if (els.kcAddrCustSelect) els.kcAddrCustSelect.addEventListener('change', renderKcAddrList);
+  // ---------- 熟客慣用語言（2026-10-13）：選熟客時報價／乘客資訊語言自動切換，機器人發給客人的通知也用這個語言 ----------
+  function renderKcLang(){
+    var f = document.getElementById('kcLangField'), sel = document.getElementById('kcLangSelect');
+    var c = els.kcAddrCustSelect ? findKnownCustomer(els.kcAddrCustSelect.value) : null;
+    if (f) f.hidden = !c;
+    if (c && sel) sel.value = c.lang || 'zh-TW';
+  }
+  if (els.kcAddrCustSelect) els.kcAddrCustSelect.addEventListener('change', renderKcLang);
+  (function(){ var sel = document.getElementById('kcLangSelect'); if (sel) sel.addEventListener('change', function(){
+    var c = els.kcAddrCustSelect ? findKnownCustomer(els.kcAddrCustSelect.value) : null; if (!c) return;
+    c.lang = sel.value; c.langAt = Date.now(); saveKnownCustomersList();
+  }); })();
+  function setQuoteLang(l){ if (!l || !els.qLangRow) return; currentQuoteLang = l; safeSet('hhlc_quote_lang', l); paymentNoticeLangOverride = null; updateQuoteLangButtons(); try { renderQuoteDoc(); } catch(e){} }
+  function setPassengerLang(l){ if (!l || !els.dLangRow) return; currentPassengerLang = l; safeSet('hhlc_passenger_lang', l); updatePassengerLangButtons(); try { renderPassengerDoc(); } catch(e){} }
+  // 訂單要記的客人語言：這張單有手動點過語言就用點的；不然沿用這張單原本的、熟客慣用語言，都沒有就繁中
+  // （不直接用畫面上的語言按鈕，避免上一位外國客人的設定被帶到下一張中文客人的單，機器人發錯語言）
+  var dLangPickedFor = null;
+  function orderLangFor(){
+    if (dLangPickedFor && dLangPickedFor === (editingOrderId || 'new')) return currentPassengerLang || 'zh-TW';
+    var prev = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+    if (prev && prev.lang) return prev.lang;
+    var c = findKnownCustomerByContact((els.dCustSourceName.value || '').trim() || (els.dContactName.value || '').trim(), (els.dContactPhone.value || '').trim());
+    return (c && c.lang) || 'zh-TW';
+  }
+  function applyCustLang(c){ if (c && c.lang){ setQuoteLang(c.lang); setPassengerLang(c.lang); } }
+  function learnCustLang(c, l){ if (c && l && c.lang !== l){ c.lang = l; c.langAt = Date.now(); saveKnownCustomersList(); } }
 
   if (els.kcAddrAddBtn) els.kcAddrAddBtn.addEventListener('click', function(){
     var c = els.kcAddrCustSelect ? findKnownCustomer(els.kcAddrCustSelect.value) : null;
