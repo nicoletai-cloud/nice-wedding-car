@@ -8851,7 +8851,7 @@
   // TimeTree／乘客資訊／收據／評價只追蹤 2026/10/9 之後存的訂單（之前的單當作已處理）
   // =====================================================================
   var TODO_SINCE = Date.parse('2026-10-09T00:00:00+08:00');
-  var TODO_ST = { quote: '報價追蹤', nodrv: '未指派司機', tt: '未記 TimeTree', ttdel: 'TimeTree 要刪（已改派）', pax: '未傳乘客資訊', receipt: '用車後未開收據', rev: '用車後追評價' };
+  var TODO_ST = { quote: '報價追蹤', nodrv: '未指派司機', pax: '未傳乘客資訊', receipt: '用車後未開收據', rev: '用車後追評價' };
   var REV_ASK_AIR = '請問這次的接送服務還滿意嗎？\n\n如果您對我們的服務感到滿意，誠摯邀請您抽空寫幾句話留下寶貴評價，或是對司機的鼓勵，這會是我們最大的動力 🙏\n\n👉 Google 評價：https://goo.gl/maps/WsAvwhXy1eQPqk5f6';
   var todoF = 'all', todoSel = {};
   // 官網待付款（機器人轉來，只放在「報價追蹤」）；追蹤次數／失單記在這個瀏覽器（會跟著同步）
@@ -8897,8 +8897,7 @@
         T.push({ k: 'nodrv', late: d <= 2, why: cl ? cl + ' 人喊單' : '' });
       }
       // 2026-10-13 起都用 Google 日曆；只有 Vincent（REA-2768）的行程要進 TimeTree 2768（排程每小時自動補）
-      if (recent && !o.ttAt && /vincent|答維正/i.test(o.driverName || '')) T.push({ k: 'tt', late: daysAgo(o.savedAt) >= 1 });
-      if (o.ttDel && !o.ttDelAt) T.push({ k: 'ttdel', late: true });
+      // 2026-10-13：行程一律進 Google 日曆，TimeTree 只是顯示 → 不再提醒「未記 TimeTree」「TimeTree 要刪」
       if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
     } else if (d >= -30 && recent){
       if (!o.receiptAt) T.push({ k: 'receipt', late: d <= -3 });
