@@ -5108,6 +5108,7 @@
       row.querySelector('.q-base').value = prefill.base;
     } else {
       updateQuoteModelBase(row);
+      autoTaichungModel(row);
     }
     if (!prefill.pickupTime) autoPickupTime(row);
     autoNight(row);
@@ -5260,6 +5261,33 @@
       note.textContent = '沒有這位親友同車型的紀錄，請在「基本價格」輸入親友價；存報價後，下次同一位親友同車型會自動帶入';
     }
     note.style.display = '';
+  }
+
+  // 2026-10-13：上車或下車地區在臺中，車型自動換成價目表裡對應的「（台中）」項目
+  // （例如 不指定進口車（起）→ 不指定進口車（台中）（起）），基本價格跟著帶入；
+  // 地區改回非臺中就換回一般價。親友價那趟不動。
+  function isTaichungArea(addr){
+    var s = String(addr || '').trim();
+    if (!s) return false;
+    if (s.replace(/台/g, '臺').indexOf('臺中') !== -1) return true;
+    var hit = extractCityDistrict(s);
+    return !!(hit && String(hit.cityShort || '').replace(/台/g, '臺') === '臺中');
+  }
+  function tcBaseName(m){ return String(m || '').replace('（台中）', ''); }
+  function autoTaichungModel(row){
+    if (isFriendRow(row)) return false;
+    var sel = row.querySelector('.q-model');
+    var cur = priceList.find(function(x){ return x.id === sel.value; });
+    if (!cur) return false;
+    var tc = isTaichungArea(row.querySelector('.q-pickup-area').value) || isTaichungArea(row.querySelector('.q-dropoff-area').value);
+    var curIsTc = cur.model.indexOf('（台中）') !== -1;
+    if (tc === curIsTc) return false;
+    var key = tcBaseName(cur.model);
+    var target = priceList.find(function(x){ return x.id !== cur.id && tcBaseName(x.model) === key && (x.model.indexOf('（台中）') !== -1) === tc; });
+    if (!target) return false;
+    sel.value = target.id;
+    updateQuoteModelBase(row);
+    return true;
   }
 
   function updateQuoteModelBase(row){
@@ -5571,6 +5599,7 @@
     ['.q-pickup-area','.q-dropoff-area'].forEach(function(sel){
       row.querySelector(sel).addEventListener('input', function(){
         autoApplyRemoteSurcharge(row);
+        autoTaichungModel(row);
         renderQuoteDoc();
         scheduleExtraStopFee(row, false);
       });
