@@ -1050,9 +1050,9 @@
               <input type="date" id="dUseDate">
             </div>
             <div class="field">
-              <label for="dPickupTime">上車時間（請再次確認，報價時間如有異動請在此調整）</label>
+              <label for="dPickupTime">上車時間</label>
               <input type="time" id="dPickupTime">
-              <label class="check-row" style="margin-top:6px;"><input type="checkbox" id="dFixedPickup"> 客人指定上車時間（司機不用追蹤航班，準時到機場待命）</label>
+              <label class="check-row" style="margin-top:6px;"><input type="checkbox" id="dFixedPickup"> 客人指定上車時間</label>
             </div>
           </div>
 
@@ -1082,7 +1082,7 @@
             </div>
           </div>
           <div class="field">
-            <label for="dOtherAirport">對方機場（非桃園國際機場的那一端，例如：高松機場）</label>
+            <label for="dOtherAirport">對方機場</label>
             <input type="text" id="dOtherAirport" placeholder="查詢起降時間會自動帶入，或手動填寫">
           </div>
 
@@ -1106,7 +1106,7 @@
             <label for="dCustNote">客人備註（只有自己看得到，不會出現在行程單）</label>
             <input type="text" id="dCustNote" placeholder="例如：王經理的朋友、阿明介紹、台積電">
           </div>
-          <div class="check-row" hidden>
+          <div class="check-row" hidden style="display:none !important">
             <input type="checkbox" id="dIsKnownCustomer" checked>
             <label for="dIsKnownCustomer" style="margin:0;">設為熟客（存入熟客建議名單）</label>
           </div>
@@ -1130,6 +1130,7 @@
               <input type="text" id="dContactPhone">
             </div>
           </div>
+          <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dShowContact" checked> 行程單顯示聯絡人（司機直接聯絡用車人時取消勾選）</label>
           <div class="field" id="dRiderBox"><!-- 2026-10-15 代訂：用車人（跟聯絡人不同時） -->
             <label for="dRiderSel">用車人（幫家人朋友代訂時選）</label>
             <select id="dRiderSel"><option value="">同聯絡人</option></select>
@@ -1309,6 +1310,11 @@
           <div class="trip-add-row" style="margin-top:14px;margin-bottom:0;">
             <button type="button" class="add-btn" id="saveAssignBtn">💾 儲存司機指派</button>
             <button type="button" class="add-btn" id="redispatchBtn" hidden style="margin-left:8px;background:#fff3e6;border-color:#e0a050;color:#8a4b00;">🔁 重派（原司機不能跑）</button>
+          </div>
+          <div id="redispatchAsk" hidden style="margin-top:10px;padding:12px 14px;border:1.5px solid #e0a050;border-radius:10px;background:#fff8ef;color:#8a4b00;">
+            <div id="redispatchAskTxt" style="font-weight:700;margin-bottom:10px;line-height:1.6;"></div>
+            <button type="button" class="add-btn" id="redispatchYes" style="background:#b8432f;border-color:#b8432f;color:#fff;">確定重派</button>
+            <button type="button" class="add-btn" id="redispatchNo" style="margin-left:8px;">取消</button>
           </div>
           <p class="hint" id="redispatchHist" hidden style="margin-top:6px;color:#8a4b00;"></p>
           <button type="button" class="add-btn" id="redispatchCopyBtn" hidden style="margin-top:6px;">📋 複製給客人的司機更新</button>
@@ -1528,7 +1534,7 @@
               <button type="button" class="secondary" id="qAddrAddBtn" style="padding:6px 14px;">＋ 新增地址</button>
             </div>
           </div>
-          <div class="check-row" hidden>
+          <div class="check-row" hidden style="display:none !important">
             <input type="checkbox" id="qIsKnownCustomer" checked>
             <label for="qIsKnownCustomer" style="margin:0;">設為熟客（存入熟客建議名單）</label>
           </div>
@@ -4228,8 +4234,10 @@
       if (arrT) lines.push(L.arrTime + arrT + (arrAirportLabel ? '（' + arrAirportLabel + '）' : ''));
     }
     if (!compact) lines.push('');
-    lines.push(L.contact + (els.dContactName.value || '—'));
-    lines.push(L.contactPhone + (els.dContactPhone.value || '—'));
+    // 2026-10-15 可選擇不顯示聯絡人（司機直接聯絡用車人）；沒填用車人時一定顯示，免得司機沒人可聯絡
+    var showCt = !(document.getElementById('dShowContact') && !document.getElementById('dShowContact').checked && (riderVal('dRiderName') || riderVal('dRiderPhone')));
+    if (showCt){ lines.push(L.contact + (els.dContactName.value || '—'));
+    lines.push(L.contactPhone + (els.dContactPhone.value || '—')); }
     (function(){ var rn = riderVal('dRiderName'), rp = riderVal('dRiderPhone'); if (rn || rp){ lines.push(L.rider + (rn || '—')); lines.push(L.riderPhone + (rp || '—')); } })();
     // 上／下車地址如果是桃園國際機場，後面加註航廈（第一／第二航廈），方便司機
     // 跟乘客直接知道要去哪個航廈，不用再對照上面的航班資訊。
@@ -5022,7 +5030,7 @@
       '<div class="field"><label>上車時間（送機提前3小時／接機＝落地時間）</label><input type="time" class="q-pickup-time">' +
       '<div class="quick-picks"><button type="button" class="chip q-pickup-auto-btn">依航班時間自動計算</button></div>' +
       '<p class="hint q-midnight-warn" style="display:none; color:#b45309; font-weight:600; margin-top:6px;"></p></div>' +
-      '<div class="check-row" style="margin-top:-6px;"><input type="checkbox" class="q-fixed-pickup"><label style="margin:0;">客人指定上車時間（司機不用追蹤航班，準時到機場待命）</label></div>' +
+      '<div class="check-row" style="margin-top:-6px;"><input type="checkbox" class="q-fixed-pickup"><label style="margin:0;">客人指定上車時間</label></div>' +
       '<div class="row2">' +
       '<div class="field"><label>上車地區</label><input type="text" class="q-pickup-area" placeholder="例如：台北信義">' +
       '<div class="quick-picks"><button type="button" class="chip" data-target=".q-pickup-area" data-fill="桃園國際機場">桃園國際機場</button></div>' +
@@ -7637,7 +7645,7 @@
     if (els.qCustNote) els.qCustNote.value = q.custNote || '';
     els.qCustName.value = q.custName || '';
     els.qCustPhone.value = q.custPhone || '';
-    if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = !!q.isKnownCustomer;
+    if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = true;
     if (q.lang) setQuoteLang(q.lang); else applyCustLang(findKnownCustomerByContact(q.custSourceName || q.custName, q.custPhone));
     els.quoteLegsContainer.innerHTML = '';
     (q.legs || []).forEach(function(leg){
@@ -7811,7 +7819,7 @@
       }
       try { renderActiveDoc(); } catch(e){}
     });
-    ['dRiderName', 'dRiderPhone'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('input', function(){ try { renderActiveDoc(); } catch(e){} }); });
+    ['dRiderName', 'dRiderPhone', 'dShowContact'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('input', function(){ try { renderActiveDoc(); } catch(e){} }); });
     riderRenderSel('');
   })();
   function docNoteClean(n){
@@ -7941,6 +7949,7 @@
   // 2026-10-13 重派：司機車子有狀況或臨時不能跑 → 撤下原司機、回到找司機；
   // 換好新司機按儲存後，機器人會通知原司機不用出車、把行程發給新司機（客人也會收到司機異動）。
   function updateRedispatchUI(){
+    try { document.getElementById('redispatchAsk').hidden = true; } catch(e){}
     var btn = document.getElementById('redispatchBtn'), hist = document.getElementById('redispatchHist');
     var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
     if (btn) btn.hidden = !(o && o.driverName);
@@ -7955,7 +7964,10 @@
   function redispatchCurrent(){
     var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
     if (!o || !o.driverName) return;
-    if (!window.confirm('確定把「' + o.driverName + '」從這趟撤下、重新找司機？\n\n儲存後機器人會通知 ' + o.driverName + ' 這趟不用出車。')) return;
+    // 2026-10-15 改成頁面上的確認框（按「重派」只會跳出確認，按「確定重派」才會撤下並通知原司機）
+    var ask = document.getElementById('redispatchAsk');
+    if (ask && ask.hidden){ document.getElementById('redispatchAskTxt').textContent = '確定把「' + o.driverName + '」從這趟撤下、重新找司機？按「確定重派」後，機器人會馬上通知 ' + o.driverName + ' 這趟不用出車。'; ask.hidden = false; return; }
+    if (ask) ask.hidden = true;
     if (els.dDriverSelect){ els.dDriverSelect.value = ''; els.dDriverSelect.dispatchEvent(new Event('change')); }
     keptDriverSnap = null;
     if (els.dDriverFee) els.dDriverFee.value = '';
@@ -7987,7 +7999,9 @@
       + '\n\n造成不便請見諒，有任何問題歡迎直接在這裡留言 🙏';
   }
   (function(){
-    var b = document.getElementById('redispatchBtn'); if (b) b.addEventListener('click', redispatchCurrent);
+    var b = document.getElementById('redispatchBtn'); if (b) b.addEventListener('click', function(){ var a = document.getElementById('redispatchAsk'); if (a) a.hidden = true; redispatchCurrent(); });
+    var by = document.getElementById('redispatchYes'); if (by) by.addEventListener('click', function(){ redispatchCurrent(); });
+    var bn = document.getElementById('redispatchNo'); if (bn) bn.addEventListener('click', function(){ var a = document.getElementById('redispatchAsk'); if (a) a.hidden = true; });
     var c = document.getElementById('redispatchCopyBtn'); if (c) c.addEventListener('click', function(){
       var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
       if (o && o.driverName) copyToClipboard(redispatchCustText(o), els.dispatchStatusMsg);
@@ -8040,7 +8054,7 @@
       otherAirport: els.dOtherAirport ? els.dOtherAirport.value.trim() : '',
       contactName: els.dContactName.value.trim(),
       contactPhone: els.dContactPhone.value.trim(),
-      riderName: riderVal('dRiderName'), riderPhone: riderVal('dRiderPhone'),
+      riderName: riderVal('dRiderName'), riderPhone: riderVal('dRiderPhone'), showContact: !(document.getElementById('dShowContact') && !document.getElementById('dShowContact').checked),
       pickupAddr: els.dPickupAddr.value.trim(),
       dropoffAddr: els.dDropoffAddr.value.trim(),
       pickupFullAddr: els.dPickupFullAddr ? els.dPickupFullAddr.value.trim() : '',
@@ -8487,6 +8501,7 @@
     els.dContactName.value = o.contactName || '';
     els.dContactPhone.value = o.contactPhone || '';
     try { riderSet(o.riderName || '', o.riderPhone || ''); } catch(e){}
+    try { document.getElementById('dShowContact').checked = o.showContact !== false; } catch(e){}
     els.dPickupAddr.value = o.pickupAddr || '';
     els.dDropoffAddr.value = o.dropoffAddr || '';
     if (els.dPickupFullAddr) els.dPickupFullAddr.value = o.pickupFullAddr || '';
@@ -8508,7 +8523,7 @@
     var payInput = document.querySelector('input[name="dPaymentMethod"][value="' + (o.paymentMethod || 'noSign') + '"]');
     if (payInput) payInput.checked = true;
     if (els.dDriverFee) els.dDriverFee.value = (typeof o.driverFee === 'number') ? o.driverFee : '';
-    if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = !!o.isKnownCustomer;
+    if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;   // 2026-10-15 不分熟客，全部存客人資料
     updatePaymentUI();
     if (els.dDriverSelect){
       // 司機 id 是各裝置自己產生的：別台指派的單，這台找不到同 id 時改用姓名對到這台資料庫的同一位司機
@@ -8643,7 +8658,7 @@
     o.lang = q.lang || o.lang || '';
     if (!o.code && q.fdCodes && q.fdCodes[i]) o.code = q.fdCodes[i];
     if (q.formalNo && !o.formalNo) o.formalNo = q.formalNo + ((q.legs || []).length > 1 ? '-' + (i + 1) : '');
-    o.isKnownCustomer = !!q.isKnownCustomer;
+    o.isKnownCustomer = true;
     return o;
   }
   function autoOrdersFromQuote(q){
@@ -8718,6 +8733,7 @@
     var leg = q.legs && q.legs[legIdx];
     editingOrderId = null; keptDriverSnap = null; updateOrderEditUI();
     try { riderSet('', ''); } catch(e){}
+    try { document.getElementById('dShowContact').checked = true; } catch(e){}
     currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
     renderNoLines();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
