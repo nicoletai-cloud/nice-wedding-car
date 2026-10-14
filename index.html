@@ -943,6 +943,8 @@
   .kw-results .hit{ color:var(--accent-strong, #8A5F2C); font-weight:600; }
   /* 2026-10-15 金鑰／密碼欄改成一般文字欄＋遮罩，iPhone 才不會一直跳「自動填寫密碼」 */
   .nwc-secret{-webkit-text-security:disc;text-security:disc}
+  .nwc-secret.nwc-set{display:none!important}
+  .nwc-setchip{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid #d9c7ad;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:.9em;cursor:pointer}
 </style>
 </head>
 <body>
@@ -957,7 +959,7 @@
     <div class="orderbar">
       <select id="orderSel" aria-label="切換訂單"><option value="">切換訂單…</option></select>
       <div class="sync-bar inline">
-        <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="syncPasscodeInput" placeholder="同步密碼" autocomplete="off">
+        <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="syncCodeInput" placeholder="同步代碼" autocomplete="off">
         <button type="button" class="add-btn" id="newQuoteBtn" title="清空報價頁，開一張全新的報價">＋ 新報價</button>
         <button type="button" class="add-btn ghost" id="syncNowBtn">同步</button>
         <button type="button" class="add-btn ghost" id="todoBtn">待辦</button>
@@ -1302,6 +1304,7 @@
             <div class="drv-hits" id="dDriverHits" hidden></div>
             <select id="dDriverSelect"><option value="">－未指派－</option></select>
             <p class="hint" id="dPlateRuleHint" style="margin-top:6px;"></p>
+            <p class="hint" id="dDrvSetupHint" hidden style="margin-top:6px;color:#c0392b;">這台裝置還沒連上機器人，抓不到司機總表。請到「設定」的機器人網址／金鑰欄位填一次（加到主畫面的 App 跟 Safari 是分開的，要各填一次）。</p>
             <label style="font-weight:400;font-size:.9em;"><input type="checkbox" id="dShowAllPlates"> 顯示全部車牌（含自用車）</label>
           </div>
           <div class="claim-box" id="dClaimBox" hidden></div>
@@ -1984,8 +1987,8 @@
               <input type="text" id="botUrlInput" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
             </div>
             <div class="field">
-              <label for="botTokenInput">機器人金鑰（Apps Script 裡的 TOKEN）</label>
-              <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="botTokenInput" placeholder="貼上金鑰" autocomplete="off">
+              <label for="botKeyInput">機器人金鑰（Apps Script 裡的 TOKEN）</label>
+              <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="botKeyInput" placeholder="貼上金鑰" autocomplete="off">
             </div>
             <div class="trip-add-row" style="margin-bottom:0;">
               <button type="button" class="add-btn" id="botSyncBtn">立即傳送訂單給機器人</button>
@@ -2184,7 +2187,7 @@
     tabBtnQuote: document.getElementById('tabBtnQuote'),
     tabBtnCharter: document.getElementById('tabBtnCharter'),
     tabBtnReceipt: document.getElementById('tabBtnReceipt'),
-    syncPasscodeInput: document.getElementById('syncPasscodeInput'),
+    syncPasscodeInput: document.getElementById('syncCodeInput'),
     syncNowBtn: document.getElementById('syncNowBtn'),
     syncStatusMsg: document.getElementById('syncStatusMsg'),
     tabPanelDispatch: document.getElementById('tabPanelDispatch'),
@@ -2271,7 +2274,7 @@
     // quote tab
     aeroApiKeyInput: document.getElementById('aeroApiKeyInput'),
     botUrlInput: document.getElementById('botUrlInput'),
-    botTokenInput: document.getElementById('botTokenInput'),
+    botKeyInput: document.getElementById('botKeyInput'),
     botSyncBtn: document.getElementById('botSyncBtn'),
     botStatusMsg: document.getElementById('botStatusMsg'),
     saveOrderAsNewBtn: document.getElementById('saveOrderAsNewBtn'),
@@ -3760,6 +3763,7 @@
       if (!okD(o.x.name, o.x.plate)) return false;
       var sz = sharedSize(o.x); return filter === 'all' || !sz || sz === filter;
     }).sort(function(a, b){ return (a.x.src === '司機總表' ? 0 : 1) - (b.x.src === '司機總表' ? 0 : 1) || String(a.x.name).localeCompare(String(b.x.name), 'zh-Hant'); });
+    try { var sh = document.getElementById('dDrvSetupHint'); if (sh) sh.hidden = !!(shared.length || botConfig()); } catch(e){}
     var html = '<option value="">－未指派－（可選 ' + (list.length + shared.length) + ' 位）</option>' +
       (list.length ? '<optgroup label="常用司機">' + list.map(function(d){
         return '<option value="' + d.id + '">' + drvMark(d.name) + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(driverOptLabel(d.name, d.car, d.plate)) + '</option>';
@@ -6692,7 +6696,7 @@
       : '以下是付款連結，金額 NT$' + fmtNum(r.amount) + '，付款方式：' + paylinkMethodText(r.methods, false) + '\n' + r.url + (d ? '\n付款期限：' + d : '') + '\n付款完成即預訂成立，謝謝！';
   }
   function paylinkApi(path, body){
-    var token = ((els.botTokenInput && els.botTokenInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
+    var token = ((els.botKeyInput && els.botKeyInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
     if (!token) return Promise.reject(new Error('請先在「派車機器人連線」填好機器人金鑰'));
     body.token = token;
     return fetch(wpBase() + '/wp-json/nwc/v1/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' })
@@ -8212,7 +8216,9 @@
   function cleanBotUrl(v){ return String(v || '').trim().split('?')[0].split('#')[0].trim(); }
   function botConfig(){
     var url = cleanBotUrl((els.botUrlInput && els.botUrlInput.value) || safeGet(BOT_URL_KEY) || '');
-    var token = ((els.botTokenInput && els.botTokenInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
+    var token = ((els.botKeyInput && els.botKeyInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
+    // 2026-10-15 這台裝置（或主畫面 App）沒設定時，借用禮車系統的連線設定（同一支 Apps Script）
+    if (!url || !token){ try { var ws = JSON.parse(safeGet('nwcw_settings') || '{}') || {}; if (!url) url = cleanBotUrl(String(ws.driveUrl || '')); if (!token) token = String(ws.driveKey || '').trim(); } catch(e){} }
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^\/]+\/exec$/.test(url) || !token) return null;
     return { url: url, token: token };
   }
@@ -8366,12 +8372,12 @@
     els.botUrlInput.value = cleanBotUrl(els.botUrlInput.value);
     safeSet(BOT_URL_KEY, els.botUrlInput.value);
   });
-  if (els.botTokenInput) els.botTokenInput.addEventListener('input', function(){
-    safeSet(BOT_TOKEN_KEY, els.botTokenInput.value.trim());
+  if (els.botKeyInput) els.botKeyInput.addEventListener('input', function(){
+    safeSet(BOT_TOKEN_KEY, els.botKeyInput.value.trim());
   });
   if (els.botSyncBtn) els.botSyncBtn.addEventListener('click', function(){ botReadyUrl = ''; pullOrdersFromBot(true).then(function(){ return pushOrdersToBot(true); }); });
   if (els.botUrlInput) els.botUrlInput.value = safeGet(BOT_URL_KEY) || '';
-  if (els.botTokenInput) els.botTokenInput.value = safeGet(BOT_TOKEN_KEY) || '';
+  if (els.botKeyInput) els.botKeyInput.value = safeGet(BOT_TOKEN_KEY) || '';
   setTimeout(function(){ try { openOrderFromHash(); } catch(e){} }, 300);
   setTimeout(function(){ pullOrdersFromBot(false); syncDriverBindings(false); }, 800);
   (function(){
@@ -9986,6 +9992,20 @@
   nav.innerHTML='<ul>'+T.map(function(t){var n=cnt[t[0]];return '<li><a href="'+t[2]+'"'+(t[0]===cur?' aria-current="page"':'')+'><svg viewBox="0 0 24 24" aria-hidden="true">'+ic[t[0]]+'</svg>'+t[1]+(n?'<b>'+(n>99?'99+':n)+'</b>':'')+'</a></li>'}).join('')+'</ul>';
   (document.body||document.documentElement).appendChild(nav);
   window.nwcTabbarBadge=function(k,n){try{var a=nav.querySelectorAll('a')[['home','air','wed','drv','msg'].indexOf(k)];if(!a)return;var b=a.querySelector('b');if(!n){if(b)b.remove();return}if(!b){b=document.createElement('b');a.appendChild(b)}b.textContent=n>99?'99+':n}catch(e){}};
+}catch(e){}})();</script>
+<script>/* 2026-10-15 金鑰／同步代碼填好後就把欄位收起來，只留「🔒 已設定｜更改」，iPhone 才不會把整頁當登入表單一直跳自動填寫密碼 */
+(function(){try{
+  function wrap(el){ if (el.__nwcWrap) return; el.__nwcWrap = 1;
+    var chip = document.createElement('button'); chip.type = 'button'; chip.className = 'nwc-setchip'; chip.textContent = '🔒 已設定｜更改'; chip.hidden = true;
+    el.parentNode.insertBefore(chip, el.nextSibling);
+    function sync(){ if (document.activeElement === el) return; var has = !!el.value.trim(); el.classList.toggle('nwc-set', has); chip.hidden = !has; }
+    chip.addEventListener('click', function(){ el.classList.remove('nwc-set'); chip.hidden = true; el.focus(); });
+    el.addEventListener('blur', function(){ setTimeout(sync, 150); });
+    el.addEventListener('change', function(){ setTimeout(sync, 150); });
+    sync(); setTimeout(sync, 800); setTimeout(sync, 2500);
+  }
+  function run(){ Array.prototype.forEach.call(document.querySelectorAll('input.nwc-secret'), wrap); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
 }catch(e){}})();</script>
 </body>
 </html>
