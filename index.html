@@ -1314,6 +1314,7 @@
             <input type="number" id="dDriverFee" min="0" step="50" inputmode="numeric" placeholder="例如 1100">
             <p class="hint" style="margin:4px 0 0">直接安排司機時在這裡填；收現金的單，回金＝訂單金額－司機酬勞</p>
           </div>
+          <label class="check-row" id="dManualSentRow" style="margin:12px 0 0;display:flex;gap:8px;align-items:flex-start;line-height:1.5;"><input type="checkbox" id="dManualSent" style="margin-top:4px;"> <span>已手動發行程給客人和司機<br><span class="hint" style="margin:0">勾了機器人就不會再自動發這趟；之後換司機會自動取消勾選，恢復自動發</span></span></label>
           <div class="trip-add-row" style="margin-top:14px;margin-bottom:0;">
             <button type="button" class="add-btn" id="saveAssignBtn">💾 儲存司機指派</button>
             <button type="button" class="add-btn" id="redispatchBtn" hidden style="margin-left:8px;background:#fff3e6;border-color:#e0a050;color:#8a4b00;">🔁 重派（原司機不能跑）</button>
@@ -8084,11 +8085,23 @@
       quoteNo: currentOrderNos.quoteNo || '',
       formalNo: currentOrderNos.formalNo || '',
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
+      manualSent: manualSentVal(),
       lang: orderLangFor(),
       isKnownCustomer: true
     };
   }
 
+  // 2026-10-15 「已手動發行程」：勾選時記下當時的司機；之後換了司機就不算（機器人恢復自動發給新司機）
+  function manualSentVal(){
+    var ms = document.getElementById('dManualSent'); if (!ms || !ms.checked) return '';
+    var n = orderDriverSnap().name || ''; return (n && ms.dataset.drv === n) ? n : '';
+  }
+  (function(){ var ms = document.getElementById('dManualSent'); if (!ms) return;
+    ms.addEventListener('change', function(){ var n = orderDriverSnap().name || '';
+      if (ms.checked && !n){ ms.checked = false; ms.dataset.drv = ''; setDispatchStatus(els.dispatchStatusMsg, '請先選司機，再勾「已手動發行程」', 'err'); return; }
+      ms.dataset.drv = ms.checked ? n : ''; });
+    if (els.dDriverSelect) els.dDriverSelect.addEventListener('change', function(){ if (ms.checked && ms.dataset.drv !== (orderDriverSnap().name || '')){ ms.checked = false; ms.dataset.drv = ''; } });
+  })();
   function saveCurrentOrder(asNew){
     var o = serializeCurrentOrder();
     if (!o.contactName && !o.pickupAddr && !o.dropoffAddr && !o.pickupFullAddr && !o.dropoffFullAddr){
@@ -8222,6 +8235,7 @@
       driverName: o.driverName || (d ? d.name : ''), driverPhone: o.driverPhone || (d ? d.phone : ''),
       driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : ''),
       revSkip: !!o.revSkip, revAskAt: o.revAskAt || '',
+      riderName: o.riderName || '', riderPhone: o.riderPhone || '', showContact: o.showContact !== false, manualSent: o.manualSent || '',
       code: o.code || '', paymentMethod: o.paymentMethod || '', driverFee: (typeof o.driverFee === 'number') ? o.driverFee : null
     };
   }
@@ -8509,6 +8523,7 @@
     els.dContactPhone.value = o.contactPhone || '';
     try { riderSet(o.riderName || '', o.riderPhone || ''); } catch(e){}
     try { document.getElementById('dShowContact').checked = o.showContact !== false; } catch(e){}
+    try { var ms = document.getElementById('dManualSent'); ms.checked = !!(o.manualSent && o.manualSent === o.driverName); ms.dataset.drv = ms.checked ? o.manualSent : ''; } catch(e){}
     els.dPickupAddr.value = o.pickupAddr || '';
     els.dDropoffAddr.value = o.dropoffAddr || '';
     if (els.dPickupFullAddr) els.dPickupFullAddr.value = o.pickupFullAddr || '';
@@ -8741,6 +8756,7 @@
     editingOrderId = null; keptDriverSnap = null; updateOrderEditUI();
     try { riderSet('', ''); } catch(e){}
     try { document.getElementById('dShowContact').checked = true; } catch(e){}
+    try { var ms0 = document.getElementById('dManualSent'); ms0.checked = false; ms0.dataset.drv = ''; } catch(e){}
     currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
     renderNoLines();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
