@@ -4239,7 +4239,9 @@
     lines.push(L.pax + (els.dPax.value || '0'));
     lines.push(L.luggageCount + (els.dLuggageCount.value !== '' ? els.dLuggageCount.value : L.tbd));
     lines.push(L.luggageSize + (els.dLuggageSize.value || L.tbd));
-    if (els.dNote.value.trim()) lines.push(L.note + els.dNote.value.trim());
+    // 2026-10-15 Nicole：行程單／派車單的備註不顯示系統自動加的付款、來源文字（訂單裡仍保留，系統判斷要用）
+    var docNote = docNoteClean(els.dNote.value);
+    if (docNote) lines.push(L.note + docNote);
     // 在別台裝置指派的司機，這台的司機資料庫可能沒有同一個 id——改用訂單上存的司機資料，派車單／乘客資訊才不會漏掉司機資訊
     var d = selectedDriver() || ((typeof keptDriverSnap !== 'undefined' && keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value) ? keptDriverSnap : null);
     if (d){
@@ -7752,6 +7754,11 @@
   // 官網送來的單：客人自己在官網預訂＝「官網」；付你傳的報價付款連結＝「系統」（備註有「代客付款」）
   function isWebOrder(o){ return /^【(?:官網|系統) /.test(String((o && o.note) || '')); }
   function isWebCancelled(o){ return /^【(?:官網|系統) 已取消】/.test(String((o && o.note) || '')); }
+  function docNoteClean(n){
+    return String(n || '').split(/\n|｜/).map(function(x){
+      return x.replace(/【(官網|系統)[^】]*】/g, '').replace(/代客付款\s*NWC-[A-Za-z0-9]+(（[^）]*）)?/g, '').replace(/^\s*已付款\s*(綠界|PayPal|ECPay|信用卡|ATM)[^｜]*$/i, '').replace(/^\s*\[(LINE|FB|IG|官網|私客|系統)\][^｜]*$/i, '').trim();
+    }).filter(Boolean).join('｜');
+  }
   function isSysOrder(o){ var n = String((o && o.note) || ''); return /^【系統 /.test(n) || (/^【官網 /.test(n) && /代客付款/.test(n)); }
   function webLabel(o){ return isSysOrder(o) ? '系統' : '官網'; }
   function webTagHtml(o){
