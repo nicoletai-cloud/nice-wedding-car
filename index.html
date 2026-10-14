@@ -3362,7 +3362,13 @@
       if (TAB_PANELS[key]) TAB_PANELS[key].hidden = (key !== name);
       if (TAB_BTNS[key]) TAB_BTNS[key].classList.toggle('active', key === name);
     });
-    if (name === 'findDriver'){ if (editingOrderId && fdSel.indexOf(editingOrderId) === -1){ var eo = recentOrders.find(function(o){ return o.id === editingOrderId; }); if (eo && !eo.driverName) fdSel = [editingOrderId]; } renderFindDriverDoc(); }
+    if (name === 'findDriver'){
+      // 2026-10-15 Nicole：上方選好的訂單／報價，切到找司機就直接帶入，只顯示這一趟（要加別趟再按「加選其他行程」）
+      var foc = [];
+      if (editingOrderId){ var eo = recentOrders.find(function(o){ return o.id === editingOrderId; }); if (eo && !eo.driverName) foc = [editingOrderId]; }
+      else if (currentQuoteId){ var cq = recentQuotes.find(function(q){ return q.id === currentQuoteId; }); if (cq && !quoteHasOrder(cq)) foc = (cq.legs || []).map(function(l, i){ return 'ql_' + cq.id + '_' + i; }); }
+      if (foc.length && foc.join() !== fdFocusKey){ fdSel = foc.slice(); fdFocus = true; fdFocusKey = foc.join(); }
+      renderFindDriverDoc(); }
     if (name === 'dispatch') { renderClaimBox(); fetchClaims(); }
     if (name === 'cal') { try { renderCal(); } catch(e){} }
     if (name === 'quote') { try { orderQuoteOnTab(); } catch(e){} }
@@ -4535,7 +4541,7 @@
     document.getElementById('fdInviteReset').addEventListener('click', function(){ ta.value = FD_INVITE_DEFAULT; safeSet(FD_INVITE_KEY, ''); setDispatchStatus(document.getElementById('fdInviteStatus'), '已恢復預設文字', 'ok'); });
   })();
   // ---------- 找司機：勾選要找的行程（所有還沒派司機的訂單＋還沒成單的報價段） ----------
-  var fdSel = [], fdType = '';
+  var fdSel = [], fdType = '', fdFocus = false, fdFocusKey = '';
   function fdDir(o){ return o.svcType === '接機' ? '接機' : o.svcType === '送機' ? '送機' : (o.svcType || '其他'); }
   function fdCandidates(){
     var t = todayStr();
@@ -4554,21 +4560,26 @@
     var q = String((document.getElementById('fdQ') || {}).value || '').trim().toLowerCase();
     var all = fdCandidates();
     fdSel = fdSel.filter(function(id){ return all.some(function(o){ return o.id === id; }) || recentOrders.some(function(o){ return o.id === id; }); });
+    var qtop = document.getElementById('fdQ'), ttop = document.getElementById('fdTypes');
+    if (fdFocus && !fdSel.length) fdFocus = false;
+    if (qtop) qtop.hidden = fdFocus; if (ttop) ttop.hidden = fdFocus;
     var list = all.filter(function(o){
       if (fdSel.indexOf(o.id) !== -1) return true;
+      if (fdFocus) return false;
       if (fdType && (o.svcType || '其他') !== fdType) return false;
       if (q && (fdLabel(o) + ' ' + (o.flightNo || '') + ' ' + JSON.stringify(o)).toLowerCase().indexOf(q) === -1) return false;
       return true;
     });
     box.innerHTML = list.length ? list.map(function(o){
       return '<label class="check-row" style="margin:6px 0;align-items:flex-start"><input type="checkbox" data-fdo="' + escapeHtml(o.id) + '"' + (fdSel.indexOf(o.id) !== -1 ? ' checked' : '') + '><span style="margin:0">' + escapeHtml(fdLabel(o)) + '</span></label>';
-    }).join('') : '<p class="list-empty" style="margin:8px 0">沒有符合的未派車行程</p>';
+    }).join('') + (fdFocus ? '<button type="button" class="chip" id="fdMore" style="margin:6px 0">＋ 加選其他行程</button>' : '') : '<p class="list-empty" style="margin:8px 0">沒有符合的未派車行程</p>';
     document.querySelectorAll('#fdTypes [data-fdt]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-fdt') === fdType); });
   }
   (function(){
     var box = document.getElementById('fdList'), qi = document.getElementById('fdQ'), ty = document.getElementById('fdTypes');
     if (box) box.addEventListener('change', function(e){ var c = e.target.closest('[data-fdo]'); if (!c) return; var id = c.getAttribute('data-fdo'); fdSel = fdSel.filter(function(x){ return x !== id; }); if (c.checked) fdSel.push(id); renderFindDriverDoc(); });
     if (qi) qi.addEventListener('input', renderFdList);
+    if (box) box.addEventListener('click', function(e){ if (e.target.closest('#fdMore')){ e.preventDefault(); fdFocus = false; renderFdList(); } });
     if (ty) ty.addEventListener('click', function(e){ var b = e.target.closest('[data-fdt]'); if (!b) return; fdType = b.getAttribute('data-fdt'); renderFdList(); });
   })();
   function wantedFindDriverLegs(){
