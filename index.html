@@ -148,7 +148,7 @@
     background:var(--surface-alt);
     font-size:.82rem;
   }
-  .sync-bar input[type="password"]{
+  .sync-bar input.nwc-secret{
     font:inherit;
     font-size:.82rem;
     padding:6px 9px;
@@ -849,7 +849,7 @@
   .orderbar .btn:hover{ border-color:var(--accent); }
   .orderbar .btn.sm{ padding:4px 9px; font-size:.867rem; }
   .sync-bar.inline{ display:flex; flex-wrap:nowrap; align-items:center; gap:6px; padding:0; margin:0; border:0; background:none; font-size:.8rem; }
-  .sync-bar.inline input[type="password"]{ width:110px; padding:5px 8px; }
+  .sync-bar.inline input.nwc-secret{ width:110px; padding:5px 8px; }
   .sync-bar.inline .add-btn{ padding:5px 10px; font-size:.867rem; font-weight:500; white-space:nowrap; border-radius:8px; }
   .cal-ev .btn{ font:500 .867rem var(--f-body,inherit); border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:4px 10px; cursor:pointer; }
   .cal-ev .btn:hover{ border-color:var(--accent); }
@@ -941,6 +941,8 @@
   .kw-search input{ width:100%; }
   .kw-results{ max-height:420px; }
   .kw-results .hit{ color:var(--accent-strong, #8A5F2C); font-weight:600; }
+  /* 2026-10-15 金鑰／密碼欄改成一般文字欄＋遮罩，iPhone 才不會一直跳「自動填寫密碼」 */
+  .nwc-secret{-webkit-text-security:disc;text-security:disc}
 </style>
 </head>
 <body>
@@ -955,14 +957,14 @@
     <div class="orderbar">
       <select id="orderSel" aria-label="切換訂單"><option value="">切換訂單…</option></select>
       <div class="sync-bar inline">
-        <input type="password" id="syncPasscodeInput" placeholder="同步密碼" autocomplete="off">
+        <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="syncPasscodeInput" placeholder="同步密碼" autocomplete="off">
         <button type="button" class="add-btn" id="newQuoteBtn" title="清空報價頁，開一張全新的報價">＋ 新報價</button>
         <button type="button" class="add-btn ghost" id="syncNowBtn">同步</button>
         <button type="button" class="add-btn ghost" id="todoBtn">待辦</button>
         <span class="sync-status" id="syncStatusMsg">尚未設定同步</span>
       </div>
       <div class="kw-search">
-        <input type="text" id="kwQ" placeholder="🔍 搜尋編號、客人、電話、地址、航班" autocomplete="off">
+        <input type="text" id="kwQ" name="nwc-kw" placeholder="🔍 搜尋編號、客人、電話、地址、航班" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore>
         <div class="cust-results kw-results" id="kwResults" hidden></div>
       </div>
     </div>
@@ -1961,7 +1963,7 @@
           <div class="settings-body">
             <div class="field">
               <label for="aeroApiKeyInput">航班查詢金鑰（RapidAPI Application Key）</label>
-              <input type="password" id="aeroApiKeyInput" placeholder="貼上你的 RapidAPI 金鑰" autocomplete="off">
+              <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="aeroApiKeyInput" placeholder="貼上你的 RapidAPI 金鑰" autocomplete="off">
             </div>
           </div>
         </details>
@@ -1982,7 +1984,7 @@
             </div>
             <div class="field">
               <label for="botTokenInput">機器人金鑰（Apps Script 裡的 TOKEN）</label>
-              <input type="password" id="botTokenInput" placeholder="貼上金鑰" autocomplete="off">
+              <input type="text" class="nwc-secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="botTokenInput" placeholder="貼上金鑰" autocomplete="off">
             </div>
             <div class="trip-add-row" style="margin-bottom:0;">
               <button type="button" class="add-btn" id="botSyncBtn">立即傳送訂單給機器人</button>
