@@ -1366,6 +1366,10 @@
         <div class="status" id="dispatchDocStatusMsg"></div>
       </div>
     </div>
+    <div id="airDelZone" hidden style="margin:40px 0 24px;padding-top:16px;border-top:1px dashed rgba(0,0,0,.15);text-align:center"><!-- 2026-10-15 刪除訂單：頁底、確認兩次 -->
+      <button type="button" class="secondary" id="airDelOrderBtn" style="color:#A0453A">🗑 刪除此訂單</button>
+      <div class="hint" id="airDelHint" style="margin-top:6px"></div>
+    </div>
   </section>
 
   <section id="tabPanelFindDriver" class="tab-panel" hidden>
@@ -7795,6 +7799,32 @@
     els.orderAssignTag.style.color = soon ? 'var(--danger)' : 'var(--accent-strong)';
     els.orderAssignTag.textContent = '待指派 ' + need + ' 筆' + (soon ? '（2 天內 ' + soon + ' 筆）' : '');
   }
+  function airDeleteOrderNow(id){
+    recentOrders = recentOrders.filter(function(o){ return o.id !== id; });
+    markSyncDeleted([id]);
+    saveRecentOrdersList();
+    doFullSync(true);
+    if (editingOrderId === id) editingOrderId = null;
+    updateOrderEditUI();
+    renderRecentOrdersList();
+    renderReceiptOrderSelect();
+    renderCustPickSelects();
+    botDeleteOrder(id);
+  }
+  /* 2026-10-15 訂單／派車頁最底下「刪除此訂單」：載入訂單時才顯示，確認兩次才刪 */
+  var airDelStep = 0, airDelTimer = 0;
+  function airDelReset(){ airDelStep = 0; clearTimeout(airDelTimer); var b = document.getElementById('airDelOrderBtn'), h = document.getElementById('airDelHint'); if (b) b.textContent = '🗑 刪除此訂單'; if (h) h.textContent = ''; }
+  function airDelZoneUpdate(){ var z = document.getElementById('airDelZone'); if (!z) return; var on = !!editingOrderId && recentOrders.some(function(o){ return o.id === editingOrderId; }); z.hidden = !on; if (!on) airDelReset(); }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('#airDelOrderBtn'); if (!b) return; e.preventDefault();
+    var o = editingOrderId && recentOrders.find(function(x){ return x.id === editingOrderId; });
+    if (!o){ airDelZoneUpdate(); return; }
+    var h = document.getElementById('airDelHint'), no = o.formalNo || (fmtMD(o.date) + ' ' + (o.svcType || ''));
+    clearTimeout(airDelTimer); airDelStep++;
+    if (airDelStep === 1){ b.textContent = '確認刪除 ' + no + '？'; h.textContent = '刪除後這筆訂單（含司機指派、收據資料）會消失，無法復原。'; airDelTimer = setTimeout(airDelReset, 8000); return; }
+    if (airDelStep === 2){ b.textContent = '⚠️ 最後確認：真的刪除 ' + no; h.textContent = '再按一次就會刪除。8 秒內沒按會自動取消。'; airDelTimer = setTimeout(airDelReset, 8000); return; }
+    airDelReset(); airDeleteOrderNow(o.id); airDelZoneUpdate(); setDispatchStatus(els.dispatchStatusMsg, '已刪除訂單 ' + no, 'ok');
+  });
   function updateOrderEditUI(){
     var editing = !!editingOrderId && recentOrders.some(function(o){ return o.id === editingOrderId; });
     if (!editing) editingOrderId = null;
@@ -7803,6 +7833,7 @@
     if (els.orderEditNote) els.orderEditNote.style.display = editing ? '' : 'none';
     if (els.saveAssignBtn) els.saveAssignBtn.textContent = editing ? '💾 儲存司機指派（更新這筆訂單）' : '💾 儲存司機指派';
     updateRedispatchUI();
+    try { airDelZoneUpdate(); } catch (e) {}
   }
   // 2026-10-13 重派：司機車子有狀況或臨時不能跑 → 撤下原司機、回到找司機；
   // 換好新司機按儲存後，機器人會通知原司機不用出車、把行程發給新司機（客人也會收到司機異動）。
@@ -8404,17 +8435,11 @@
       if (loadBtn){ loadOrderIntoDispatchForm(loadBtn.getAttribute('data-load-order')); return; }
       var delBtn = e.target.closest('[data-del-order]');
       if (delBtn){
-        var id = delBtn.getAttribute('data-del-order');
-        recentOrders = recentOrders.filter(function(o){ return o.id !== id; });
-        markSyncDeleted([id]);
-        saveRecentOrdersList();
-        doFullSync(true);
-        if (editingOrderId === id) editingOrderId = null;
-        updateOrderEditUI();
-        renderRecentOrdersList();
-        renderReceiptOrderSelect();
-        renderCustPickSelects();
-        botDeleteOrder(id);
+        // 2026-10-15 Nicole：刪除訂單要確認兩次（第 1 下→確認？第 2 下→最後確認，第 3 下才刪）
+        var id = delBtn.getAttribute('data-del-order'), st = +(delBtn.getAttribute('data-step') || 0) + 1;
+        clearTimeout(delBtn._t);
+        if (st < 3){ delBtn.setAttribute('data-step', st); delBtn.textContent = st === 1 ? '確認刪除？' : '⚠️ 最後確認'; delBtn._t = setTimeout(function(){ delBtn.removeAttribute('data-step'); delBtn.textContent = '✕'; }, 8000); return; }
+        airDeleteOrderNow(id);
       }
     });
   }
