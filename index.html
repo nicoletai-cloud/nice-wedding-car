@@ -8614,6 +8614,7 @@
   }
   if (document.getElementById('quoteToOrderBtn')) document.getElementById('quoteToOrderBtn').addEventListener('click', function(){
     var plr = null; try { plr = paylinkMap()[paylinkRef()]; } catch (e) {}
+    var unpaidConv = !(plr && plr.paidAuto) && !qCash() && !isMonthlyChoice() && !(els.qPaymentConfirmed && els.qPaymentConfirmed.checked);
     if (plr && plr.paidAuto){ if (!confirm('這張報價的客人已線上付款，系統已自動建立訂單。還要再手動建一筆嗎？')) return; }
     else if (!qCash() && !isMonthlyChoice() && !(els.qPaymentConfirmed && els.qPaymentConfirmed.checked)){ if (!confirm(plr ? '客人還沒付款。付款完成後系統會自動轉成訂單；只有熟客先出車後付款才需要現在轉。確定要現在轉成訂單嗎？' : '這張還沒產生付款連結、也不是收現。確定要現在轉成訂單嗎？')) return;
       // 2026-10-13 熟客先出車後付款：先轉的訂單算手動單，之後客人付款就不會再自動多建一筆（避免重複派車通知）
@@ -8626,11 +8627,18 @@
     switchTab('dispatch');
     try { renderDispatchQuoteSelect(); } catch (e) {}
     els.dQuoteSelect.value = q.id; updateDispatchLegSelect();
-    if (els.dQuoteLegSelect && els.dQuoteLegSelect.options.length) els.dQuoteLegSelect.value = '0';
-    els.dImportQuoteBtn.click();
-    if (q.cashPay){ var cr = document.querySelector('input[name="dPaymentMethod"][value="cash"]'); if (cr){ cr.checked = true; cr.dispatchEvent(new Event('change', { bubbles: true })); } }
-    var n = (q.legs || []).length;
-    setDispatchStatus(els.dispatchStatusMsg, n > 1 ? '已帶入第 1 段行程。存好這筆訂單後，到上方「從報價單帶入」選第 2 段再帶入一次' : '已從報價帶入，確認地址、司機後按「💾 儲存訂單」', 'ok');
+    // 2026-10-15 Nicole：轉成訂單＝直接存成正式訂單（每一段行程各一筆），未付款只在「客人備註」標記，其他通知照正式訂單
+    var n = Math.max(1, (q.legs || []).length), made = 0, tag = '【未付款｜' + fmtMD(todayStr()) + ' 先轉訂單】';
+    for (var li = 0; li < n; li++){
+      if (els.dQuoteLegSelect && els.dQuoteLegSelect.options.length) els.dQuoteLegSelect.value = String(li);
+      els.dImportQuoteBtn.click();
+      if (q.cashPay){ var cr = document.querySelector('input[name="dPaymentMethod"][value="cash"]'); if (cr){ cr.checked = true; cr.dispatchEvent(new Event('change', { bubbles: true })); } }
+      var cn = document.getElementById('dCustNote'); if (unpaidConv && cn && cn.value.indexOf('【未付款') < 0){ cn.value = tag + (cn.value ? '\n' + cn.value : ''); cn.dispatchEvent(new Event('input', { bubbles: true })); }
+      var cnt = recentOrders.length, ed0 = editingOrderId; saveCurrentOrder(false);
+      if (recentOrders.length > cnt || (editingOrderId && editingOrderId !== ed0)) made++; else break;
+    }
+    try { renderOrderSwitcher(); quoteOnDispatchTab(); } catch (e) {}
+    setDispatchStatus(els.dispatchStatusMsg, made ? ('已轉成正式訂單' + (n > 1 ? '（' + made + '／' + n + ' 段）' : '') + (unpaidConv ? '，客人備註已標「未付款」' : '') + '，可以直接派司機') : '還沒存成訂單：請看上方提示，補好資料後按「💾 儲存訂單」', made ? 'ok' : 'err');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   if (els.dImportQuoteBtn) els.dImportQuoteBtn.addEventListener('click', function(){
