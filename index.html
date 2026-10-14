@@ -8304,6 +8304,14 @@
     o.paymentMethod = 'noSign';
     o.driverFee = null;
     o.isKnownCustomer = false;
+    // 2026-10-15 機器人有存的欄位也一起帶回來（手機／另一台電腦才看得到酬勞、付款方式、用車人、已手動發）
+    if (b.luggageSize) o.luggageSize = String(b.luggageSize);
+    if (b.paymentMethod) o.paymentMethod = String(b.paymentMethod);
+    if (typeof b.driverFee === 'number') o.driverFee = b.driverFee;
+    if (b.code) o.code = String(b.code);
+    if (b.lang) o.lang = String(b.lang);
+    o.riderName = b.riderName ? String(b.riderName) : ''; o.riderPhone = b.riderPhone ? String(b.riderPhone) : '';
+    o.showContact = b.showContact !== false; o.manualSent = b.manualSent ? String(b.manualSent) : '';
     return o;
   }
   function pullOrdersFromBot(manual){
@@ -8326,7 +8334,8 @@
         if ((Date.parse(cur.savedAt) || 0) < bTs){
           var nb = botOrderToLocal(b);
           Object.keys(nb).forEach(function(k){
-            if (k === 'driverId' || k === 'luggageSize' || k === 'paymentMethod' || k === 'driverFee' || k === 'isKnownCustomer') return;
+            if (k === 'driverId' || k === 'isKnownCustomer') return;
+            if ((k === 'luggageSize' || k === 'paymentMethod' || k === 'driverFee' || k === 'code' || k === 'lang') && (b[k] == null || b[k] === '')) return;
             if ((k === 'formalNo' || k === 'quoteNo') && !nb[k]) return;
             cur[k] = nb[k];
           });
