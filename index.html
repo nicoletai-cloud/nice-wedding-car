@@ -1130,6 +1130,15 @@
               <input type="text" id="dContactPhone">
             </div>
           </div>
+          <div class="field" id="dRiderBox"><!-- 2026-10-15 代訂：用車人（跟聯絡人不同時） -->
+            <label for="dRiderSel">用車人（幫家人朋友代訂時選）</label>
+            <select id="dRiderSel"><option value="">同聯絡人</option></select>
+            <div class="row2" id="dRiderFields" style="display:none;margin-top:8px">
+              <div class="field" style="margin-bottom:0"><label for="dRiderName">用車人姓名</label><input type="text" id="dRiderName" placeholder="例如：王媽媽"></div>
+              <div class="field" style="margin-bottom:0"><label for="dRiderPhone">用車人電話</label><input type="text" id="dRiderPhone"></div>
+            </div>
+            <p class="hint" id="dRiderHint" style="margin:6px 0 0;display:none"></p>
+          </div>
 
           <div class="field">
             <label for="dPickupFullAddr">上車地址（給司機單／乘客單使用；找司機訊息會自動抓出簡易地區，不用另外再填一次）</label>
@@ -4045,7 +4054,7 @@
       svc: {'送機':'送機','接機':'接機','接送':'接送','包車':'包車','其他':'其他'},
       useDate:'用車日期：', pickupTime:'上車時間：', flightInfo:'航班資訊', flightNo:'　班機航班號：',
       depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園 TPE', otherAirport:'　對方機場：',
-      contact:'聯絡人：', contactPhone:'聯絡電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
+      contact:'聯絡人：', contactPhone:'聯絡電話：', rider:'用車人：', riderPhone:'用車人電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
       extraStop:'加點地址：',
       pax:'搭乘人數：', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
       note:'備註／其他需求：', driverInfo:'［司機資訊］', driver:'駕駛：', phone:'電話：', car:'車款：', plate:'車號：'
@@ -4054,7 +4063,7 @@
       svc: {'送機':'Airport Drop-off','接機':'Airport Pick-up','接送':'Transfer','包車':'Charter','其他':'Other'},
       useDate:'Service Date: ', pickupTime:'Pickup Time: ', flightInfo:'Flight Information', flightNo:'  Flight No.: ',
       depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan TPE', otherAirport:'  Other Airport: ',
-      contact:'Contact: ', contactPhone:'Contact Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
+      contact:'Contact: ', contactPhone:'Contact Phone: ', rider:'Passenger: ', riderPhone:'Passenger Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
       extraStop:'Extra Stop: ',
       pax:'Passengers: ', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
       note:'Notes: ', driverInfo:'[Driver Information]', driver:'Driver: ', phone:'Phone: ', car:'Vehicle: ', plate:'License Plate: '
@@ -4063,7 +4072,7 @@
       svc: {'送機':'送迎（出発）','接機':'送迎（到着）','接送':'送迎','包車':'チャーター','其他':'その他'},
       useDate:'ご利用日：', pickupTime:'お迎え時刻：', flightInfo:'フライト情報', flightNo:'　便名：',
       depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園 TPE', otherAirport:'　到着地の空港：',
-      contact:'ご担当者：', contactPhone:'電話番号：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
+      contact:'ご担当者：', contactPhone:'電話番号：', rider:'ご乗車の方：', riderPhone:'ご乗車の方の電話：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
       extraStop:'追加立寄り先：',
       pax:'人数：', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
@@ -4221,6 +4230,7 @@
     if (!compact) lines.push('');
     lines.push(L.contact + (els.dContactName.value || '—'));
     lines.push(L.contactPhone + (els.dContactPhone.value || '—'));
+    (function(){ var rn = riderVal('dRiderName'), rp = riderVal('dRiderPhone'); if (rn || rp){ lines.push(L.rider + (rn || '—')); lines.push(L.riderPhone + (rp || '—')); } })();
     // 上／下車地址如果是桃園國際機場，後面加註航廈（第一／第二航廈），方便司機
     // 跟乘客直接知道要去哪個航廈，不用再對照上面的航班資訊。
     var terminalNote = els.dTerminal.value ? formatTaoyuanTerminal(els.dTerminal.value) : '';
@@ -7754,6 +7764,56 @@
   // 官網送來的單：客人自己在官網預訂＝「官網」；付你傳的報價付款連結＝「系統」（備註有「代客付款」）
   function isWebOrder(o){ return /^【(?:官網|系統) /.test(String((o && o.note) || '')); }
   function isWebCancelled(o){ return /^【(?:官網|系統) 已取消】/.test(String((o && o.note) || '')); }
+  /* ===== 2026-10-15 用車人（代訂）：歷史用車人從過去訂單整理，選了就帶出上次的電話和住址 ===== */
+  function riderVal(id){ var sel = document.getElementById('dRiderSel'); if (!sel || !sel.value) return ''; var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function riderNorm(n){ return String(n || '').replace(/\s+/g, ''); }
+  function riderHistory(){
+    var map = {};
+    recentOrders.slice().sort(function(a, b){ return String(b.savedAt || '').localeCompare(String(a.savedAt || '')); }).forEach(function(o){
+      if (!o || !o.riderName) return; var k = riderNorm(o.riderName); if (map[k]) return;
+      var home = o.svcType === '接機' ? (o.dropoffFullAddr || o.dropoffAddr) : (o.pickupFullAddr || o.pickupAddr);
+      if (/機場|航廈/.test(home || '')) home = '';
+      map[k] = { name: o.riderName, phone: o.riderPhone || '', home: home || '', contact: o.contactName || '' };
+    });
+    return Object.keys(map).map(function(k){ return map[k]; }).sort(function(a, b){ return a.name.localeCompare(b.name, 'zh-Hant'); });
+  }
+  function riderRenderSel(keep){
+    var sel = document.getElementById('dRiderSel'); if (!sel) return;
+    var H = riderHistory(), cur = keep != null ? keep : sel.value;
+    sel.innerHTML = '<option value="">同聯絡人</option>' + H.map(function(r){ return '<option value="h:' + escapeHtml(riderNorm(r.name)) + '">' + escapeHtml(r.name + (r.phone ? '｜' + r.phone : '') + (r.contact ? '（' + r.contact + ' 代訂過）' : '')) + '</option>'; }).join('') + '<option value="new">＋ 新增用車人</option>';
+    sel.value = [].some.call(sel.options, function(o){ return o.value === cur; }) ? cur : (cur ? 'new' : '');
+    var on = !!sel.value; document.getElementById('dRiderFields').style.display = on ? '' : 'none';
+  }
+  function riderSet(name, phone){
+    var sel = document.getElementById('dRiderSel'); if (!sel) return;
+    riderRenderSel(name ? 'h:' + riderNorm(name) : '');
+    if (name && sel.value !== 'h:' + riderNorm(name)) sel.value = 'new';
+    document.getElementById('dRiderName').value = name || ''; document.getElementById('dRiderPhone').value = phone || '';
+    document.getElementById('dRiderFields').style.display = sel.value ? '' : 'none'; document.getElementById('dRiderHint').style.display = 'none';
+  }
+  (function(){
+    var sel = document.getElementById('dRiderSel'); if (!sel) return;
+    sel.addEventListener('focus', function(){ riderRenderSel(); });
+    sel.addEventListener('change', function(){
+      var v = sel.value, hint = document.getElementById('dRiderHint');
+      document.getElementById('dRiderFields').style.display = v ? '' : 'none'; hint.style.display = 'none';
+      if (!v){ document.getElementById('dRiderName').value = ''; document.getElementById('dRiderPhone').value = ''; }
+      else if (v === 'new'){ document.getElementById('dRiderName').value = ''; document.getElementById('dRiderPhone').value = ''; document.getElementById('dRiderName').focus(); }
+      else {
+        var r = riderHistory().find(function(x){ return 'h:' + riderNorm(x.name) === v; }); if (!r) return;
+        document.getElementById('dRiderName').value = r.name; document.getElementById('dRiderPhone').value = r.phone;
+        if (r.home){
+          var svcEl = document.querySelector('input[name="dSvcType"]:checked'), svc = svcEl ? svcEl.value : '送機';
+          var full = svc === '接機' ? els.dDropoffFullAddr : els.dPickupFullAddr;
+          if (full){ full.value = r.home; full.dispatchEvent(new Event('input', { bubbles: true })); full.dispatchEvent(new Event('change', { bubbles: true })); }
+          hint.textContent = '已帶入 ' + r.name + ' 上次的' + (svc === '接機' ? '下車' : '上車') + '地址：' + r.home; hint.style.display = '';
+        }
+      }
+      try { renderActiveDoc(); } catch(e){}
+    });
+    ['dRiderName', 'dRiderPhone'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('input', function(){ try { renderActiveDoc(); } catch(e){} }); });
+    riderRenderSel('');
+  })();
   function docNoteClean(n){
     return String(n || '').split(/\n|｜/).map(function(x){
       return x.replace(/【(官網|系統)[^】]*】/g, '').replace(/代客付款\s*NWC-[A-Za-z0-9]+(（[^）]*）)?/g, '').replace(/^\s*已付款\s*(綠界|PayPal|ECPay|信用卡|ATM)[^｜]*$/i, '').replace(/^\s*\[(LINE|FB|IG|官網|私客|系統)\][^｜]*$/i, '').trim();
@@ -7980,6 +8040,7 @@
       otherAirport: els.dOtherAirport ? els.dOtherAirport.value.trim() : '',
       contactName: els.dContactName.value.trim(),
       contactPhone: els.dContactPhone.value.trim(),
+      riderName: riderVal('dRiderName'), riderPhone: riderVal('dRiderPhone'),
       pickupAddr: els.dPickupAddr.value.trim(),
       dropoffAddr: els.dDropoffAddr.value.trim(),
       pickupFullAddr: els.dPickupFullAddr ? els.dPickupFullAddr.value.trim() : '',
@@ -8425,6 +8486,7 @@
     if (els.dOtherAirport) els.dOtherAirport.value = o.otherAirport || '';
     els.dContactName.value = o.contactName || '';
     els.dContactPhone.value = o.contactPhone || '';
+    try { riderSet(o.riderName || '', o.riderPhone || ''); } catch(e){}
     els.dPickupAddr.value = o.pickupAddr || '';
     els.dDropoffAddr.value = o.dropoffAddr || '';
     if (els.dPickupFullAddr) els.dPickupFullAddr.value = o.pickupFullAddr || '';
@@ -8655,6 +8717,7 @@
     if (q.legs && q.legs.length > 1 && els.dQuoteLegSelect.value !== '') legIdx = Number(els.dQuoteLegSelect.value);
     var leg = q.legs && q.legs[legIdx];
     editingOrderId = null; keptDriverSnap = null; updateOrderEditUI();
+    try { riderSet('', ''); } catch(e){}
     currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
     renderNoLines();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
