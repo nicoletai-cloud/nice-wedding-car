@@ -985,6 +985,7 @@
   </section>
 
   <section id="tabPanelDispatch" class="tab-panel" hidden>
+    <div id="dqBar" hidden style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:#fbf6ec;border:1px solid #e4d3b4;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span id="dqText" style="flex:1;min-width:200px"></span><button type="button" class="primary" id="dqBtn">➜ 轉成訂單</button></div>
     <div class="layout">
       <!-- LEFT: FORM -->
       <div class="form-col">
@@ -3369,7 +3370,7 @@
       else if (currentQuoteId){ var cq = recentQuotes.find(function(q){ return q.id === currentQuoteId; }); if (cq && !quoteHasOrder(cq)) foc = (cq.legs || []).map(function(l, i){ return 'ql_' + cq.id + '_' + i; }); }
       if (foc.length && foc.join() !== fdFocusKey){ fdSel = foc.slice(); fdFocus = true; fdFocusKey = foc.join(); }
       renderFindDriverDoc(); }
-    if (name === 'dispatch') { renderClaimBox(); fetchClaims(); }
+    if (name === 'dispatch') { renderClaimBox(); fetchClaims(); try { quoteOnDispatchTab(); } catch(e){} }
     if (name === 'cal') { try { renderCal(); } catch(e){} }
     if (name === 'quote') { try { orderQuoteOnTab(); } catch(e){} }
   }
@@ -7461,6 +7462,31 @@
     return drop.length;
   }
   // 這張報價已經有訂單（付款後自動成單、收現成單、或同客人同日期的單）→ 不用再追
+  /* 2026-10-15 Nicole：上方選的是報價時切到「訂單／派車」：已經有訂單就直接載入那張訂單；還沒轉訂單就顯示提示＋「轉成訂單」 */
+  function quoteOrderOf(q){
+    if (!q) return null;
+    var no = q.quoteNo || '', d = firstLegDate(q), nm = String(q.custSourceName || q.custName || '').trim().toLowerCase(), ph = String(q.custPhone || '').replace(/\D/g, '');
+    return recentOrders.find(function(o){
+      if (!o || isWebCancelled(o)) return false;
+      if (no && (o.quoteNo === no || (o.quoteId && o.quoteId === q.id))) return true;
+      if (!d || o.date !== d) return false;
+      var on = String(o.custSourceName || o.contactName || '').trim().toLowerCase(), op = String(o.contactPhone || '').replace(/\D/g, '');
+      if (ph && op) return ph === op;
+      return !!(nm && on && (on === nm || on.indexOf(nm) >= 0 || nm.indexOf(on) >= 0));
+    }) || null;
+  }
+  function quoteOnDispatchTab(){
+    var bar = document.getElementById('dqBar'); if (!bar) return;
+    bar.hidden = true;
+    if (editingOrderId || !currentQuoteId) return;
+    var q = recentQuotes.find(function(x){ return x.id === currentQuoteId; }); if (!q) return;
+    var o = quoteOrderOf(q);
+    if (o){ loadOrderIntoDispatchForm(o.id); return; }
+    var leg = (q.legs || [])[0] || {};
+    document.getElementById('dqText').textContent = '目前選的是報價 ' + (q.quoteNo || '') + '（' + [fmtMD(leg.date || ''), leg.svcType || '', q.custSourceName || q.custName || ''].filter(Boolean).join(' ') + '），還沒轉成訂單。按「轉成訂單」會把報價內容帶進這頁。';
+    bar.hidden = false;
+  }
+  document.addEventListener('click', function(e){ if (!e.target.closest || !e.target.closest('#dqBtn')) return; e.preventDefault(); document.getElementById('dqBar').hidden = true; switchTab('quote'); var b = document.getElementById('quoteToOrderBtn'); if (b) b.click(); });
   function quoteHasOrder(q){
     if (!q) return false;
     var no = q.quoteNo || '', d = firstLegDate(q), nm = String(q.custSourceName || q.custName || '').trim().toLowerCase(), ph = String(q.custPhone || '').replace(/\D/g, '');
