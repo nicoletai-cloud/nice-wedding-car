@@ -3729,6 +3729,7 @@
       sharedDrivers = j.drivers; sharedDrvTs = Date.now();
       safeSet(SHARED_DRV_KEY, JSON.stringify({ ts: sharedDrvTs, list: sharedDrivers }));
       populateDriverSelect();
+      try { adoptKeptDriver(); } catch(e){}
       return true;
     }).catch(function(){ return false; }).then(function(x){ sharedDrvBusy = false; return x; });
   }
@@ -3829,6 +3830,17 @@
     return d;
   }
 
+  // 2026-10-15 別台裝置派的單：這台司機資料庫沒有這位司機時，從司機總表找同名（同車牌）的司機補進來並選好
+  function adoptKeptDriver(){
+    if (!keptDriverSnap || !keptDriverSnap.name || !els.dDriverSelect || els.dDriverSelect.value || !sharedDrivers.length) return false;
+    var pl = normPlate(keptDriverSnap.plate), idx = -1;
+    sharedDrivers.forEach(function(x, i){ if (idx < 0 && x && x.name === keptDriverSnap.name && (!pl || !normPlate(x.plate) || normPlate(x.plate) === pl)) idx = i; });
+    if (idx < 0) return false;
+    var d = adoptSharedDriver(idx); if (!d) return false;
+    ensureDriverOpt(d.id); els.dDriverSelect.value = d.id;
+    if (els.dDriverSelect.value !== d.id) return false;
+    keptDriverSnap = null; updateDriverReadout(); return true;
+  }
   function selectedDriver(){
     var id = els.dDriverSelect ? els.dDriverSelect.value : '';
     if (!id) return null;
@@ -3838,7 +3850,11 @@
   function updateDriverReadout(){
     if (!els.dDriverReadout) return;
     var d = selectedDriver();
-    if (!d){
+    if (!d && keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value){
+      els.dDriverReadout.innerHTML = '駕駛：' + escapeHtml(keptDriverSnap.name) + '<br>電話：' + escapeHtml(keptDriverSnap.phone || '') +
+        '<br>車款：' + escapeHtml(keptDriverSnap.car || '') + '<br>車號：' + escapeHtml(keptDriverSnap.plate || '') +
+        '<br><span class="hint" style="margin:0">（照訂單上的司機顯示；這台裝置的司機資料庫還沒有這位）</span>';
+    } else if (!d){
       els.dDriverReadout.innerHTML = '<span class="empty">尚未選擇司機</span>';
     } else {
       els.dDriverReadout.innerHTML =
@@ -8571,6 +8587,7 @@
     keptDriverSnap = (o.driverName && !(els.dDriverSelect && els.dDriverSelect.value && driverById(els.dDriverSelect.value)))
       ? { id: '', name: o.driverName || '', phone: o.driverPhone || '', car: o.driverCar || '', plate: o.driverPlate || '' }
       : null;
+    try { adoptKeptDriver(); } catch(e){}
     editingOrderId = o.id;
     currentOrderNos = { quoteNo: o.quoteNo || '', formalNo: o.formalNo || '' };
     try { updateDriverReadout(); } catch(e){}
