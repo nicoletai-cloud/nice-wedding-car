@@ -8257,7 +8257,7 @@
     els.botStatusMsg.className = 'status' + (kind ? ' ' + kind : '');
   }
   function botOrderPayload(o){
-    var d = (o.driverId && !o.driverName) ? driverById(o.driverId) : null;
+    var d = (o.driverId && !o.driverName) ? driverById(o.driverId) : null, pi = orderPayInfo(o);
     return {
       id: o.id, savedAt: o.savedAt, svcType: o.svcType || '', date: o.date || '', pickupTime: o.pickupTime || '', fixedPickup: !!o.fixedPickup,
       formalNo: o.formalNo || '', quoteNo: o.quoteNo || '',
@@ -8271,8 +8271,27 @@
       driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : ''),
       revSkip: !!o.revSkip, revAskAt: o.revAskAt || '',
       riderName: o.riderName || '', riderPhone: o.riderPhone || '', showContact: o.showContact !== false, manualSent: o.manualSent || '',
-      code: o.code || '', paymentMethod: o.paymentMethod || '', driverFee: (typeof o.driverFee === 'number') ? o.driverFee : null
+      code: o.code || '', paymentMethod: o.paymentMethod || '', driverFee: (typeof o.driverFee === 'number') ? o.driverFee : null,
+      // 2026-10-15 自動收據：付款狀態（月結／收現／已付款／未付款）、報價時已編好的收據號碼、要不要開發票、手動開過收據沒
+      pay: pi.pay, payVia: pi.via, payDate: pi.date, rcptNo: pi.no, inv: pi.inv, rcptName: pi.name, receiptAt: o.receiptAt ? String(o.receiptAt) : ''
     };
+  }
+  /* ===== 2026-10-15 自動開收據：這張單的付款狀態（看報價：月結、已確認付款、付款連結自動對帳；訂單：收現、官網付款） ===== */
+  function orderQuoteOf(o){
+    var k = String((o && o.quoteNo) || ''); if (!k) return null;
+    for (var i = 0; i < recentQuotes.length; i++){ var q = recentQuotes[i]; if (q && (q.quoteNo === k || q.formalNo === k)) return q; }
+    return null;
+  }
+  function orderPayInfo(o){
+    var q = orderQuoteOf(o), pl = null;
+    try { if (q && q.quoteNo) pl = paylinkMap()[String(q.quoteNo).replace(/[^A-Za-z0-9_.:-]/g, '')] || null; } catch (e) {}
+    var webPaid = /^【官網 (?![^】]*(?:取消|待付款|逾期))/.test(String(o.note || ''));
+    var r = { pay: 'unpaid', via: '', date: '', no: '', inv: !!(q && q.discounts && q.discounts.invoice), name: (q && q.custName) || o.contactName || o.custSourceName || '' };
+    if (q && q.bankChoice === 'monthly') r.pay = 'monthly';
+    else if (o.paymentMethod === 'cash' || (q && q.cashPay)){ r.pay = 'cash'; r.via = '現金'; }
+    else if ((q && q.paymentConfirmed) || (pl && pl.paidAuto) || webPaid){ r.pay = 'paid'; r.via = (pl || webPaid) ? '線上付款' : '銀行轉帳'; }
+    if (q){ r.date = q.paymentConfirmedAt || ''; r.no = q.paymentReceiptNo || ''; }
+    return r;
   }
   var botReadyUrl = '';
   function botCheckReady(cfg){
@@ -8341,6 +8360,9 @@
     if (b.lang) o.lang = String(b.lang);
     o.riderName = b.riderName ? String(b.riderName) : ''; o.riderPhone = b.riderPhone ? String(b.riderPhone) : '';
     o.showContact = b.showContact !== false; o.manualSent = b.manualSent ? String(b.manualSent) : '';
+    if (b.rcpt) o.rcpt = b.rcpt;   // 2026-10-15 系統自動開的收據
+    if (b.receiptAt) o.receiptAt = (b.rcpt && b.rcpt.ok) ? b.rcpt.at : b.receiptAt;
+    else if (b.rcpt && b.rcpt.ok) o.receiptAt = b.rcpt.at;
     return o;
   }
   function pullOrdersFromBot(manual){
@@ -8360,6 +8382,8 @@
         var cur = recentOrders[idx];
         // 機器人隔天自動問過評價 → 這裡也標成「已問」，待辦就不會再出現
         if (b.revAskAt && !cur.revAskAt){ cur.revAskAt = String(b.revAskAt); updated++; }
+        // 2026-10-15 系統自動開收據：傳到了就標「已開收據」；傳不到的留在待辦，可以複製訊息手動轉傳
+        if (b.rcpt && JSON.stringify(b.rcpt) !== JSON.stringify(cur.rcpt || null)){ cur.rcpt = b.rcpt; if (b.rcpt.ok && !cur.receiptAt) cur.receiptAt = b.rcpt.at; updated++; }
         // 2026-10-15 單號以機器人為準：就算這台的資料比較新，也把單號對成機器人的，派車單上才不會出現對不上的單號
         if (b.code && cur.code !== String(b.code)){ cur.code = String(b.code); updated++; }
         if ((Date.parse(cur.savedAt) || 0) < bTs){
@@ -9172,6 +9196,19 @@
     var ago = base ? (Date.now() - base) / 864e5 : 0;
     return [{ k: 'quote', late: ago >= gap, why: fn ? '已追 ' + fn + ' 次' : '' }];
   }
+  // 2026-10-15 收據：已付款的單系統會在用車當天 21:00（晚班隔天 09:00）自動開電子收據傳給客人；待辦只留要你處理的
+  var RCPT_AUTO_FROM = '2026-10-15';
+  function receiptTask(o, d){
+    if (o.receiptAt) return null;
+    var rc = o.rcpt;
+    if (rc && rc.no && !rc.ok) return { k: 'receipt', late: true, why: '收據已產生，請手動轉傳' + (rc.err ? '（' + rc.err + '）' : '') };
+    var p = orderPayInfo(o);
+    if (p.pay === 'monthly') return { k: 'receipt', late: d <= -3, why: '月結' };
+    if (p.pay === 'unpaid') return { k: 'receipt', late: d <= -1, why: '尚未付款' };
+    if (p.inv) return { k: 'receipt', late: d <= -3, why: '要開統一發票' };
+    if (o.date >= RCPT_AUTO_FROM && d >= -1) return null;   // 系統今晚／明早自動開
+    return { k: 'receipt', late: d <= -3, why: o.date >= RCPT_AUTO_FROM ? '自動開立沒有成功' : '' };
+  }
   function orderTasks(o){
     if (!o || isWebCancelled(o)) return [];
     var d = dayDiff(o.date); if (d === null) return [];
@@ -9185,7 +9222,7 @@
       // 2026-10-13：行程一律進 Google 日曆，TimeTree 只是顯示 → 不再提醒「未記 TimeTree」「TimeTree 要刪」
       if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
     } else if (d >= -30 && recent){
-      if (!o.receiptAt) T.push({ k: 'receipt', late: d <= -3 });
+      var rt = receiptTask(o, d); if (rt) T.push(rt);
       if (!o.revAskAt && !o.revSkip && o.custSource !== '私客' && o.custSource !== '其他') T.push({ k: 'rev', late: d <= -2 });   // 2026-10-15 私人 LINE 客人不追評價
     }
     return T;
@@ -9239,6 +9276,7 @@
       var tags = r.T.filter(function(t){ return todoF === 'all' || t.k === todoF; }).map(function(t){ return '<span class="todo-tag' + (t.late ? ' late' : '') + '">' + TODO_ST[t.k] + (t.why ? '・' + escapeHtml(t.why) : '') + '</span>'; }).join('');
       return '<div class="todo-row" data-open="' + r.type + ':' + escapeHtml(r.id) + '"><input type="checkbox" data-sel="' + escapeHtml(r.id) + '"' + (todoSel[r.id] ? ' checked' : '') + '>' +
         '<div class="m"><div>' + (r.no ? '<b>' + escapeHtml(r.no) + '</b>' : '') + escapeHtml(r.name) + '</div><div class="sub">' + escapeHtml(r.sub) + '</div></div><div class="tg">' + tags + '</div>' +
+        (r.type === 'o' && r.x.rcpt && r.x.rcpt.no && !r.x.rcpt.ok && !r.x.receiptAt ? '<button type="button" class="chip" data-rc="' + escapeHtml(r.id) + '" style="flex:none">📋 複製收據訊息</button>' : '') +
         (r.type === 'q' && r.T.some(function(t){ return t.k === 'quote'; }) ? '<button type="button" class="chip" data-fu="' + escapeHtml(r.id) + '" style="flex:none">📋 追銷話術（第 ' + ((+r.x.followN || 0) + 1) + ' 次）</button>' : '') + '</div>';
     }).join('') : '<p class="list-empty">這個類別目前沒有待辦 🎉</p>';
     renderTodoBadge();
@@ -9285,6 +9323,11 @@
       var c = e.target.closest('[data-tf]'); if (c){ todoF = c.getAttribute('data-tf'); todoSel = {}; renderTodo(); return; }
       var b = e.target.closest('[data-tb]'); if (b){ todoAct(b.getAttribute('data-tb')); return; }
       var sel = e.target.closest('[data-sel]'); if (sel){ if (sel.checked) todoSel[sel.getAttribute('data-sel')] = 1; else delete todoSel[sel.getAttribute('data-sel')]; renderTodo(); return; }
+      var rc = e.target.closest('[data-rc]'); if (rc){
+        var ro = recentOrders.find(function(o){ return o.id === rc.getAttribute('data-rc'); });
+        if (ro && ro.rcpt){ previewAndCopy(ro.rcpt.msg || ro.rcpt.url, document.getElementById('todoStatus'), '收據訊息（' + (ro.contactName || ro.custSourceName || '') + '）'); markOrders([ro.id], { receiptAt: Date.now() }); renderTodo(); }
+        return;
+      }
       var fu = e.target.closest('[data-fu]'); if (fu){
         var fq = recentQuotes.find(function(q){ return q.id === fu.getAttribute('data-fu'); });
         if (fq){ previewAndCopy(quoteFollowText(fq), document.getElementById('todoStatus'), '追銷話術（' + (fq.custSourceName || fq.custName || '') + '）'); markQuotes([fq.id], function(q){ q.followN = (+q.followN || 0) + 1; q.followAt = Date.now(); }); renderTodo(); }
