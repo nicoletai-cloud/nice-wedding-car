@@ -3769,10 +3769,10 @@
     try { var sh = document.getElementById('dDrvSetupHint'); if (sh) sh.hidden = !!(shared.length || botConfig()); } catch(e){}
     var html = '<option value="">－未指派－（可選 ' + (list.length + shared.length) + ' 位）</option>' +
       (list.length ? '<optgroup label="常用司機">' + list.map(function(d){
-        return '<option value="' + d.id + '">' + drvMark(d.name) + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(driverOptLabel(d.name, d.car, d.plate)) + '</option>';
+        return '<option value="' + d.id + '">' + drvMark(d.name) + drvRvTag(d.name) + (d.paused ? '⛔暫停派車 ' : '') + escapeHtml(driverOptLabel(d.name, d.car, d.plate)) + '</option>';
       }).join('') + '</optgroup>' : '') +
       (shared.length ? '<optgroup label="司機總表（與禮車系統共用）">' + shared.map(function(o){
-        return '<option value="sh:' + o.i + '">' + drvMark(o.x.name) + escapeHtml(driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate)) + (o.x.src === '司機招募' ? '（招募）' : '') + '</option>';
+        return '<option value="sh:' + o.i + '">' + drvMark(o.x.name) + drvRvTag(o.x.name) + escapeHtml(driverOptLabel(o.x.name, sharedCar(o.x), o.x.plate)) + (o.x.src === '司機招募' ? '（招募）' : '') + '</option>';
       }).join('') + '</optgroup>' : '');
     els.dDriverSelect.innerHTML = html;
     if (list.some(function(d){ return d.id === prevVal; })) els.dDriverSelect.value = prevVal;
@@ -3781,6 +3781,8 @@
     renderDriverHits(q, list, shared);
     updateDriverReadout();
   }
+  // 2026-10-15 司機客戶評價積分（滿意 +1、抱怨 −2），只在派車選單顯示
+  function drvRvTag(name){ var k = String(name || '').replace(/[（(][^）)]*[）)]/g, '').replace(/\s/g, ''); var x = (sharedDrivers || []).filter(function(z){ return z && z.rv && String(z.name || '').replace(/[（(][^）)]*[）)]/g, '').replace(/\s/g, '') === k; })[0]; return x ? '⭐' + (x.rv.score > 0 ? '+' : '') + x.rv.score + ' ' : ''; }
   function ensureDriverOpt(id){
     if (!id || !els.dDriverSelect || /^sh:/.test(id)) return;
     if ([].some.call(els.dDriverSelect.options, function(o){ return o.value === id; })) return;
@@ -7807,10 +7809,16 @@
   /* ===== 2026-10-15 用車人（代訂）：歷史用車人從過去訂單整理，選了就帶出上次的電話和住址 ===== */
   function riderVal(id){ var sel = document.getElementById('dRiderSel'); if (!sel || !sel.value) return ''; var el = document.getElementById(id); return el ? el.value.trim() : ''; }
   function riderNorm(n){ return String(n || '').replace(/\s+/g, ''); }
+  // 2026-10-15 用車人只列「這位客人」以前用過的（比客人暱稱或聯絡電話），不再列所有客人的用車人
+  function riderSameCust(o){
+    var nm = riderNorm((document.getElementById('dCustSourceName') || {}).value), ph = String((document.getElementById('dContactPhone') || {}).value || '').replace(/\D/g, '').slice(-9);
+    if (nm && riderNorm(o.custSourceName) === nm) return true;
+    return !!(ph && ph.length >= 8 && String(o.contactPhone || '').replace(/\D/g, '').slice(-9) === ph);
+  }
   function riderHistory(){
     var map = {};
     recentOrders.slice().sort(function(a, b){ return String(b.savedAt || '').localeCompare(String(a.savedAt || '')); }).forEach(function(o){
-      if (!o || !o.riderName) return; var k = riderNorm(o.riderName); if (map[k]) return;
+      if (!o || !o.riderName || !riderSameCust(o)) return; var k = riderNorm(o.riderName); if (map[k]) return;
       var home = o.svcType === '接機' ? (o.dropoffFullAddr || o.dropoffAddr) : (o.pickupFullAddr || o.pickupAddr);
       if (/機場|航廈/.test(home || '')) home = '';
       map[k] = { name: o.riderName, phone: o.riderPhone || '', home: home || '', contact: o.contactName || '' };
@@ -7820,10 +7828,11 @@
   function riderRenderSel(keep){
     var sel = document.getElementById('dRiderSel'); if (!sel) return;
     var H = riderHistory(), cur = keep != null ? keep : sel.value;
-    sel.innerHTML = '<option value="">同聯絡人</option>' + H.map(function(r){ return '<option value="h:' + escapeHtml(riderNorm(r.name)) + '">' + escapeHtml(r.name + (r.phone ? '｜' + r.phone : '') + (r.contact ? '（' + r.contact + ' 代訂過）' : '')) + '</option>'; }).join('') + '<option value="new">＋ 新增用車人</option>';
+    sel.innerHTML = '<option value="">同聯絡人</option>' + H.map(function(r){ return '<option value="h:' + escapeHtml(riderNorm(r.name)) + '">' + escapeHtml(r.name + (r.phone ? '｜' + r.phone : '') + '') + '</option>'; }).join('') + '<option value="new">＋ 新增用車人</option>';
     sel.value = [].some.call(sel.options, function(o){ return o.value === cur; }) ? cur : (cur ? 'new' : '');
     var on = !!sel.value; document.getElementById('dRiderFields').style.display = on ? '' : 'none';
   }
+  ['dCustSourceName', 'dContactPhone'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('change', function(){ try { riderRenderSel(); } catch (e) {} }); });
   function riderSet(name, phone){
     var sel = document.getElementById('dRiderSel'); if (!sel) return;
     riderRenderSel(name ? 'h:' + riderNorm(name) : '');
@@ -8364,6 +8373,8 @@
           updated++;
         }
       });
+      // 2026-10-15 機器人那邊已刪除的單（例如併回原訂單的重複單），這台也移除，待辦才不會一直出現
+      var removed = 0; recentOrders = recentOrders.filter(function(x){ if (x && x.id && del[x.id] && del[x.id] >= (Date.parse(x.savedAt) || 0)) { removed++; return false; } return true; }); updated += removed;
       if (added || updated){
         recentOrders.sort(function(a, b){ return new Date(b.savedAt || 0) - new Date(a.savedAt || 0); });
         saveRecentOrdersList();
