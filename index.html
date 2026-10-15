@@ -1098,9 +1098,10 @@
           <div class="field">
             <label>客戶來源</label>
             <div class="radio-row">
-              <label><input type="radio" name="dCustSource" value="LINE" checked> LINE</label>
+              <label><input type="radio" name="dCustSource" value="LINE" checked> 官方 LINE</label>
               <label><input type="radio" name="dCustSource" value="FB"> FB</label>
-              <label><input type="radio" name="dCustSource" value="私客"> 私客</label>
+              <label><input type="radio" name="dCustSource" value="私客"> 私 LINE</label>
+              <label><input type="radio" name="dCustSource" value="其他"> 私客其他管道</label>
             </div>
           </div>
           <div class="field">
@@ -1505,9 +1506,10 @@
           <div class="field">
             <label>客戶來源</label>
             <div class="radio-row">
-              <label><input type="radio" name="qCustSource" class="q-cust-source" value="LINE" checked> LINE</label>
+              <label><input type="radio" name="qCustSource" class="q-cust-source" value="LINE" checked> 官方 LINE</label>
               <label><input type="radio" name="qCustSource" class="q-cust-source" value="FB"> FB</label>
-              <label><input type="radio" name="qCustSource" class="q-cust-source" value="私客"> 私客</label>
+              <label><input type="radio" name="qCustSource" class="q-cust-source" value="私客"> 私 LINE</label>
+              <label><input type="radio" name="qCustSource" class="q-cust-source" value="其他"> 私客其他管道</label>
             </div>
           </div>
           <div class="field">
@@ -7556,7 +7558,7 @@
   }
 
   function quoteSourceLabel(q){
-    var src = q.custSource || 'LINE';
+    var src = srcLabel(q.custSource);
     var name = q.custSourceName || q.custName || '未命名客戶';
     return '[' + src + '] ' + name + (q.custNote ? '（' + q.custNote + '）' : '');
   }
@@ -7728,7 +7730,7 @@
     if (!h || h.from !== 'wed' || !(Date.now() - (h.ts || 0) < 10 * 60000)) return;
     try { localStorage.removeItem('hhlc_handoff'); } catch (e) {}
     switchTab('quote');
-    var src = h.channel === '私人LINE' ? '私客' : (h.channel === 'FB' || h.channel === 'IG') ? 'FB' : 'LINE';
+    var src = h.channel === '私人LINE' ? '私客' : h.channel === '其他' ? '其他' : (h.channel === 'FB' || h.channel === 'IG') ? 'FB' : 'LINE';
     var r = document.querySelector('input[name="qCustSource"][value="' + src + '"]'); if (r){ r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
     var note = '禮車客人' + (h.wedDate ? '（' + fmtMD(h.wedDate) + ' 婚禮）' : '') + (h.channel === 'IG' ? '・IG' : '');
     [['qCustSourceName', h.chatName], ['qCustName', h.name], ['qCustPhone', h.phone], ['qCustNote', note]].forEach(function(x){
@@ -7792,8 +7794,10 @@
   }
   function saveRecentOrdersList(){ safeSet(RECENT_ORDERS_KEY, JSON.stringify(recentOrders)); }
 
+  // 2026-10-15 客戶來源顯示名稱：LINE＝官方 LINE、私客＝私 LINE、其他＝私客其他管道（存的值不變）
+  function srcLabel(v){ return ({ LINE: '官方LINE', FB: 'FB', IG: 'IG', '私客': '私LINE', '其他': '私客其他' })[v || 'LINE'] || v; }
   function orderSourceLabel(o){
-    var src = o.custSource || 'LINE';
+    var src = srcLabel(o.custSource);
     var name = o.custSourceName || o.contactName || '未命名客戶';
     return '[' + src + '] ' + name + (o.custNote ? '（' + o.custNote + '）' : '');
   }
@@ -9171,7 +9175,7 @@
       if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
     } else if (d >= -30 && recent){
       if (!o.receiptAt) T.push({ k: 'receipt', late: d <= -3 });
-      if (!o.revAskAt && !o.revSkip) T.push({ k: 'rev', late: d <= -2 });
+      if (!o.revAskAt && !o.revSkip && o.custSource !== '私客' && o.custSource !== '其他') T.push({ k: 'rev', late: d <= -2 });   // 2026-10-15 私人 LINE 客人不追評價
     }
     return T;
   }
