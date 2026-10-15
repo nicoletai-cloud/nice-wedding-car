@@ -8347,6 +8347,8 @@
         var cur = recentOrders[idx];
         // 機器人隔天自動問過評價 → 這裡也標成「已問」，待辦就不會再出現
         if (b.revAskAt && !cur.revAskAt){ cur.revAskAt = String(b.revAskAt); updated++; }
+        // 2026-10-15 單號以機器人為準：就算這台的資料比較新，也把單號對成機器人的，派車單上才不會出現對不上的單號
+        if (b.code && cur.code !== String(b.code)){ cur.code = String(b.code); updated++; }
         if ((Date.parse(cur.savedAt) || 0) < bTs){
           var nb = botOrderToLocal(b);
           Object.keys(nb).forEach(function(k){
