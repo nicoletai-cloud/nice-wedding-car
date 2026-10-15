@@ -4222,7 +4222,7 @@
   // 熟客地址上的「給司機的提醒」（例如：要開進地下室）：派車單上的地址只要對得上，就自動帶給司機
   // 給客人／司機看的地址：去掉開頭郵遞區號、「○○里」「○鄰」（例：111臺北市士林區天和里中山北路… → 臺北市士林區中山北路…）
   function cleanAddrText(a){
-    return String(a || '').trim().replace(/^\d{3,6}\s*/, '').replace(/((?:區|鄉|鎮|市))\s*[^\s區鄉鎮市村里路街道段巷弄號\d]{1,4}[里村](?=[^\s]{2,})/, '$1').replace(/\d+\s*鄰/, '').trim();
+    return String(a || '').trim().replace(/^\d{3,6}\s*/, '').replace(/((?:區|鄉|鎮|市))\s*[^\s區鄉鎮市村里路街道段巷弄號\d]{1,4}[里村](?=[^\s]{2,})/, '$1').replace(/\d+\s*鄰/, '').replace(/(號(?:\s*之\s*[0-9０-９]+)?)[\s\S]*$/, '$1').trim();   // 2026-10-15 只到門牌號碼，不含樓層、室
   }
   function addrNoteFor(addr){
     var k = stripFloor(String(addr || '')).replace(/\s/g, '').replace(/^\d{3,5}/, '').replace(/臺/g, '台').replace(/(區)[^區路街道段巷號]{1,4}里/, '$1').replace(/\d+鄰/, ''); if (k.length < 6) return '';
