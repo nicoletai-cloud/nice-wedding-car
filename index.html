@@ -3196,7 +3196,7 @@
         var imgData = canvas.toDataURL('image/jpeg', 0.92);
         var pxToMm = 25.4 / 96;
         var pageWidthMm = Math.max(rect.width * pxToMm, 10);
-        var pageHeightMm = Math.max(rect.height * pxToMm, 10);
+        var pageHeightMm = Math.max(pageWidthMm * canvas.height / canvas.width, 10);   // 2026-10-18 高度照截圖比例算，避免收據被拉長變形
         var JsPDFCtor = window.jspdf.jsPDF;
         var doc = new JsPDFCtor({
           orientation: pageWidthMm > pageHeightMm ? 'l' : 'p',
