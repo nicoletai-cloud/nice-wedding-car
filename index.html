@@ -4260,7 +4260,7 @@
       lines.push(L.flightInfo);
       // 航廈已經改成標在上／下車地址後面（桃園機場那一端），這裡班機航班號
       // 不用再重複附註航廈了。
-      lines.push(L.flightNo + (els.dFlightNo.value || '—'));
+      lines.push(L.flightNo + (els.dFlightNo.value.toUpperCase() || '—'));
       var depAirportLabel = svcVal === '接機' ? ((els.dOtherAirport && els.dOtherAirport.value) || '') : L.depAirport;
       var arrAirportLabel = svcVal === '接機' ? L.depAirport : ((els.dOtherAirport && els.dOtherAirport.value) || '');
       var depT = els.dFlightDepTime ? fmtTime24(els.dFlightDepTime.value) : '';
@@ -5134,7 +5134,7 @@
     if (prefill.date) row.querySelector('.q-date').value = prefill.date;
     if (prefill.dep) row.querySelector('.q-dep').value = prefill.dep;
     if (prefill.arr) row.querySelector('.q-arr').value = prefill.arr;
-    if (prefill.flight) row.querySelector('.q-flight').value = prefill.flight;
+    if (prefill.flight) row.querySelector('.q-flight').value = String(prefill.flight).toUpperCase();
     if (prefill.terminal) row.querySelector('.q-terminal').value = prefill.terminal;
     if (prefill.pickupTime){
       row.querySelector('.q-pickup-time').value = prefill.pickupTime;
@@ -6295,7 +6295,7 @@
         arr: row.querySelector('.q-arr').value,
         pickupTime: row.querySelector('.q-pickup-time').value,
         fixedPickup: !!(row.querySelector('.q-fixed-pickup') && row.querySelector('.q-fixed-pickup').checked),
-        flight: row.querySelector('.q-flight').value.trim(),
+        flight: row.querySelector('.q-flight').value.trim().toUpperCase(),
         terminal: row.querySelector('.q-terminal').value.trim(),
         pickupArea: row.querySelector('.q-pickup-area').value.trim(),
         dropoffArea: row.querySelector('.q-dropoff-area').value.trim(),
@@ -8099,7 +8099,7 @@
       date: els.dUseDate.value,
       pickupTime: els.dPickupTime.value,
       fixedPickup: !!(document.getElementById('dFixedPickup') && document.getElementById('dFixedPickup').checked),
-      flightNo: els.dFlightNo.value.trim(),
+      flightNo: els.dFlightNo.value.trim().toUpperCase(),
       terminal: els.dTerminal.value.trim(),
       flightDepTime: els.dFlightDepTime ? els.dFlightDepTime.value : '',
       flightArrTime: els.dFlightArrTime ? els.dFlightArrTime.value : '',
@@ -8600,7 +8600,7 @@
     els.dUseDate.value = o.date || '';
     els.dPickupTime.value = o.pickupTime || '';
     if (document.getElementById('dFixedPickup')) document.getElementById('dFixedPickup').checked = !!o.fixedPickup;
-    els.dFlightNo.value = o.flightNo || '';
+    els.dFlightNo.value = String(o.flightNo || '').toUpperCase();
     els.dTerminal.value = o.terminal || '';
     if (els.dFlightDepTime) els.dFlightDepTime.value = o.flightDepTime || '';
     if (els.dFlightArrTime) els.dFlightArrTime.value = o.flightArrTime || '';
@@ -8864,7 +8864,7 @@
       var t = leg.pickupTime || leg.dep || leg.arr;
       if (t) els.dPickupTime.value = t;
       if (document.getElementById('dFixedPickup')) document.getElementById('dFixedPickup').checked = !!leg.fixedPickup;
-      if (leg.flight) els.dFlightNo.value = leg.flight;
+      if (leg.flight) els.dFlightNo.value = String(leg.flight).toUpperCase();
       if (leg.terminal) els.dTerminal.value = leg.terminal;
       if (leg.dep && els.dFlightDepTime) els.dFlightDepTime.value = leg.dep;
       if (leg.arr && els.dFlightArrTime) els.dFlightArrTime.value = leg.arr;
@@ -10149,6 +10149,16 @@
       var t = sp(s); if (s && t !== s && e.clipboardData){ e.clipboardData.setData('text/plain', t); e.preventDefault(); }
     } catch (x) {}
   }, true);
+})();
+</script>
+<script>
+/* 2026-10-19 班機號自動大寫（cx451 → CX451） */
+(function(){
+  function up(e){ var t = e.target; if (!t || !t.matches || !t.matches('#dFlightNo, .q-flight')) return;
+    var v = t.value, u = v.toUpperCase(); if (v === u) return;
+    var a = t.selectionStart, b = t.selectionEnd; t.value = u; try { t.setSelectionRange(a, b); } catch (x) {} }
+  document.addEventListener('input', up, true);
+  document.addEventListener('change', up, true);
 })();
 </script>
 </body>
