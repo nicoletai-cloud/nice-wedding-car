@@ -4503,6 +4503,10 @@
     if (timeStr) parts.push(timeStr);
     if (flight) parts.push(flight);
     parts.push(svcArea);
+    // 2026-10-19 Nicole：找司機附人數、行李，司機才能判斷載不載得下（例：2 人 3 件行李（大箱 2、小箱 1））
+    var paxN = String(o.pax || '').trim(), lugN = String(o.luggageCount || '').trim(), lugS = String(o.luggageSize || '').trim();
+    var pl = [paxN && paxN !== '0' ? paxN + ' 人' : '', lugN !== '' ? lugN + ' 件行李' + (/[大小]箱/.test(lugS) ? '（' + lugS + '）' : '') : ''].filter(Boolean).join(' ');
+    if (pl) parts.push(pl);
     if (carStr) parts.push(carStr);
     if (amountVal != null) parts.push('$' + fmtNum(amountVal));
     return parts.join(' ');
