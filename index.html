@@ -953,7 +953,7 @@
   <header class="nwc-top">
     <img id="mastLogo" src="" alt="好好禮車 logo" hidden style="display:none">
     <div class="nwc-brand"><b>好好禮車</b><span>Airport Transfer</span></div>
-    <a class="nwc-hub" id="nwcHubLink" href="https://nicoletai-cloud.github.io/nice-hub/">‹ 入口</a>
+    <a class="nwc-hub" id="nwcHubLink" href="https://nicoletai-cloud.github.io/nice-hub/">‹ 主畫面</a>
     <a class="nwc-hub" id="nwcWedLink" href="https://nicoletai-cloud.github.io/nice-wedding-procession/">禮車系統 ›</a>
     <a class="nwc-hub" id="nwcCardsLink" href="https://nicoletai-cloud.github.io/nice-hub/cards.html?t=air&amp;from=air">司機 ›</a>
     <div class="orderbar">
@@ -1305,6 +1305,7 @@
             <input type="search" id="dDriverSearch" placeholder="輸入司機名字或車牌快速找" autocomplete="off" style="margin-bottom:8px;">
             <div class="drv-hits" id="dDriverHits" hidden></div>
             <select id="dDriverSelect"><option value="">－未指派－</option></select>
+            <p class="hint" id="dDrvAck" style="margin-top:6px;font-weight:600"></p>
             <p class="hint" id="dPlateRuleHint" style="margin-top:6px;"></p>
             <p class="hint" id="dDrvSetupHint" hidden style="margin-top:6px;color:#c0392b;">這台裝置還沒連上機器人，抓不到司機總表。請到「設定」的機器人網址／金鑰欄位填一次（加到主畫面的 App 跟 Safari 是分開的，要各填一次）。</p>
             <label style="font-weight:400;font-size:.9em;"><input type="checkbox" id="dShowAllPlates"> 顯示全部車牌（含自用車）</label>
@@ -8404,6 +8405,7 @@
     botPullBusy = true;
     return botCheckReady(cfg).then(function(){ return botPost(cfg, { action: 'airPull' }); }).then(function(j){
       var inc = Array.isArray(j.orders) ? j.orders : [], del = (j.deleted && typeof j.deleted === 'object') ? j.deleted : {};
+      if (j.drvSt && typeof j.drvSt === 'object'){ drvStMap = j.drvSt; setTimeout(renderDrvAck, 0); }   // 2026-10-19 司機收到／按「收到」狀態
       if (Array.isArray(j.pending)){ webPendingList = j.pending; safeSet(WEB_PENDING_KEY, JSON.stringify(webPendingList)); setTimeout(renderTodoBadge, 0); }
       var added = 0, updated = 0;
       inc.forEach(function(b){
@@ -8604,7 +8606,16 @@
     }
   }
 
+  var drvStMap = {};
+  function drvAckText(o){
+    if (!o || !o.driverName) return '';
+    var st = drvStMap[o.id], f = function(t){ var d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
+    if (!st) return '📭 還沒傳行程給司機';
+    return st.ack ? '✅ 司機已按「收到」（' + f(st.ack) + '）' : '⏳ 已傳行程給司機（' + f(st.sent) + '），司機還沒按「收到」';
+  }
+  function renderDrvAck(){ var el = document.getElementById('dDrvAck'); if (!el) return; var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null; el.textContent = drvAckText(o); el.style.color = /✅/.test(el.textContent) ? '' : '#A0453A'; }
   function loadOrderIntoDispatchForm(id){
+    setTimeout(renderDrvAck, 0);
     var o = recentOrders.find(function(x){ return x.id === id; });
     if (!o) return;
     oqLoadedFor = '';   // 換了訂單 → 下次到報價頁重新帶出這張訂單
