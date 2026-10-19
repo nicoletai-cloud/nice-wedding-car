@@ -4255,7 +4255,8 @@
     var driverInfoHeader = opts.driverInfoHeader || L.driverInfo;
     var lines = [];
     var svcVal = currentSvcType();
-    if (currentOrderNos && currentOrderNos.formalNo) lines.push(({ 'en': 'Booking No.: ', 'ja': '予約番号：' }[lang] || '訂單編號：') + currentOrderNos.formalNo);
+    if (opts.forDriver){ if (currentOrderNos && currentOrderNos.code) lines.push('單號：' + currentOrderNos.code); }   // 2026-10-20 Nicole：司機端不放訂單編號，只放單號代碼
+    else if (currentOrderNos && currentOrderNos.formalNo) lines.push(({ 'en': 'Booking No.: ', 'ja': '予約番号：' }[lang] || '訂單編號：') + currentOrderNos.formalNo);
     lines.push('☑️ ' + (L.svc[svcVal] || svcVal));
     lines.push(L.useDate + fmtDateWeekday(els.dUseDate.value, lang));
     var fixedPk = !!(document.getElementById('dFixedPickup') && document.getElementById('dFixedPickup').checked);
@@ -4594,7 +4595,7 @@
       return q.fdCodes[m[2]];
     }
     var real = recentOrders.find(function(x){ return x.id === o.id; }) || o;
-    if (!real.code){ real.code = newFdCode(); real.savedAt = new Date().toISOString(); saveRecentOrdersList(); doFullSync(true); scheduleBotPush(); }
+    if (!real.code){ real.code = newFdCode(); real.savedAt = new Date().toISOString(); try { if (editingOrderId === real.id) currentOrderNos.code = real.code; } catch(e){} saveRecentOrdersList(); doFullSync(true); scheduleBotPush(); }
     return real.code;
   }
 
@@ -8678,7 +8679,7 @@
       : null;
     try { adoptKeptDriver(); } catch(e){}
     editingOrderId = o.id;
-    currentOrderNos = { quoteNo: o.quoteNo || '', formalNo: o.formalNo || '' };
+    currentOrderNos = { quoteNo: o.quoteNo || '', formalNo: o.formalNo || '', code: o.code || '' };
     try { updateDriverReadout(); } catch(e){}
     renderNoLines();
     updateOrderEditUI();
