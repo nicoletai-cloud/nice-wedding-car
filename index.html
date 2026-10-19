@@ -994,7 +994,7 @@
   </section>
 
   <section id="tabPanelDispatch" class="tab-panel" hidden>
-    <div id="dqBar" hidden style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:#fbf6ec;border:1px solid #e4d3b4;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span id="dqText" style="flex:1;min-width:200px"></span><button type="button" class="primary" id="dqBtn">➜ 轉成訂單</button></div>
+    <style>#dqBar[hidden]{display:none!important}</style><div id="dqBar" hidden style="margin:0 0 10px;padding:6px 10px;font-size:0.867rem;border-radius:10px;background:#fbf6ec;border:1px solid #e4d3b4;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span id="dqText" style="flex:1;min-width:200px"></span><button type="button" class="primary" id="dqBtn" style="padding:4px 12px;font-size:0.867rem;min-height:0;width:auto">轉成訂單</button></div>
     <div class="layout">
       <!-- LEFT: FORM -->
       <div class="form-col">
@@ -1257,7 +1257,7 @@
               <label><input type="radio" name="dPaymentMethod" class="d-payment-method" value="cash"> 收現金</label>
             </div>
           </div>
-          <div class="field"><label for="dRcptReq">收據／發票</label><select id="dRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option></select></div>
+          <div class="field"><label for="dRcptReq">收據／發票</label><select id="dRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option></select><label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:normal"><input type="checkbox" id="dPaperRcpt" style="width:auto;margin:0">客人要紙本收據（派車單備註：請提供收據）</label></div>
           <div class="field" id="dReturnAmountField" hidden style="margin-bottom:0;">
             <label>回金金額</label>
             <div class="driver-readout" id="dReturnAmountReadout">—</div>
@@ -4010,13 +4010,14 @@
     setTimeout(function(){ loadSharedDrivers(false); }, 1500);
   }
   (function(){ var f = document.getElementById('dFixedPickup'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); }); })();
+  (function(){ var f = document.getElementById('dPaperRcpt'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); }); })();
   ['dUseDate'].forEach(function(k){ if (els[k]) els[k].addEventListener('change', function(){ try { renderClaimBox(); } catch(e){} }); });
 
   // 收款方式 (payment method / 回金)
   document.querySelectorAll('input[name="dPaymentMethod"]').forEach(function(r){
     r.addEventListener('change', function(){ updatePaymentUI(); renderDispatchSheet(); });
   });
-  if (els.dAmount) els.dAmount.addEventListener('input', function(){ updatePaymentUI(); renderDispatchSheet(); });
+  if (els.dAmount) els.dAmount.addEventListener('input', function(){ updatePaymentUI(); renderDispatchSheet(); try { renderPassengerDoc(); } catch (e) {} });
   if (els.dDriverFee) els.dDriverFee.addEventListener('input', function(){ updatePaymentUI(); renderDispatchSheet(); });
 
   // 等待時間提醒 / 司機注意事項提醒 (fixed reminder text blocks)
@@ -4296,6 +4297,11 @@
     var docNote = docNoteClean(els.dNote.value);
     if (opts.forDriver) docNote = drvNoteClean(docNote);   // 2026-10-19 派車單（司機版）備註再拿掉價格、付款、來源相關文字（跟系統傳給司機的行程單一致）
     if (docNote) lines.push(L.note + docNote);
+    // 2026-10-19 Nicole：客人要紙本收據 → 司機版、客人版都寫「請提供收據，金額 $xxxx」（以客人付款金額為主）
+    if (document.getElementById('dPaperRcpt') && document.getElementById('dPaperRcpt').checked){
+      var prA = Number(els.dAmount && els.dAmount.value) || 0;
+      lines.push(L.note + ({ 'en': 'Paper receipt will be provided' + (prA ? ', amount $' + fmtNum(prA) : ''), 'ja': '紙の領収書をお渡しします' + (prA ? '（金額 $' + fmtNum(prA) + '）' : '') }[lang] || ('請提供收據' + (prA ? '，金額 $' + fmtNum(prA) : ''))));
+    }
     // 在別台裝置指派的司機，這台的司機資料庫可能沒有同一個 id——改用訂單上存的司機資料，派車單／乘客資訊才不會漏掉司機資訊
     var d = selectedDriver() || ((typeof keptDriverSnap !== 'undefined' && keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value) ? keptDriverSnap : null);
     if (d){
@@ -7544,6 +7550,7 @@
     var q = recentQuotes.find(function(x){ return x.id === currentQuoteId; }); if (!q) return;
     var o = quoteOrderOf(q);
     if (o){ loadOrderIntoDispatchForm(o.id); return; }
+    if (q.lost || q.paymentConfirmed || quoteHasOrder(q)) return;   // 2026-10-19 Nicole：只有報價未付款的客人才顯示「轉成訂單」
     var leg = (q.legs || [])[0] || {};
     document.getElementById('dqText').textContent = '目前選的是報價 ' + (q.quoteNo || '') + '（' + [fmtMD(leg.date || ''), leg.svcType || '', q.custSourceName || q.custName || ''].filter(Boolean).join(' ') + '），還沒轉成訂單。按「轉成訂單」會把報價內容帶進這頁。';
     bar.hidden = false;
@@ -8132,6 +8139,7 @@
       amount: (els.dAmount && els.dAmount.value !== '') ? Number(els.dAmount.value) : lastImportedLegAmount,
       paymentMethod: currentPaymentMethod(),
       rcptReq: (document.getElementById('dRcptReq') || {}).value || '',
+      paperRcpt: !!(document.getElementById('dPaperRcpt') || {}).checked,   // 2026-10-19 客人要紙本收據
       quoteNo: currentOrderNos.quoteNo || '',
       formalNo: currentOrderNos.formalNo || '',
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
@@ -8380,6 +8388,7 @@
     o.showContact = b.showContact !== false; o.manualSent = b.manualSent ? String(b.manualSent) : '';
     if (b.rcpt) o.rcpt = b.rcpt;   // 2026-10-15 系統自動開的收據
     if (b.rcptReq) o.rcptReq = String(b.rcptReq);
+    o.paperRcpt = !!b.paperRcpt;
     if (b.receiptAt) o.receiptAt = (b.rcpt && b.rcpt.ok) ? b.rcpt.at : b.receiptAt;
     else if (b.rcpt && b.rcpt.ok) o.receiptAt = b.rcpt.at;
     return o;
@@ -8636,6 +8645,7 @@
     var payInput = document.querySelector('input[name="dPaymentMethod"][value="' + (o.paymentMethod || 'noSign') + '"]');
     if (payInput) payInput.checked = true;
     if (document.getElementById('dRcptReq')) document.getElementById('dRcptReq').value = orderRcptReq(o);
+    if (document.getElementById('dPaperRcpt')) document.getElementById('dPaperRcpt').checked = !!o.paperRcpt;
     if (els.dDriverFee) els.dDriverFee.value = (typeof o.driverFee === 'number') ? o.driverFee : '';
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;   // 2026-10-15 不分熟客，全部存客人資料
     updatePaymentUI();
@@ -8852,6 +8862,7 @@
     try { var ms0 = document.getElementById('dManualSent'); ms0.checked = false; ms0.dataset.drv = ''; } catch(e){}
     currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
     if (document.getElementById('dRcptReq')) document.getElementById('dRcptReq').value = q.rcptReq || '';
+    if (document.getElementById('dPaperRcpt')) document.getElementById('dPaperRcpt').checked = false;
     renderNoLines();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
@@ -9234,7 +9245,7 @@
     if (!o || isWebCancelled(o)) return [];
     var d = dayDiff(o.date); if (d === null) return [];
     var T = [], recent = (Date.parse(o.savedAt || '') || 0) >= TODO_SINCE || !!o.formalNo;
-    if (d >= 0){
+    if (d >= 0 && d <= 14){   // 2026-10-19 Nicole：待辦太多 → 未指派司機／未傳乘客資訊只列 14 天內的趟次（固定班之後的趟次到時候再出現）
       if (!o.driverName){
         var cl = (claimList || []).filter(function(c){ return String(c.ref || '').split('|')[0] === o.id || (c.date === o.date && (o.svcType === '接送' || c.svc === o.svcType)); }).reduce(function(a, c){ return a + (c.claims || []).length; }, 0);
         T.push({ k: 'nodrv', late: d <= 2, why: cl ? cl + ' 人喊單' : '' });
