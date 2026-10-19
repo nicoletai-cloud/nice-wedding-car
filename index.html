@@ -9224,7 +9224,7 @@
   }
   function daysAgo(ts){ var v = typeof ts === 'number' ? ts : Date.parse(ts || ''); return v ? (Date.now() - v) / 864e5 : 999; }
   function quoteTasks(q){
-    if (!q || q.lost || q.paymentConfirmed) return [];
+    if (!q || q.lost || q.paymentConfirmed || q.todoDone) return [];
     var d = dayDiff(firstLegDate(q)); if (d !== null && d < 0) return [];
     if (quoteHasOrder(q)) return [];
     var fn = +q.followN || 0; if (fn >= 3) return [];
@@ -9301,7 +9301,7 @@
     var rows = todoRows();
     Object.keys(todoSel).forEach(function(id){ if (!rows.some(function(r){ return r.id === id; })) delete todoSel[id]; });
     var nSel = Object.keys(todoSel).length;
-    var B = [['all', nSel && nSel === rows.length ? '取消全選' : '全選'], ['names', '複製客人名稱']];
+    var B = [['all', nSel && nSel === rows.length ? '取消全選' : '全選'], ['names', '複製客人名稱'], ['done', '標記已完成']];   // 2026-10-19 Nicole：做完的勾起來按「已完成」就不再顯示
     if (todoF === 'quote') B.push(['followCopy', '複製追銷話術＋標記已追蹤'], ['follow', '標記已追蹤'], ['lost', '標記失單']);
     if (todoF === 'tt') B.push(['tt', '標記已記 TimeTree']);
     if (todoF === 'ttdel') B.push(['ttdel', '標記已刪 TimeTree']);
@@ -9338,6 +9338,16 @@
     if ((kind === 'follow' || kind === 'lost') && wIds.length){
       wIds.forEach(function(id){ var f = webFlags[id] = webFlags[id] || {}; if (kind === 'lost') f.lost = true; else { f.followN = (+f.followN || 0) + 1; f.followAt = now; } });
       safeSet(WEB_FLAGS_KEY, JSON.stringify(webFlags)); n += wIds.length;
+    }
+    if (kind === 'done'){   // 2026-10-19 依每筆目前顯示的待辦標記完成（未指派司機要真的指派才會消失）
+      var skip = 0, wk = function(r, k){ return r.T.some(function(t){ return t.k === k && (todoF === 'all' || todoF === k); }); };
+      pick.forEach(function(r){
+        if (r.type === 'q' && wk(r, 'quote')) n += markQuotes([r.id], function(q){ q.followN = Math.max(3, +q.followN || 0); q.followAt = now; q.todoDone = now; });
+        else if (r.type === 'w' && wk(r, 'quote')){ var f = webFlags[r.id] = webFlags[r.id] || {}; f.followN = 3; f.followAt = now; safeSet(WEB_FLAGS_KEY, JSON.stringify(webFlags)); n++; }
+        else if (r.type === 'o'){ var p = {}; if (wk(r, 'pax')) p.paxSentAt = now; if (wk(r, 'receipt')) p.receiptAt = now; if (wk(r, 'rev')) p.revAskAt = now;
+          if (Object.keys(p).length) n += markOrders([r.id], p); if (wk(r, 'nodrv')) skip++; }
+      });
+      todoSel = {}; renderTodo(); setDispatchStatus(st, '已標記完成 ' + n + ' 筆' + (skip ? '；未指派司機要指派好司機才會消失（' + skip + ' 筆）' : ''), 'ok'); return;
     }
     if (kind === 'tt') n = markOrders(oIds, { ttAt: now });
     if (kind === 'ttdel') n = markOrders(oIds, { ttDelAt: now });
