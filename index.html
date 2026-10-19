@@ -8303,7 +8303,7 @@
       riderName: o.riderName || '', riderPhone: o.riderPhone || '', showContact: o.showContact !== false, manualSent: o.manualSent || '',
       code: o.code || '', paymentMethod: o.paymentMethod || '', driverFee: (typeof o.driverFee === 'number') ? o.driverFee : null,
       // 2026-10-15 自動收據：付款狀態（月結／收現／已付款／未付款）、報價時已編好的收據號碼、要不要開發票、手動開過收據沒
-      rcptReq: orderRcptReq(o), pay: pi.pay, payVia: pi.via, payDate: pi.date, rcptNo: pi.no, inv: pi.inv, rcptName: pi.name, receiptAt: o.receiptAt ? String(o.receiptAt) : ''
+      rcptReq: orderRcptReq(o), paperRcpt: !!o.paperRcpt, pay: pi.pay, payVia: pi.via, payDate: pi.date, rcptNo: pi.no, inv: pi.inv, rcptName: pi.name, receiptAt: o.receiptAt ? String(o.receiptAt) : ''
     };
   }
   /* ===== 2026-10-15 自動開收據：這張單的付款狀態（看報價：月結、已確認付款、付款連結自動對帳；訂單：收現、官網付款） ===== */
