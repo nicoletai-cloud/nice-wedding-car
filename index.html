@@ -1257,7 +1257,7 @@
               <label><input type="radio" name="dPaymentMethod" class="d-payment-method" value="cash"> 收現金</label>
             </div>
           </div>
-          <div class="field"><label for="dRcptReq">收據／發票</label><select id="dRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option></select><label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:normal"><input type="checkbox" id="dPaperRcpt" style="width:auto;margin:0">客人要紙本收據（派車單備註：請提供收據）</label></div>
+          <div class="field"><label for="dRcptReq">收據／發票</label><select id="dRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option><option value="paper">要紙本收據（司機現場提供）</option></select><label style="display:none"><input type="checkbox" id="dPaperRcpt" style="width:auto;margin:0">客人要紙本收據（派車單備註：請提供收據）</label></div>
           <div class="field" id="dReturnAmountField" hidden style="margin-bottom:0;">
             <label>回金金額</label>
             <div class="driver-readout" id="dReturnAmountReadout">—</div>
@@ -1611,7 +1611,7 @@
             <div class="driver-readout" id="qEsimCheckReadout">尚未填入售價／成本／金流費</div>
           </div>
           <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qInvoice"><label for="qInvoice" style="margin:0;">需要開立統一發票（+5% 營業稅）</label></div>
-          <div class="field" style="margin:10px 0 0;"><label for="qRcptReq">收據／發票</label><select id="qRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option></select></div>
+          <div class="field" style="margin:10px 0 0;"><label for="qRcptReq">收據／發票</label><select id="qRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option><option value="paper">要紙本收據（司機現場提供）</option></select></div>
         </div>
 
         <div class="card">
@@ -4012,7 +4012,8 @@
     setTimeout(function(){ loadSharedDrivers(false); }, 1500);
   }
   (function(){ var f = document.getElementById('dFixedPickup'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); }); })();
-  (function(){ var f = document.getElementById('dPaperRcpt'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); }); })();
+  (function(){ var f = document.getElementById('dPaperRcpt'); if (f) f.addEventListener('change', function(){ renderPassengerDoc(); renderDispatchSheet(); });
+    var r = document.getElementById('dRcptReq'); if (r && f) r.addEventListener('change', function(){ f.checked = r.value === 'paper'; renderPassengerDoc(); renderDispatchSheet(); }); })();   // 2026-10-20 紙本收據併入收據選單
   ['dUseDate'].forEach(function(k){ if (els[k]) els[k].addEventListener('change', function(){ try { renderClaimBox(); } catch(e){} }); });
 
   // 收款方式 (payment method / 回金)
@@ -8145,7 +8146,7 @@
       amount: (els.dAmount && els.dAmount.value !== '') ? Number(els.dAmount.value) : lastImportedLegAmount,
       paymentMethod: currentPaymentMethod(),
       rcptReq: (document.getElementById('dRcptReq') || {}).value || '',
-      paperRcpt: !!(document.getElementById('dPaperRcpt') || {}).checked,   // 2026-10-19 客人要紙本收據
+      paperRcpt: ((document.getElementById('dRcptReq') || {}).value || '') === 'paper' || (!(document.getElementById('dRcptReq') || {}).value && !!(document.getElementById('dPaperRcpt') || {}).checked),   // 2026-10-19 客人要紙本收據
       quoteNo: currentOrderNos.quoteNo || '',
       formalNo: currentOrderNos.formalNo || '',
       driverFee: (els.dDriverFee && els.dDriverFee.value !== '') ? Number(els.dDriverFee.value) : null,
@@ -8661,7 +8662,8 @@
     var payInput = document.querySelector('input[name="dPaymentMethod"][value="' + (o.paymentMethod || 'noSign') + '"]');
     if (payInput) payInput.checked = true;
     if (document.getElementById('dRcptReq')) document.getElementById('dRcptReq').value = orderRcptReq(o);
-    if (document.getElementById('dPaperRcpt')) document.getElementById('dPaperRcpt').checked = !!o.paperRcpt;
+    if (document.getElementById('dPaperRcpt')) document.getElementById('dPaperRcpt').checked = !!o.paperRcpt || orderRcptReq(o) === 'paper';
+    if (o.paperRcpt && !orderRcptReq(o) && document.getElementById('dRcptReq')) document.getElementById('dRcptReq').value = 'paper';   // 舊單只勾了紙本收據
     if (els.dDriverFee) els.dDriverFee.value = (typeof o.driverFee === 'number') ? o.driverFee : '';
     if (els.dIsKnownCustomer) els.dIsKnownCustomer.checked = true;   // 2026-10-15 不分熟客，全部存客人資料
     updatePaymentUI();
@@ -8794,7 +8796,7 @@
     o.contactName = q.custName || ''; o.contactPhone = q.custPhone || '';
     o.pickupFullAddr = leg.pickupArea || ''; o.dropoffFullAddr = leg.dropoffArea || '';
     o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || ''; o.lugBig = leg.lugBig || ''; o.lugSmall = leg.lugSmall || ''; if (lugText(leg.lugBig, leg.lugSmall)) o.luggageSize = lugText(leg.lugBig, leg.lugSmall);
-    o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign'; o.rcptReq = q.rcptReq || '';
+    o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign'; o.rcptReq = q.rcptReq || ''; if (q.rcptReq === 'paper') o.paperRcpt = true;
     o.quoteNo = q.quoteNo || ''; o.quoteLeg = i; o.autoFromQuote = true;
     o.lang = q.lang || o.lang || '';
     if (!o.code && q.fdCodes && q.fdCodes[i]) o.code = q.fdCodes[i];
@@ -8878,7 +8880,7 @@
     try { var ms0 = document.getElementById('dManualSent'); ms0.checked = false; ms0.dataset.drv = ''; } catch(e){}
     currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
     if (document.getElementById('dRcptReq')) document.getElementById('dRcptReq').value = q.rcptReq || '';
-    if (document.getElementById('dPaperRcpt')) document.getElementById('dPaperRcpt').checked = false;
+    if (document.getElementById('dPaperRcpt')) document.getElementById('dPaperRcpt').checked = q.rcptReq === 'paper';
     renderNoLines();
     var srcInput = document.querySelector('input[name="dCustSource"][value="' + (q.custSource || 'LINE') + '"]');
     if (srcInput) srcInput.checked = true;
