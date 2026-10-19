@@ -6721,7 +6721,8 @@
       : '以下是付款連結，金額 NT$' + fmtNum(r.amount) + '，付款方式：' + paylinkMethodText(r.methods, false) + '\n' + r.url + (d ? '\n付款期限：' + d : '') + '\n付款完成即預訂成立，謝謝！';
   }
   function paylinkApi(path, body){
-    var token = ((els.botKeyInput && els.botKeyInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || '').trim();
+    // 2026-10-19 跟派車機器人一樣：這台裝置沒填時，借用禮車系統的連線設定（同一把金鑰），不用再填一次
+    var bc = botConfig(), token = ((els.botKeyInput && els.botKeyInput.value.trim()) || safeGet(BOT_TOKEN_KEY) || (bc && bc.token) || '').trim();
     if (!token) return Promise.reject(new Error('請先在「派車機器人連線」填好機器人金鑰'));
     body.token = token;
     return fetch(wpBase() + '/wp-json/nwc/v1/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' })
