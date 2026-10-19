@@ -4438,7 +4438,11 @@
     if (!s) return s;
     var hit = extractCityDistrict(s);
     if (!hit) return s;
-    return shortDistrictName(hit.district);
+    // 2026-10-19 東區／北區／中西區這類多個縣市都有的區名，前面加縣市（例：新竹東區、臺南中西區）；
+    // 基隆的中正／中山／信義區跟臺北撞名，也加「基隆」
+    var d = hit.district, c = hit.cityShort || '';
+    if (c && (/^(東|西|南|北|中|中西)區$/.test(d) || (c === '基隆' && /^(中正|中山|信義)區$/.test(d)))) return c + d;
+    return shortDistrictName(d);
   }
 
   // 上車時間用 24 小時制＋am/pm（例如「09:50am」「21:50pm」）——原本用 12 小時制
