@@ -3812,7 +3812,8 @@
   function driverMatches(q, name, plate){
     if (!q) return true;
     var qp = normPlate(q);
-    return String(name || '').indexOf(q) >= 0 || (qp && normPlate(plate).indexOf(qp) >= 0);
+    var disp = (drvBind[name] && drvBind[name].disp) || '';   // 2026-10-19 也可以用司機的 LINE 名稱找（例：阿旺）
+    return String(name || '').indexOf(q) >= 0 || String(disp).toLowerCase().indexOf(q.toLowerCase()) >= 0 || (qp && normPlate(plate).indexOf(qp) >= 0);
   }
   function renderDriverHits(q, list, shared){
     var box = document.getElementById('dDriverHits'); if (!box) return;
