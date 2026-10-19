@@ -4301,7 +4301,7 @@
     // 2026-10-19 Nicole：客人要紙本收據 → 司機版、客人版都寫「請提供收據，金額 $xxxx」（以客人付款金額為主）
     if (document.getElementById('dPaperRcpt') && document.getElementById('dPaperRcpt').checked){
       var prA = Number(els.dAmount && els.dAmount.value) || 0;
-      lines.push(L.note + ({ 'en': 'Paper receipt will be provided' + (prA ? ', amount $' + fmtNum(prA) : ''), 'ja': '紙の領収書をお渡しします' + (prA ? '（金額 $' + fmtNum(prA) + '）' : '') }[lang] || ('請提供收據' + (prA ? '，金額 $' + fmtNum(prA) : ''))));
+      lines.push(L.note + (opts.forDriver ? ('請提供收據' + (prA ? '，金額 $' + fmtNum(prA) : '')) : ({ 'en': 'Paper receipt: please ask the driver for it', 'ja': '紙の領収書はドライバーからお受け取りください' }[lang] || '司機會提供紙本收據，請向司機索取')));   // 2026-10-19 客人端不寫金額
     }
     // 在別台裝置指派的司機，這台的司機資料庫可能沒有同一個 id——改用訂單上存的司機資料，派車單／乘客資訊才不會漏掉司機資訊
     var d = selectedDriver() || ((typeof keptDriverSnap !== 'undefined' && keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value) ? keptDriverSnap : null);
