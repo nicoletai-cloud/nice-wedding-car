@@ -4294,6 +4294,7 @@
     lines.push(L.luggageSize + (els.dLuggageSize.value || L.tbd));
     // 2026-10-15 Nicole：行程單／派車單的備註不顯示系統自動加的付款、來源文字（訂單裡仍保留，系統判斷要用）
     var docNote = docNoteClean(els.dNote.value);
+    if (opts.forDriver) docNote = drvNoteClean(docNote);   // 2026-10-19 派車單（司機版）備註再拿掉價格、付款、來源相關文字（跟系統傳給司機的行程單一致）
     if (docNote) lines.push(L.note + docNote);
     // 在別台裝置指派的司機，這台的司機資料庫可能沒有同一個 id——改用訂單上存的司機資料，派車單／乘客資訊才不會漏掉司機資訊
     var d = selectedDriver() || ((typeof keptDriverSnap !== 'undefined' && keptDriverSnap && keptDriverSnap.name && els.dDriverSelect && !els.dDriverSelect.value) ? keptDriverSnap : null);
@@ -7878,6 +7879,10 @@
     return String(n || '').split(/\n|｜/).map(function(x){
       return x.replace(/【(官網|系統)[^】]*】/g, '').replace(/代客付款\s*NWC-[A-Za-z0-9]+(（[^）]*）)?/g, '').replace(/^\s*已付款\s*(綠界|PayPal|ECPay|信用卡|ATM)[^｜]*$/i, '').replace(/^\s*\[(LINE|FB|IG|官網|私客|系統)\][^｜]*$/i, '').trim();
     }).filter(Boolean).join('｜');
+  }
+  function drvNoteClean(n){
+    return String(n || '').split(/\s*[｜|]\s*/).map(function(z){ return z.replace(/\[(LINE|FB|IG|私客|其他|官方LINE|私LINE)\]\s*/g, '').trim(); })
+      .filter(function(z){ return z && !/NT\$|\$\s?\d|付款|綠界|ecpay|代客|匯款|報價|價格|訂金|尾款|回金|不指定進口車/i.test(z); }).join('｜');
   }
   function isSysOrder(o){ var n = String((o && o.note) || ''); return /^【系統 /.test(n) || (/^【官網 /.test(n) && /代客付款/.test(n)); }
   function webLabel(o){ return isSysOrder(o) ? '系統' : '官網'; }
