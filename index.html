@@ -4508,7 +4508,11 @@
     parts.push(svcArea);
     // 2026-10-19 Nicole：找司機附人數、行李，司機才能判斷載不載得下（例：2 人 3 件行李（大箱 2、小箱 1））
     var paxN = String(o.pax || '').trim(), lugN = String(o.luggageCount || '').trim(), lugS = String(o.luggageSize || '').trim();
-    var pl = [paxN && paxN !== '0' ? paxN + ' 人' : '', lugN !== '' ? lugN + ' 件行李' + (/[大小]箱/.test(lugS) ? '（' + lugS + '）' : '') : ''].filter(Boolean).join(' ');
+    /* 2026-10-21 Nicole：行李直接寫「3 大件」「2 大件 1 小件」，不再寫「3 件行李（大箱 3）」 */
+    var lb = /大箱\s*(\d+)/.exec(lugS), ls = /小箱\s*(\d+)/.exec(lugS), lugT = '';
+    if (lb || ls){ lugT = [lb && +lb[1] ? lb[1] + ' 大件' : '', ls && +ls[1] ? ls[1] + ' 小件' : ''].filter(Boolean).join(' ') || '無行李'; }
+    else if (lugN !== '') lugT = +lugN ? lugN + ' 件' : '無行李';
+    var pl = [paxN && paxN !== '0' ? paxN + ' 人' : '', lugT].filter(Boolean).join(' ');
     if (pl) parts.push(pl);
     if (carStr) parts.push(carStr);
     if (amountVal != null) parts.push('$' + fmtNum(amountVal));
