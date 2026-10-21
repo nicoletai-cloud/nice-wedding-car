@@ -6812,7 +6812,7 @@
     var row = document.getElementById('manualPaidRow'); if (row && paid) row.hidden = false;
   }
   if (document.getElementById('manualPaidToggle')) document.getElementById('manualPaidToggle').addEventListener('click', function(){ var row = document.getElementById('manualPaidRow'); row.hidden = !row.hidden; });
-  if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(){
+  if (els.qPaymentConfirmed) els.qPaymentConfirmed.addEventListener('change', function(ev){
     try { renderPayState(); } catch (e) {}
     if (els.qPaymentConfirmed.checked && !currentPaymentReceiptNo){
       var d = todayStr();
@@ -6821,6 +6821,13 @@
       currentPaymentConfirmedAt = d;
     }
     renderPaymentNotice();
+    /* 2026-10-21 Nicole：手動勾「已收款」（例如客人轉到將來銀行）→ 直接問要不要轉成正式訂單；線上付款已自動建單的不重複 */
+    if (ev && ev.isTrusted && els.qPaymentConfirmed.checked){
+      var plr0 = null; try { plr0 = paylinkMap()[paylinkRef()]; } catch (e) {}
+      if (plr0 && plr0.paidAuto){ try { saveCurrentQuote(); } catch (e) {} return; }
+      if (confirm('已標記收款。要現在把這張報價轉成正式訂單嗎？')){ var tb = document.getElementById('quoteToOrderBtn'); if (tb) tb.click(); }
+      else { try { saveCurrentQuote(); } catch (e) {} }
+    }
   });
   if (els.copyPaymentNoticeBtn) els.copyPaymentNoticeBtn.addEventListener('click', function(){
     copyToClipboard(buildPaymentNoticeText(), els.paymentNoticeStatusMsg);
