@@ -1109,6 +1109,10 @@
             <input type="text" id="dCustSourceName" placeholder="貼上 LINE/FB 顯示名稱，或私客自訂稱呼">
           </div>
           <div class="field">
+            <label for="dCustLang">客人慣用語言<small style="font-weight:400;color:#888">　乘客資訊、行程確認、司機異動等機器人訊息都用這個語言</small></label>
+            <select id="dCustLang"><option value="zh-TW">繁中</option><option value="en">English</option><option value="ja">日本語</option></select>
+          </div>
+          <div class="field">
             <label for="dFoundVia">客人怎麼找到我們<small style="font-weight:400;color:#888">　統計廣告和口碑效果用</small></label>
             <select id="dFoundVia"><option value="">（還不知道，問到再選）</option><option>Google 搜尋／地圖</option><option>IG</option><option>FB</option><option>FB/IG 廣告</option><option>Google 廣告</option><option>婚顧／廠商介紹</option><option>朋友介紹</option><option>老客回購</option><option>官網</option><option>其他</option></select>
           </div>
@@ -1517,6 +1521,10 @@
           <div class="field">
             <label for="qCustSourceName">客戶暱稱／來源名稱</label>
             <input type="text" id="qCustSourceName" placeholder="貼上 LINE/FB 顯示名稱，或私客自訂稱呼">
+          </div>
+          <div class="field">
+            <label for="qCustLang">客人慣用語言<small style="font-weight:400;color:#888">　報價、乘客資訊、行程確認、司機異動等機器人訊息都用這個語言</small></label>
+            <select id="qCustLang"><option value="zh-TW">繁中</option><option value="en">English</option><option value="ja">日本語</option></select>
           </div>
           <div class="field">
             <label for="qFoundVia">客人怎麼找到我們<small style="font-weight:400;color:#888">　統計廣告和口碑效果用</small></label>
@@ -4201,6 +4209,7 @@
   };
   function pl(){ return PLABELS[currentPassengerLang] || PLABELS['zh-TW']; }
   function updatePassengerLangButtons(){
+    try { syncCustLangSel(); } catch(e){}
     if (!els.dLangRow) return;
     els.dLangRow.querySelectorAll('.lang-btn').forEach(function(btn){
       btn.classList.toggle('active', btn.dataset.lang === currentPassengerLang);
@@ -6348,6 +6357,7 @@
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
+    try { syncCustLangSel(); } catch(e){}
     if (!els.qLangRow) return;
     els.qLangRow.querySelectorAll('.lang-btn').forEach(function(btn){
       btn.classList.toggle('active', btn.dataset.lang === currentQuoteLang);
@@ -9808,6 +9818,27 @@
   }
   function applyCustLang(c){ if (c && c.lang){ setQuoteLang(c.lang); setPassengerLang(c.lang); } }
   function learnCustLang(c, l){ if (c && l && c.lang !== l){ c.lang = l; c.langAt = Date.now(); saveKnownCustomersList(); } }
+  // 2026-10-23 Nicole：客人資料區直接選「客人慣用語言」；訂單頁改了立刻存進這張訂單並同步（機器人發訊息用 o.lang），也記到熟客
+  function syncCustLangSel(){ var d = document.getElementById('dCustLang'), q = document.getElementById('qCustLang'); if (d) d.value = currentPassengerLang || 'zh-TW'; if (q) q.value = currentQuoteLang || 'zh-TW'; }
+  (function(){
+    var LN = { 'zh-TW': '繁中', en: 'English', ja: '日本語' };
+    var d = document.getElementById('dCustLang');
+    if (d) d.addEventListener('change', function(){
+      var v = d.value || 'zh-TW';
+      currentPassengerLang = v; safeSet('hhlc_passenger_lang', v); dLangPickedFor = editingOrderId || 'new';
+      updatePassengerLangButtons(); try { renderPassengerDoc(); } catch(e){}
+      var c = findKnownCustomerByContact((els.dCustSourceName.value || '').trim() || (els.dContactName.value || '').trim(), (els.dContactPhone.value || '').trim()); learnCustLang(c, v);
+      var o = editingOrderId ? recentOrders.find(function(x){ return x.id === editingOrderId; }) : null;
+      if (o){ o.lang = v; o.savedAt = new Date().toISOString(); saveRecentOrdersList(); try { doFullSync(true); } catch(e){} }
+      setDispatchStatus(els.dispatchStatusMsg, '客人慣用語言改成 ' + LN[v] + (o ? '，這張訂單已存好，機器人之後發給客人的訊息會用 ' + LN[v] : '，存訂單時會一起記下'), 'ok');
+    });
+    var q = document.getElementById('qCustLang');
+    if (q) q.addEventListener('change', function(){
+      var v = q.value || 'zh-TW'; setQuoteLang(v);
+      learnCustLang(findKnownCustomerByContact((els.qCustSourceName.value || '').trim() || (els.qCustName.value || '').trim(), (els.qCustPhone.value || '').trim()), v);
+    });
+    syncCustLangSel();
+  })();
 
   if (els.kcAddrAddBtn) els.kcAddrAddBtn.addEventListener('click', function(){
     var c = els.kcAddrCustSelect ? findKnownCustomer(els.kcAddrCustSelect.value) : null;
