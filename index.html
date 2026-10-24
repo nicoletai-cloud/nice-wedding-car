@@ -1145,6 +1145,7 @@
             </div>
           </div>
           <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dShowContact" checked> 行程單顯示聯絡人（司機直接聯絡用車人時取消勾選）</label>
+          <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dAnon"> 匿名（知名客人：給司機的派車單只寫姓氏）<select id="dAnonTitle" style="width:auto;margin-left:8px"><option>先生</option><option>小姐</option></select></label>
           <div class="field" id="dRiderBox"><!-- 2026-10-15 代訂：用車人（跟聯絡人不同時） -->
             <label for="dRiderSel">用車人（幫家人朋友代訂時選）</label>
             <select id="dRiderSel"><option value="">同聯絡人</option></select>
@@ -4285,9 +4286,12 @@
     if (!compact) lines.push('');
     // 2026-10-15 可選擇不顯示聯絡人（司機直接聯絡用車人）；沒填用車人時一定顯示，免得司機沒人可聯絡
     var showCt = !(document.getElementById('dShowContact') && !document.getElementById('dShowContact').checked && (riderVal('dRiderName') || riderVal('dRiderPhone')));
-    if (showCt){ lines.push(L.contact + (els.dContactName.value || '—'));
+    /* 2026-10-24 Nicole：匿名（知名客人）→ 給司機的只寫姓氏＋先生/小姐 */
+    var anonOn = !!(opts.forDriver && document.getElementById('dAnon') && document.getElementById('dAnon').checked), anonT = (document.getElementById('dAnonTitle') || {}).value || '先生';
+    var anonNm = function(n){ n = String(n || '').trim(); if (!anonOn || !n) return n; if (/(先生|小姐|女士)$/.test(n)) return n; return /^[A-Za-z]/.test(n) ? n.split(/\s+/).pop() + ' ' + anonT : n.charAt(0) + anonT; };
+    if (showCt){ lines.push(L.contact + (anonNm(els.dContactName.value) || '—'));
     lines.push(L.contactPhone + (els.dContactPhone.value || '—')); }
-    (function(){ var rn = riderVal('dRiderName'), rp = riderVal('dRiderPhone'); if (rn || rp){ lines.push(L.rider + (rn || '—')); lines.push(L.riderPhone + (rp || '—')); } })();
+    (function(){ var rn = riderVal('dRiderName'), rp = riderVal('dRiderPhone'); if (rn || rp){ lines.push(L.rider + (anonNm(rn) || '—')); lines.push(L.riderPhone + (rp || '—')); } })();
     // 上／下車地址如果是桃園國際機場，後面加註航廈（第一／第二航廈），方便司機
     // 跟乘客直接知道要去哪個航廈，不用再對照上面的航班資訊。
     var terminalNote = els.dTerminal.value ? formatTaoyuanTerminal(els.dTerminal.value) : '';
@@ -7908,7 +7912,7 @@
       }
       try { renderActiveDoc(); } catch(e){}
     });
-    ['dRiderName', 'dRiderPhone', 'dShowContact'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('input', function(){ try { renderActiveDoc(); } catch(e){} }); });
+    ['dRiderName', 'dRiderPhone', 'dShowContact', 'dAnon', 'dAnonTitle'].forEach(function(id){ var el = document.getElementById(id); if (el){ el.addEventListener('input', function(){ try { renderActiveDoc(); } catch(e){} }); el.addEventListener('change', function(){ try { renderActiveDoc(); } catch(e){} }); } });
     riderRenderSel('');
   })();
   function docNoteClean(n){
@@ -8147,7 +8151,7 @@
       otherAirport: els.dOtherAirport ? els.dOtherAirport.value.trim() : '',
       contactName: els.dContactName.value.trim(),
       contactPhone: els.dContactPhone.value.trim(),
-      riderName: riderVal('dRiderName'), riderPhone: riderVal('dRiderPhone'), showContact: !(document.getElementById('dShowContact') && !document.getElementById('dShowContact').checked),
+      riderName: riderVal('dRiderName'), riderPhone: riderVal('dRiderPhone'), showContact: !(document.getElementById('dShowContact') && !document.getElementById('dShowContact').checked), anon: !!(document.getElementById('dAnon') && document.getElementById('dAnon').checked), anonTitle: (document.getElementById('dAnonTitle') || {}).value || '先生',
       pickupAddr: els.dPickupAddr.value.trim(),
       dropoffAddr: els.dDropoffAddr.value.trim(),
       pickupFullAddr: els.dPickupFullAddr ? els.dPickupFullAddr.value.trim() : '',
@@ -8268,7 +8272,7 @@
     saveRecentOrdersList();
     var learnedAddress = false;
     if (o.isKnownCustomer){
-      var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone, note: o.custNote });
+      var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone, note: o.custNote, anon: o.anon, anonTitle: o.anonTitle });
       learnCustLang(kc, o.lang);
       var learnedPickup = learnKnownCustomerAddress(kc, o.pickupFullAddr, o.pickupAddr);
       var learnedDropoff = learnKnownCustomerAddress(kc, o.dropoffFullAddr, o.dropoffAddr);
@@ -8324,7 +8328,7 @@
       driverName: o.driverName || (d ? d.name : ''), driverPhone: o.driverPhone || (d ? d.phone : ''),
       driverCar: o.driverCar || (d ? d.car : ''), driverPlate: o.driverPlate || (d ? d.plate : ''),
       revSkip: !!o.revSkip, revAskAt: o.revAskAt || '',
-      riderName: o.riderName || '', riderPhone: o.riderPhone || '', showContact: o.showContact !== false, manualSent: o.manualSent || '',
+      riderName: o.riderName || '', riderPhone: o.riderPhone || '', showContact: o.showContact !== false, anon: !!o.anon, anonTitle: o.anonTitle || '', manualSent: o.manualSent || '',
       code: o.code || '', paymentMethod: o.paymentMethod || '', driverFee: (typeof o.driverFee === 'number') ? o.driverFee : null,
       // 2026-10-15 自動收據：付款狀態（月結／收現／已付款／未付款）、報價時已編好的收據號碼、要不要開發票、手動開過收據沒
       rcptReq: orderRcptReq(o), paperRcpt: !!o.paperRcpt, pay: pi.pay, payVia: pi.via, payDate: pi.date, rcptNo: pi.no, inv: pi.inv, rcptName: pi.name, receiptAt: o.receiptAt ? String(o.receiptAt) : ''
@@ -8414,7 +8418,7 @@
     if (b.code) o.code = String(b.code);
     if (b.lang) o.lang = String(b.lang);
     o.riderName = b.riderName ? String(b.riderName) : ''; o.riderPhone = b.riderPhone ? String(b.riderPhone) : '';
-    o.showContact = b.showContact !== false; o.manualSent = b.manualSent ? String(b.manualSent) : '';
+    o.showContact = b.showContact !== false; o.anon = !!b.anon; o.anonTitle = b.anonTitle ? String(b.anonTitle) : ''; o.manualSent = b.manualSent ? String(b.manualSent) : '';
     if (b.rcpt) o.rcpt = b.rcpt;   // 2026-10-15 系統自動開的收據
     if (b.rcptReq) o.rcptReq = String(b.rcptReq);
     o.paperRcpt = !!b.paperRcpt;
@@ -8661,7 +8665,7 @@
     els.dContactName.value = o.contactName || '';
     els.dContactPhone.value = o.contactPhone || '';
     try { riderSet(o.riderName || '', o.riderPhone || ''); } catch(e){}
-    try { document.getElementById('dShowContact').checked = o.showContact !== false; } catch(e){}
+    try { document.getElementById('dShowContact').checked = o.showContact !== false; document.getElementById('dAnon').checked = !!o.anon; document.getElementById('dAnonTitle').value = o.anonTitle || '先生'; } catch(e){}
     try { var ms = document.getElementById('dManualSent'); ms.checked = !!(o.manualSent && o.manualSent === o.driverName); ms.dataset.drv = ms.checked ? o.manualSent : ''; } catch(e){}
     els.dPickupAddr.value = o.pickupAddr || '';
     els.dDropoffAddr.value = o.dropoffAddr || '';
@@ -8898,7 +8902,7 @@
     var leg = q.legs && q.legs[legIdx];
     editingOrderId = null; keptDriverSnap = null; updateOrderEditUI();
     try { riderSet('', ''); } catch(e){}
-    try { document.getElementById('dShowContact').checked = true; } catch(e){}
+    try { document.getElementById('dShowContact').checked = true; document.getElementById('dAnon').checked = false; document.getElementById('dAnonTitle').value = '先生'; } catch(e){}
     try { var ms0 = document.getElementById('dManualSent'); ms0.checked = false; ms0.dataset.drv = ''; } catch(e){}
     currentOrderNos = { quoteNo: q.quoteNo || '', formalNo: q.formalNo ? q.formalNo + ((q.legs || []).length > 1 ? '-' + (legIdx + 1) : '') : '' };
     if (document.getElementById('dRcptReq')) document.getElementById('dRcptReq').value = q.rcptReq || '';
@@ -9077,6 +9081,7 @@
       if (name) existing.name = name;
       if (phone) existing.phone = phone;
       if (rec.note) existing.note = String(rec.note).trim();
+      if (rec.anon != null){ existing.anon = !!rec.anon; existing.anonTitle = rec.anonTitle || ''; }
       saveKnownCustomersList();
       return existing;
     }
@@ -9114,7 +9119,7 @@
     try {
       (recentOrders || []).forEach(function(o){
         if (!o || (!o.contactPhone && !o.custSourceName && !o.contactName)) return;
-        var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone, note: o.custNote });
+        var kc = upsertKnownCustomer({ source: o.custSource, sourceName: o.custSourceName, name: o.contactName, phone: o.contactPhone, note: o.custNote, anon: o.anon, anonTitle: o.anonTitle });
         if (kc){ learnKnownCustomerAddress(kc, o.pickupFullAddr, o.pickupAddr); learnKnownCustomerAddress(kc, o.dropoffFullAddr, o.dropoffAddr); touched = true; }
       });
       (recentQuotes || []).forEach(function(q){
@@ -9816,7 +9821,7 @@
     var c = findKnownCustomerByContact((els.dCustSourceName.value || '').trim() || (els.dContactName.value || '').trim(), (els.dContactPhone.value || '').trim());
     return (c && c.lang) || 'zh-TW';
   }
-  function applyCustLang(c){ if (c && c.lang){ setQuoteLang(c.lang); setPassengerLang(c.lang); } }
+  function applyCustLang(c){ if (c && c.lang){ setQuoteLang(c.lang); setPassengerLang(c.lang); } try { if (c && c.anon){ document.getElementById('dAnon').checked = true; document.getElementById('dAnonTitle').value = c.anonTitle || '先生'; } } catch(e){} }
   function learnCustLang(c, l){ if (c && l && c.lang !== l){ c.lang = l; c.langAt = Date.now(); saveKnownCustomersList(); } }
   // 2026-10-23 Nicole：客人資料區直接選「客人慣用語言」；訂單頁改了立刻存進這張訂單並同步（機器人發訊息用 o.lang），也記到熟客
   function syncCustLangSel(){ var d = document.getElementById('dCustLang'), q = document.getElementById('qCustLang'); if (d) d.value = currentPassengerLang || 'zh-TW'; if (q) q.value = currentQuoteLang || 'zh-TW'; }
