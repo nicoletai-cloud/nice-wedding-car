@@ -8564,11 +8564,46 @@
     return merged;
   }
 
+
+  /* 2026-10-27 新裝置／連線失效：顯示 6 位數配對碼，核准後自動取得機器人金鑰並讀取訂單 */
+  var AIR_DEF_URL = 'https://script.google.com/macros/s/AKfycbwoKk13j5YOtkA5cTh3FtvECekYm0uMBPsid1H--kB7bhUVpDFvSnSA0iTzCfc8IT11_Q/exec', airPairT = null;
+  function airPair(fresh){
+    if (airPairT) return;
+    var ov = document.getElementById('airPairOv');
+    if (!ov){ ov = document.createElement('div'); ov.id = 'airPairOv'; ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+      ov.innerHTML = '<div style="background:#fffdfa;color:#3a2f25;border:1px solid #c9a46a;border-radius:16px;padding:22px 18px;max-width:340px;width:100%;text-align:center"><div style="font-size:15px;opacity:.8">配對碼(10 分鐘內有效)</div><div id="airPairCode" style="font-size:40px;font-weight:700;letter-spacing:6px;margin:6px 0">------</div><div id="airPairMsg" style="font-size:14px;opacity:.8">把這 6 位數字傳給 Claude，核准後會自動讀取訂單</div><button type="button" id="airPairClose" class="add-btn ghost" style="margin-top:14px">關閉</button></div>';
+      document.body.appendChild(ov); document.getElementById('airPairClose').onclick = function(){ ov.remove(); if (airPairT){ clearInterval(airPairT); airPairT = null; } }; }
+    var sec = fresh ? '' : (safeGet('air_pair_sec') || '');
+    if (!sec){ var a = new Uint8Array(24); crypto.getRandomValues(a); sec = Array.prototype.map.call(a, function(x){ return ('0' + x.toString(16)).slice(-2); }).join(''); safeSet('air_pair_sec', sec); }
+    var post = function(b){ return fetch(AIR_DEF_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(b), cache: 'no-store' }).then(function(r){ return r.json(); }); };
+    var end = Date.now() + 600000;
+    post({ action: 'pairReq', sec: sec }).then(function(j){
+      if (!j || !j.ok || !j.code){ document.getElementById('airPairMsg').textContent = '取得配對碼失敗，請關閉後再按一次同步'; return; }
+      document.getElementById('airPairCode').textContent = j.code;
+      airPairT = setInterval(function(){
+        if (Date.now() > end){ clearInterval(airPairT); airPairT = null; safeSet('air_pair_sec', ''); document.getElementById('airPairMsg').textContent = '配對碼過期了，請關閉後再按一次同步'; return; }
+        post({ action: 'pairPoll', sec: sec }).then(function(r){
+          if (r && r.ok && r.token){ clearInterval(airPairT); airPairT = null; safeSet('air_pair_sec', '');
+            safeSet(BOT_URL_KEY, AIR_DEF_URL); safeSet(BOT_TOKEN_KEY, r.token);
+            if (els.botUrlInput) els.botUrlInput.value = AIR_DEF_URL; if (els.botKeyInput) els.botKeyInput.value = r.token;
+            try { var ws = JSON.parse(safeGet('nwcw_settings') || '{}') || {}; if (!ws.driveKey){ ws.driveUrl = ws.driveUrl || AIR_DEF_URL; ws.driveKey = r.token; safeSet('nwcw_settings', JSON.stringify(ws)); } } catch(e){}
+            var o2 = document.getElementById('airPairOv'); if (o2) o2.remove();
+            hhlcSyncStatus('已連線，正在讀取訂單…', 'busy'); botReadyUrl = ''; botPullBusy = false;
+            pullOrdersFromBot(true).then(function(x){ hhlcSyncStatus(x ? '已從機器人讀取訂單' : '讀取失敗，請按同步再試一次', x ? 'ok' : 'err'); });
+          } else if (r && !r.ok && r.error === 'expired'){ clearInterval(airPairT); airPairT = null; airPair(true); }
+        }).catch(function(){});
+      }, 4000);
+    }).catch(function(){ document.getElementById('airPairMsg').textContent = '連不到機器人，請確認網路後再試'; });
+  }
   var hhlcSyncBusy = false, hhlcSyncAgain = false, hhlcLastSyncAt = 0;
   function doFullSync(silent){
     var passcode = els.syncPasscodeInput ? els.syncPasscodeInput.value.trim() : '';
     if (!passcode){
-      if (!silent) hhlcSyncStatus('請先輸入同步密碼', 'err');
+      // 2026-10-27 Nicole：沒有同步密碼時，先從機器人讀訂單；讀不到就用 6 位數配對碼連線
+      if (!silent){
+        hhlcSyncStatus('正在從機器人讀取訂單…', 'busy'); botPullBusy = false;
+        pullOrdersFromBot(true).then(function(r){ if (r) hhlcSyncStatus('已從機器人讀取訂單（報價要輸入同步密碼才會同步）', 'ok'); else { hhlcSyncStatus('機器人連不上，請用配對碼重新連線', 'err'); airPair(); } });
+      }
       return;
     }
     if (!window.__hhlcSync){
