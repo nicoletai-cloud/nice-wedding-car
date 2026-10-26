@@ -8586,61 +8586,54 @@
           if (r && r.ok && r.token){ clearInterval(airPairT); airPairT = null; safeSet('air_pair_sec', '');
             safeSet(BOT_URL_KEY, AIR_DEF_URL); safeSet(BOT_TOKEN_KEY, r.token);
             if (els.botUrlInput) els.botUrlInput.value = AIR_DEF_URL; if (els.botKeyInput) els.botKeyInput.value = r.token;
-            try { var ws = JSON.parse(safeGet('nwcw_settings') || '{}') || {}; if (!ws.driveKey){ ws.driveUrl = ws.driveUrl || AIR_DEF_URL; ws.driveKey = r.token; safeSet('nwcw_settings', JSON.stringify(ws)); } } catch(e){}
+            try { var ws = JSON.parse(safeGet('nwcw_settings') || '{}') || {}; ws.driveUrl = AIR_DEF_URL; ws.driveKey = r.token; safeSet('nwcw_settings', JSON.stringify(ws)); safeSet('hhlc_bot_url', AIR_DEF_URL); safeSet('hhlc_bot_token', r.token); } catch(e){}
             var o2 = document.getElementById('airPairOv'); if (o2) o2.remove();
             hhlcSyncStatus('已連線，正在讀取訂單…', 'busy'); botReadyUrl = ''; botPullBusy = false;
-            pullOrdersFromBot(true).then(function(x){ hhlcSyncStatus(x ? '已從機器人讀取訂單' : '讀取失敗，請按同步再試一次', x ? 'ok' : 'err'); });
+            hhlcSyncBusy = false; doFullSync(false);
           } else if (r && !r.ok && r.error === 'expired'){ clearInterval(airPairT); airPairT = null; airPair(true); }
         }).catch(function(){});
       }, 4000);
     }).catch(function(){ document.getElementById('airPairMsg').textContent = '連不到機器人，請確認網路後再試'; });
   }
   var hhlcSyncBusy = false, hhlcSyncAgain = false, hhlcLastSyncAt = 0;
+  /* 2026-10-27 Nicole：報價／訂單／熟客名單改存 Google Drive(機器人)，用配對碼同步；舊的同步代碼(Firebase)只在有填時一起讀進來，把舊資料搬過去 */
   function doFullSync(silent){
+    var cfg = botConfig();
     var passcode = els.syncPasscodeInput ? els.syncPasscodeInput.value.trim() : '';
-    if (!passcode){
-      // 2026-10-27 Nicole：沒有同步密碼時，先從機器人讀訂單；讀不到就用 6 位數配對碼連線
-      if (!silent){
-        hhlcSyncStatus('正在從機器人讀取訂單…', 'busy'); botPullBusy = false;
-        pullOrdersFromBot(true).then(function(r){ if (r) hhlcSyncStatus('已從機器人讀取訂單（報價要輸入同步密碼才會同步）', 'ok'); else { hhlcSyncStatus('機器人連不上，請用配對碼重新連線', 'err'); airPair(); } });
-      }
+    var fb = !!(passcode && window.__hhlcSync);
+    if (!cfg && !fb){
+      if (!silent){ hhlcSyncStatus('尚未連線，請用配對碼連線', 'err'); airPair(); }
       return;
     }
-    if (!window.__hhlcSync){
-      if (!silent) hhlcSyncStatus('同步元件尚未就緒，請稍後再試（需要網路連線）', 'err');
-      return;
-    }
-    // 同步進行中又有新的儲存：等這次做完再補同步一次，不會漏傳
     if (hhlcSyncBusy){ hhlcSyncAgain = true; return; }
     hhlcSyncBusy = true; hhlcLastSyncAt = Date.now();
     if (!silent) hhlcSyncStatus('同步中…', 'busy');
-    window.__hhlcSync.pull(passcode).then(function(cloud){
-      mergeSyncDeleted(cloud && cloud.deleted);
+    var mergeIn = function(cloud){
+      if (!cloud) return;
+      mergeSyncDeleted(cloud.deleted);
       var lq = syncSig(recentQuotes), lo = syncSig(recentOrders);
-      recentQuotes = mergeSyncLists(recentQuotes, cloud && cloud.quotes);
-      recentOrders = mergeSyncLists(recentOrders, cloud && cloud.orders);
+      recentQuotes = mergeSyncLists(recentQuotes, cloud.quotes);
+      recentOrders = mergeSyncLists(recentOrders, cloud.orders);
       try { if (dedupeQuotes()) lq = ''; } catch(e){}
-      try { mergeKnownCustomers(cloud && cloud.knownCustomers); } catch(e){}
+      try { mergeKnownCustomers(cloud.knownCustomers); } catch(e){}
       if (syncSig(recentQuotes) !== lq || syncSig(recentOrders) !== lo){
-        saveRecentQuotesList();
-        saveRecentOrdersList();
-        renderRecentQuotesList();
-        renderRecentOrdersList();
-        renderDispatchQuoteSelect();
-        renderReceiptOrderSelect();
+        saveRecentQuotesList(); saveRecentOrdersList(); renderRecentQuotesList(); renderRecentOrdersList(); renderDispatchQuoteSelect(); renderReceiptOrderSelect();
       }
-      var cloudSame = cloud && syncSig(cloud.quotes) === syncSig(recentQuotes) && syncSig(cloud.orders) === syncSig(recentOrders) &&
-        JSON.stringify(cloud.deleted || {}) === JSON.stringify(syncDeleted) &&
-        JSON.stringify(cloud.knownCustomers || []) === JSON.stringify(knownCustomers);
-      if (cloudSame) return;
-      return window.__hhlcSync.push(passcode, { quotes: recentQuotes, orders: recentOrders, deleted: syncDeleted, knownCustomers: knownCustomers });
-    }).then(function(){
-      safeSet('hhlc_sync_passcode', passcode);
+    };
+    var same = function(cloud){ return cloud && syncSig(cloud.quotes) === syncSig(recentQuotes) && syncSig(cloud.orders) === syncSig(recentOrders) &&
+      JSON.stringify(cloud.deleted || {}) === JSON.stringify(syncDeleted) && JSON.stringify(cloud.knownCustomers || []) === JSON.stringify(knownCustomers); };
+    var payload = function(){ return { quotes: recentQuotes, orders: recentOrders, deleted: syncDeleted, knownCustomers: knownCustomers }; };
+    var p = Promise.resolve(), botOk = false;
+    if (fb) p = p.then(function(){ return window.__hhlcSync.pull(passcode); }).then(function(c){ mergeIn(c); if (!same(c)) return window.__hhlcSync.push(passcode, payload()); }).catch(function(e){ if (!cfg) throw e; });
+    if (cfg) p = p.then(function(){ return botPost(cfg, { action: 'airSyncPull' }); }).then(function(j){ var c = j && j.data; mergeIn(c); botOk = true; if (!same(c)) return botPost(cfg, { action: 'airSyncPush', data: payload() }); });
+    p.then(function(){
+      if (passcode) safeSet('hhlc_sync_passcode', passcode);
       var now = new Date();
       hhlcSyncStatus('已同步（' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + '）', 'ok');
       pullOrdersFromBot(false).then(function(){ scheduleBotPush(); });
     }).catch(function(){
-      hhlcSyncStatus('同步失敗，請確認密碼或網路連線後再試一次', 'err');
+      hhlcSyncStatus(cfg && !botOk ? '機器人連不上，請按同步用配對碼重新連線' : '同步失敗，請確認網路後再試一次', 'err');
+      if (!silent && cfg && !botOk) airPair();
     }).then(function(){
       hhlcSyncBusy = false;
       if (hhlcSyncAgain){ hhlcSyncAgain = false; setTimeout(function(){ doFullSync(true); }, 300); }
@@ -8658,10 +8651,12 @@
       els.syncPasscodeInput.value = savedPasscode;
     }
     if (els.syncNowBtn) els.syncNowBtn.addEventListener('click', function(){ doFullSync(false); });
+    // 2026-10-27 沒有舊同步代碼的裝置把代碼欄藏起來，只用配對碼
+    if (!savedPasscode && els.syncPasscodeInput) els.syncPasscodeInput.style.display = 'none';
     var autoPullOnce = function(){
-      if (savedPasscode) doFullSync(true);
+      if (savedPasscode || botConfig()) doFullSync(true);
     };
-    if (window.__hhlcSync !== undefined){
+    if (window.__hhlcSync !== undefined || !savedPasscode){
       autoPullOnce();
     } else {
       window.addEventListener('hhlc-sync-ready', autoPullOnce, { once: true });
