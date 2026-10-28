@@ -4981,6 +4981,12 @@
   var TAICHUNG_PRICELIST_V2 = [
     { model: '不指定進口車（台中）（起）', price: 2600, size: 'any' }
   ];
+  // 2026-10-28 Nicole：遊覽車接駁也要能在機場系統報價（一天一口價，價格每次在「單趟金額」手動填）
+  var BUS_SEED_KEY = 'hhlc_pricelist_bus_seeded_v1';
+  var BUS_PRICELIST = [
+    { model: '遊覽車 中巴 26 人座', price: 0, size: 'any' },
+    { model: '遊覽車 大巴 43 人座', price: 0, size: 'any' }
+  ];
   function seedTaichungItems(list, keyName, idPrefix){
     if (safeGet(keyName)) return;
     list.forEach(function(p, i){
@@ -4993,6 +4999,7 @@
   function seedTaichungPrices(){
     seedTaichungItems(TAICHUNG_PRICELIST, TC_SEED_KEY, 'prc_tc_');
     seedTaichungItems(TAICHUNG_PRICELIST_V2, TC_SEED_KEY_V2, 'prc_tc2_');
+    seedTaichungItems(BUS_PRICELIST, BUS_SEED_KEY, 'prc_bus_');
   }
   function loadPriceList(){
     try {
