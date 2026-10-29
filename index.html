@@ -4650,6 +4650,15 @@
     var q = String((document.getElementById('fdQ') || {}).value || '').trim().toLowerCase();
     var all = fdCandidates();
     fdSel = fdSel.filter(function(id){ return all.some(function(o){ return o.id === id; }) || recentOrders.some(function(o){ return o.id === id; }); });
+    // 2026-10-30 Nicole：上方選的訂單已經派了司機，就不會出現在找司機清單 → 顯示說明，需要重派時可以一鍵帶入
+    fdSel.forEach(function(id){ if (!all.some(function(o){ return o.id === id; })){ var ro = recentOrders.find(function(o){ return o.id === id; }); if (ro) all.unshift(ro); } });
+    var note = document.getElementById('fdAssignedNote');
+    if (!note){ note = document.createElement('div'); note.id = 'fdAssignedNote'; note.className = 'hint'; note.style.cssText = 'margin:0 0 10px;padding:10px 12px;border:1px solid var(--line,#e4dbce);border-radius:10px;line-height:1.6'; box.parentNode.insertBefore(note, box); }
+    var eo = editingOrderId ? recentOrders.find(function(o){ return o.id === editingOrderId; }) : null;
+    if (eo && eo.driverName && fdSel.indexOf(eo.id) === -1){
+      note.hidden = false;
+      note.innerHTML = '目前選的 <b>' + escapeHtml(eo.formalNo || fdLabel(eo)) + '</b> 已派給 <b>' + escapeHtml(eo.driverName) + '</b>，所以不在下面「還沒派司機」的清單裡。<br><button type="button" class="chip" id="fdReFind" style="margin-top:6px">仍要重新找司機</button>';
+    } else { note.hidden = true; note.innerHTML = ''; }
     var qtop = document.getElementById('fdQ'), ttop = document.getElementById('fdTypes');
     if (fdFocus && !fdSel.length) fdFocus = false;
     if (qtop) qtop.hidden = fdFocus; if (ttop) ttop.hidden = fdFocus;
@@ -4670,6 +4679,7 @@
     if (box) box.addEventListener('change', function(e){ var c = e.target.closest('[data-fdo]'); if (!c) return; var id = c.getAttribute('data-fdo'); fdSel = fdSel.filter(function(x){ return x !== id; }); if (c.checked) fdSel.push(id); renderFindDriverDoc(); });
     if (qi) qi.addEventListener('input', renderFdList);
     if (box) box.addEventListener('click', function(e){ if (e.target.closest('#fdMore')){ e.preventDefault(); fdFocus = false; renderFdList(); } });
+    document.addEventListener('click', function(e){ if (!e.target.closest || !e.target.closest('#fdReFind') || !editingOrderId) return; e.preventDefault(); fdSel = [editingOrderId]; fdFocus = true; fdFocusKey = editingOrderId; renderFindDriverDoc(); });
     if (ty) ty.addEventListener('click', function(e){ var b = e.target.closest('[data-fdt]'); if (!b) return; fdType = b.getAttribute('data-fdt'); renderFdList(); });
   })();
   function wantedFindDriverLegs(){
@@ -9323,6 +9333,14 @@
     var p = orderPayInfo(o);
     return { k: 'receipt', late: d <= -3, why: p.pay === 'unpaid' ? '要收據・尚未付款' : p.pay === 'monthly' ? '要收據・月結' : '要收據・自動開立沒有成功' };
   }
+  // 2026-10-30 Nicole：私 LINE 訂車的客人不追評價——這張單選了私 LINE／私客其他管道、同一位客人（電話或名稱相同）其他單是私 LINE、或是月結客，都不列「用車後追評價」
+  function noRevCust(o){
+    if (o.custSource === '私客' || o.custSource === '其他') return true;
+    var ph = String(o.contactPhone || '').replace(/\D/g, '').slice(-9), nm = String(o.contactName || '').trim().toLowerCase();
+    if ((recentOrders || []).some(function(x){ return x && x !== o && (x.custSource === '私客' || x.custSource === '其他') && ((ph.length >= 8 && String(x.contactPhone || '').replace(/\D/g, '').slice(-9) === ph) || (nm && String(x.contactName || '').trim().toLowerCase() === nm)); })) return true;
+    try { var L = monthlyCustList(), ns = [o.custSourceName, o.contactName].map(function(x){ return String(x || '').trim().toLowerCase(); }).filter(Boolean); if (L.length && ns.some(function(n){ return L.some(function(m){ return m && (n === m || n.indexOf(m) >= 0); }); })) return true; } catch(e){}
+    return false;
+  }
   function orderTasks(o){
     if (!o || isWebCancelled(o)) return [];
     var d = dayDiff(o.date); if (d === null) return [];
@@ -9337,7 +9355,7 @@
       if (recent && !o.paxSentAt) T.push({ k: 'pax', late: d <= 2 });
     } else if (d >= -30 && recent){
       var rt = receiptTask(o, d); if (rt) T.push(rt);
-      if (!o.revAskAt && !o.revSkip && o.custSource !== '私客' && o.custSource !== '其他') T.push({ k: 'rev', late: d <= -2 });   // 2026-10-15 私人 LINE 客人不追評價
+      if (!o.revAskAt && !o.revSkip && !noRevCust(o)) T.push({ k: 'rev', late: d <= -2 });   // 2026-10-15 私人 LINE 客人不追評價；2026-10-30 熟客、月結客也不追
     }
     return T;
   }
