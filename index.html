@@ -8245,10 +8245,15 @@
         warn.push('同一天（' + o.date.slice(5).replace('-', '/') + '）同航班 ' + o.flightNo + ' 已經有 ' + (x.formalNo || x.quoteNo || '另一張單') + '（' + (x.contactName || '客人') + (x.driverName ? '｜司機 ' + x.driverName : '') + '）。');
       });
     }
+    // 2026-10-30 Nicole：A20261102-01 送機被存成接機 → 存檔前比對服務類型和上下車地點
+    var isAp = function(a){ return /機場|航廈|airport|TPE|TSA|KHH|RMQ/i.test(String(a || '')); };
+    var pAp = isAp(o.pickupFullAddr || o.pickupAddr), dAp = isAp(o.dropoffFullAddr || o.dropoffAddr);
+    if (o.svcType === '接機' && dAp && !pAp) warn.push('服務類型是「接機」，但上車地點不是機場、下車地點是機場，看起來應該是「送機」。');
+    if (o.svcType === '送機' && pAp && !dAp) warn.push('服務類型是「送機」，但上車地點是機場、下車地點不是機場，看起來應該是「接機」。');
     if (warn.length){
       var okSave = true;
-      try { okSave = window.confirm('⚠️ 請確認日期和航班：\n\n' + warn.join('\n') + '\n\n確定沒錯要儲存嗎？（按「取消」就不存，可以先改日期或航班）'); } catch(e){}
-      if (!okSave){ setDispatchStatus(els.dispatchStatusMsg, '已取消儲存：請先確認用車日期和航班', 'err'); return; }
+      try { okSave = window.confirm('⚠️ 請確認：\n\n' + warn.join('\n') + '\n\n確定沒錯要儲存嗎？（按「取消」就不存，可以先修改）'); } catch(e){}
+      if (!okSave){ setDispatchStatus(els.dispatchStatusMsg, '已取消儲存：請先確認服務類型、用車日期和航班', 'err'); return; }
     }
     var updated = false;
     if (!asNew && editingOrderId){
