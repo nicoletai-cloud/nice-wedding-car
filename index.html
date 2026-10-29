@@ -3882,6 +3882,25 @@
     }
     renderPassengerDoc();
     renderDispatchSheet();
+    try { renderUnsavedDrv(); } catch(e){}
+  }
+  // 2026-10-30 Nicole：避免點錯司機——選完司機要按「儲存」才算正式派單；還沒存時在司機欄和乘客資訊上方醒目提醒
+  function renderUnsavedDrv(){
+    var d = selectedDriver(), oid = editingOrderId || (els.orderSel && els.orderSel.value) || '', cur = null; if (oid){ try { cur = (JSON.parse(localStorage.getItem('hhlc_recent_orders') || '[]') || []).find(function(o){ return o && o.id === oid; }) || null; } catch(e){} if (!cur) cur = recentOrders.find(function(o){ return o.id === oid; }) || null; }
+    var savedName = cur ? String(cur.driverName || '') : '', pick = d ? String(d.name || '') : '';
+    var show = !!pick && pick !== savedName;
+    ['unsavedDrvA', 'unsavedDrvB'].forEach(function(id, i){
+      var el = document.getElementById(id);
+      if (!el){
+        el = document.createElement('div'); el.id = id;
+        el.style.cssText = 'margin:8px 0;padding:10px 12px;border-radius:10px;background:#fbeee6;color:#b4532a;font-weight:700;border:2px solid #e8a27c;line-height:1.5';
+        var anchor = i === 0 ? els.dDriverReadout : document.getElementById('dispatchPreviewTitle');
+        if (!anchor || !anchor.parentNode) return;
+        anchor.parentNode.insertBefore(el, i === 0 ? anchor.nextSibling : anchor);
+      }
+      el.hidden = !show;
+      el.textContent = show ? '⚠️ 已選司機「' + pick + '」，還沒按「儲存司機指派」，派單還沒生效' + (savedName ? '（目前派的是 ' + savedName + '）' : '') + (/答維正|Vincent/.test(pick) ? '；存檔後會立刻傳給 Vincent 請他確認接案' : '') : '';
+    });
   }
 
   if (els.addDriverBtn){
@@ -4373,7 +4392,7 @@
     renderActiveDoc();
   }
 
-  function renderPassengerDoc(){
+  function renderPassengerDoc(){ try { renderUnsavedDrv(); } catch(e){} 
     renderActiveDoc();
   }
 
