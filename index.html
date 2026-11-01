@@ -4675,7 +4675,8 @@
     fdSel.forEach(function(id){ if (!all.some(function(o){ return o.id === id; })){ var ro = recentOrders.find(function(o){ return o.id === id; }); if (ro) all.unshift(ro); } });
     var note = document.getElementById('fdAssignedNote');
     if (!note){ note = document.createElement('div'); note.id = 'fdAssignedNote'; note.className = 'hint'; note.style.cssText = 'margin:0 0 10px;padding:10px 12px;border:1px solid var(--line,#e4dbce);border-radius:10px;line-height:1.6'; box.parentNode.insertBefore(note, box); }
-    var eo = editingOrderId ? recentOrders.find(function(o){ return o.id === editingOrderId; }) : null;
+    var eoId = editingOrderId || (els.orderSel && els.orderSel.value) || (els.fdDepartureOrderSelect && els.fdDepartureOrderSelect.value) || (els.fdArrivalOrderSelect && els.fdArrivalOrderSelect.value) || '';   // 2026-11-01 用上方「切換訂單」選的單也要顯示說明
+    var eo = eoId ? recentOrders.find(function(o){ return o.id === eoId; }) : null;
     if (eo && eo.driverName && fdSel.indexOf(eo.id) === -1){
       note.hidden = false;
       note.innerHTML = '目前選的 <b>' + escapeHtml(eo.formalNo || fdLabel(eo)) + '</b> 已派給 <b>' + escapeHtml(eo.driverName) + '</b>，所以不在下面「還沒派司機」的清單裡。<br><button type="button" class="chip" id="fdReFind" style="margin-top:6px">仍要重新找司機</button>';
