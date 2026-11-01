@@ -1260,6 +1260,7 @@
             <div class="radio-row">
               <label><input type="radio" name="dPaymentMethod" class="d-payment-method" value="noSign" checked> 不簽不收，客下匯款</label>
               <label><input type="radio" name="dPaymentMethod" class="d-payment-method" value="cash"> 收現金</label>
+              <label><input type="radio" name="dPaymentMethod" class="d-payment-method" value="paid"> 客人已付款（司機不收）</label>
             </div>
           </div>
           <div class="field"><label for="dRcptReq">收據／發票</label><select id="dRcptReq"><option value="">不需要（線上付款會自動產生收據）</option><option value="receipt">要電子收據（用車完系統自動傳給客人）</option><option value="invoice3">要三聯式發票（人工開立）</option><option value="paper">要紙本收據（司機現場提供）</option></select><label style="display:none"><input type="checkbox" id="dPaperRcpt" style="width:auto;margin:0">客人要紙本收據（派車單備註：請提供收據）</label></div>
@@ -4415,6 +4416,8 @@
       var jindachunBlock = (els.qBankBlockJindachun && els.qBankBlockJindachun.value) || safeGet('hhlc_bank_block_jindachun') || DEFAULT_BANK_BLOCK_JINDACHUN;
       lines.push(jindachunBlock.split('\n\n')[0]);
       lines.push('請司機匯款完成後，提供匯款資訊截圖');
+    } else if (payMethod === 'paid'){
+      lines.push('收款方式｜客人已付款，司機不用收費');   // 2026-11-01 Nicole：客人私下已付（例：Lina 給現金）
     } else {
       lines.push('收款方式｜不簽不收，客下匯款');
     }
@@ -8399,6 +8402,7 @@
     var r = { pay: 'unpaid', via: '', date: '', no: '', inv: !!(q && q.discounts && q.discounts.invoice), name: (q && q.custName) || o.contactName || o.custSourceName || '' };
     if (q && q.bankChoice === 'monthly') r.pay = 'monthly';
     else if (o.paymentMethod === 'cash' || (q && q.cashPay)){ r.pay = 'cash'; r.via = '現金'; }
+    else if (o.paymentMethod === 'paid'){ r.pay = 'paid'; r.via = '已付款'; }   // 2026-11-01 客人私下已付款（司機不收）
     else if ((q && q.paymentConfirmed) || (pl && pl.paidAuto) || webPaid){ r.pay = 'paid'; r.via = (pl || webPaid) ? '線上付款' : '銀行轉帳'; }
     if (q){ r.date = q.paymentConfirmedAt || ''; r.no = q.paymentReceiptNo || ''; }
     return r;
