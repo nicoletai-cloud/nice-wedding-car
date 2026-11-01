@@ -1025,7 +1025,7 @@
         </div>
 
         <div class="card">
-          <h2><span class="dot"></span>訂單資訊</h2>
+          <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span><span class="dot"></span>訂單資訊</span><button type="button" class="chip" id="dNewBlank" style="margin:0">新訂單（清空表單）</button></h2>
           <p class="hint">填寫客人的行程需求</p>
           <p class="no-line" id="dNoLine" hidden></p>
 
@@ -8795,6 +8795,36 @@
     setDispatchStatus(els.dispatchStatusMsg, '已載入訂單，可繼續編輯（按「更新這筆訂單」會改掉這一筆；要另外存請按「另存新單」）', 'ok');
   }
 
+  /* 2026-11-01 Nicole：按新訂單、搜尋熟客時，會帶到上一張單的司機、付款、備註、地區（例：A20261103-01 帶到王恩媛的資料）
+     → 開新訂單一律整張清空；在一張別的客人的單上點選熟客，也先清空再帶入 */
+  function blankDispatchForm(){
+    editingOrderId = null; keptDriverSnap = null; currentOrderNos = { quoteNo: '', formalNo: '', code: '' }; lastImportedLegAmount = null; oqLoadedFor = '';
+    var src = document.querySelector('input[name="dCustSource"][value="LINE"]'); if (src) src.checked = true;
+    ['dCustSourceName','dContactName','dContactPhone','dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dExtraStopAddr','dNote','dAmount','dDriverFee','dLuggageSize','dCustNote'].forEach(function(k){ var el = els[k] || document.getElementById(k); if (el) el.value = ''; });
+    ['dFoundVia','dRcptReq','dLugBig','dLugSmall','dLuggageCount','dPax'].forEach(function(k){ var el = document.getElementById(k); if (el) el.value = ''; });
+    if (els.dPax) els.dPax.value = els.dPax.getAttribute('value') || '';
+    ['dFixedPickup','dPaperRcpt','dAnon'].forEach(function(k){ var el = document.getElementById(k); if (el) el.checked = false; });
+    if (els.dExtraStopChk){ els.dExtraStopChk.checked = false; if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = 'none'; }
+    try { document.getElementById('dShowContact').checked = true; document.getElementById('dAnonTitle').value = '先生'; } catch(e){}
+    try { var ms = document.getElementById('dManualSent'); ms.checked = false; ms.dataset.drv = ''; } catch(e){}
+    try { riderSet('', ''); } catch(e){}
+    if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = true;
+    try { syncLuggageSizeTBD(); } catch(e){}
+    var pay = document.querySelector('input[name="dPaymentMethod"][value="noSign"]'); if (pay) pay.checked = true;
+    try { updatePaymentUI(); } catch(e){}
+    if (els.dDriverSelect) els.dDriverSelect.value = '';
+    try { updateDriverReadout(); } catch(e){}
+    try { renderNoLines(); } catch(e){}
+    updateOrderEditUI();
+    try { renderPassengerDoc(); renderDispatchSheet(); } catch(e){}
+  }
+  (function(){ var b = document.getElementById('dNewBlank'); if (b) b.addEventListener('click', function(){
+    var has = (els.dContactName.value || els.dCustSourceName.value || els.dPickupFullAddr && els.dPickupFullAddr.value || '').trim();
+    if (has && !window.confirm('要清空表單、開一張新訂單嗎？\n（目前畫面上的資料如果還沒儲存會不見）')) return;
+    blankDispatchForm(); switchTab('dispatch'); try { window.scrollTo(0, 0); } catch(e){}
+    setDispatchStatus(els.dispatchStatusMsg, '已清空，可以開始填新訂單（可先用「找熟客」帶入客人）', 'ok');
+  }); })();
+
   if (els.saveOrderBtn) els.saveOrderBtn.addEventListener('click', function(){ saveCurrentOrder(false); });
   if (els.saveAssignBtn) els.saveAssignBtn.addEventListener('click', function(){ saveCurrentOrder(false); });
   if (els.saveOrderAsNewBtn) els.saveOrderAsNewBtn.addEventListener('click', function(){ saveCurrentOrder(true); });
@@ -9637,6 +9667,12 @@
     function pick(e){
       hide();
       input.value = '';
+      if (prefix === 'd'){   // 2026-11-01 畫面上是別位客人的單 → 先整張清空，避免帶到上一張單的司機、付款、備註、地區
+        var curN = String(els.dContactName.value || '').trim(), curS = String(els.dCustSourceName.value || '').trim(), curP = String(els.dContactPhone.value || '').replace(/\D/g, '');
+        var same = (e.phone && curP && String(e.phone).replace(/\D/g, '') === curP) || (e.name && curN && e.name.trim() === curN) || (e.sourceName && curS && e.sourceName.trim() === curS);
+        var dirty = curN || curS || curP || editingOrderId || (els.dDriverSelect && els.dDriverSelect.value) || String(els.dNote.value || '').trim() || (els.dPickupFullAddr && els.dPickupFullAddr.value);
+        if (dirty && !same){ blankDispatchForm(); }
+      }
       if (e.kc){
         var sel = prefix === 'q' ? els.qCustPick : els.dCustPick, btn = prefix === 'q' ? els.qCustPickBtn : els.dCustPickBtn;
         if (sel && btn){ sel.value = e.kc.id; btn.click(); return; }
