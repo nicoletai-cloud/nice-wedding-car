@@ -1609,6 +1609,7 @@
           <div class="check-row"><input type="checkbox" id="qFriends"><label for="qFriends" style="margin:0;">親友優惠（95 折）</label></div>
           <div class="check-row"><input type="checkbox" id="qWedding"><label for="qWedding" style="margin:0;">禮車新人（95 折）</label></div>
           <div class="check-row"><input type="checkbox" id="qManager"><label for="qManager" style="margin:0;">主管優惠（95 折）</label></div>
+          <div class="check-row"><input type="checkbox" id="qComp"><label for="qComp" style="margin:0;">公司招待／補償（本趟免費，不收款）</label></div>
           <div class="check-row"><input type="checkbox" id="qEsim"><label for="qEsim" style="margin:0;">指定 eSIM 搭配機場接送（折 NT$30，每筆接送訂單限一次）</label></div>
           <div id="qEsimCheckBlock" hidden style="margin:-4px 0 12px 26px;">
             <p class="hint" style="margin-bottom:6px;">內部核對用（不會出現在給客人的報價）：eSIM 扣除商品成本及金流費後，利潤至少 NT$100 才適用折扣，由客服核對。三格都填了才會自動判斷。</p>
@@ -2328,6 +2329,7 @@
     qRoundTrip: document.getElementById('qRoundTrip'),
     qFriends: document.getElementById('qFriends'),
     qWedding: document.getElementById('qWedding'),
+    qComp: document.getElementById('qComp'),
     qManager: document.getElementById('qManager'),
     qInvoice: document.getElementById('qInvoice'),
     qEsim: document.getElementById('qEsim'),
@@ -3464,7 +3466,7 @@
     ['qCustSourceName','qCustName','qCustPhone','qCustNote','qFoundVia'].forEach(function(k){ var e = els[k] || document.getElementById(k); if (e) e.value = ''; });
     els.quoteLegsContainer.innerHTML = '';
     addQuoteLegRow({});
-    [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay')].forEach(function(e){ if (e) e.checked = false; });
+    [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qComp, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay')].forEach(function(e){ if (e) e.checked = false; });
     currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = ''; requotePrev = ''; currentQuoteKey = ''; currentQuoteFlags = {};
     currentPaymentReceiptNo = ''; currentPaymentConfirmedAt = ''; roundTripManual = false;
     if (document.getElementById('qRcptReq')) document.getElementById('qRcptReq').value = '';
@@ -6415,6 +6417,7 @@
     return (els.qEsim && els.qEsim.checked) ? ESIM_DISCOUNT_AMOUNT : 0;
   }
   function quoteAfterDiscount(rawTotal, discountFactor){
+    if (els.qComp && els.qComp.checked) return 0;   // 2026-11-01 Nicole：公司招待／補償，整筆 $0
     return Math.max(0, Math.round(rawTotal * discountFactor) - esimDiscountAmount());
   }
   // 內部核對：eSIM 扣除商品成本及金流費後，利潤至少 NT$100 才適用折扣。只做提醒，
@@ -6532,7 +6535,10 @@
     var hasInvoiceTax = els.qInvoice.checked;
     var finalTotal = hasInvoiceTax ? Math.round(afterDiscount * 1.05) : afterDiscount;
 
-    if (finalTotal !== rawTotal){
+    var compQ = !!(els.qComp && els.qComp.checked);
+    if (compQ){
+      lines.push((({ en: 'Total = $0 (complimentary by Nice Wedding Car)', ja: '合計 = $0(サービス・無料)' })[currentQuoteLang]) || ('合計 = $0(好好禮車招待, 本趟免費)'));
+    } else if (finalTotal !== rawTotal){
       // 折扣（來回優惠／親友優惠…）跟開發票要加的 +5% 營業稅是兩件不同的事，
       // 不能都寫成「折扣後」——沒有折扣、只是加稅的話要寫「稅後」，兩個都有
       // 才寫「折扣、稅後」，避免看起來像是稅金也算進折扣裡。
@@ -6553,6 +6559,7 @@
     // 「附上刷卡付款連結」——刷卡有手續費，客人習慣匯款的話可以只附匯款資訊，
     // 不用把刷卡連結也貼給客人。
     var plk = null, cashq = false; try { cashq = !isMonthlyChoice() && qCash(); if (!isMonthlyChoice() && !cashq && els.paylinkCard) plk = paylinkMap()[paylinkRef()]; } catch (e) {}
+    if (compQ){ lines.push(''); lines.push(({ en: 'Your driver and vehicle details will be sent the day before.' })[currentQuoteLang] || '出發前一天會提供車輛資訊及司機聯絡方式'); return lines.join('\n'); }   // 2026-11-01 招待：不附收據／發票說明、付款連結
     // 收據／發票說明在前；付款資訊（付款連結訊息／收現／月結）一律放在最後
     var noticeText = currentQuoteLang === 'zh-TW' ? els.qNoticeBlock.value.trim() : (NOTICE_BLOCK_I18N[currentQuoteLang] || '');
     if (noticeText){
@@ -7209,7 +7216,7 @@
     });
   });
   if (els.qRoundTrip) els.qRoundTrip.addEventListener('change', function(){ roundTripManual = true; });
-  [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qEsim, els.qInvoice].forEach(function(el){
+  [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qComp, els.qEsim, els.qInvoice].forEach(function(el){
     if (el) el.addEventListener('change', function(){ renderEsimCheck(); renderQuoteDoc(); });
   });
   [els.qEsimPrice, els.qEsimCost, els.qEsimFee].forEach(function(el){
@@ -7694,6 +7701,7 @@
         roundTrip: els.qRoundTrip.checked,
         friends: els.qFriends.checked,
         wedding: els.qWedding.checked,
+        comp: !!(els.qComp && els.qComp.checked),
         manager: els.qManager.checked,
         esim: !!(els.qEsim && els.qEsim.checked),
         esimPrice: els.qEsimPrice ? els.qEsimPrice.value : '',
@@ -7787,6 +7795,7 @@
       roundTripManual = true; // 載入已存報價：保留當時的勾選結果
       els.qFriends.checked = !!q.discounts.friends;
       els.qWedding.checked = !!q.discounts.wedding;
+      if (els.qComp) els.qComp.checked = !!q.discounts.comp;
       els.qManager.checked = !!q.discounts.manager;
       if (els.qEsim) els.qEsim.checked = !!q.discounts.esim;
       if (els.qEsimPrice) els.qEsimPrice.value = q.discounts.esimPrice || '';
