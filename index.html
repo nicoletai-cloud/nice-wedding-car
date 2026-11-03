@@ -3891,7 +3891,10 @@
   function renderUnsavedDrv(){
     var d = selectedDriver(), oid = editingOrderId || (els.orderSel && els.orderSel.value) || '', cur = null; if (oid){ try { cur = (JSON.parse(localStorage.getItem('hhlc_recent_orders') || '[]') || []).find(function(o){ return o && o.id === oid; }) || null; } catch(e){} if (!cur) cur = recentOrders.find(function(o){ return o.id === oid; }) || null; }
     var savedName = cur ? String(cur.driverName || '') : '', pick = d ? String(d.name || '') : '';
-    var show = !!pick && pick !== savedName;
+    /* 2026-11-03 Nicole：存檔後還一直顯示 → 司機資料庫名字（答維正）跟訂單上的名字（Vincent）不同；改用司機 ID／電話／車牌比對是不是同一位 */
+    var dg = function(v){ return String(v || '').replace(/\D/g, '').slice(-9); }, pl = function(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    var same = !!cur && !!d && ((cur.driverId && cur.driverId === d.id) || (dg(cur.driverPhone) && dg(cur.driverPhone) === dg(d.phone)) || (pl(cur.driverPlate) && pl(cur.driverPlate) === pl(d.plate)) || pick === savedName);
+    var show = !!pick && !same;
     ['unsavedDrvA', 'unsavedDrvB'].forEach(function(id, i){
       var el = document.getElementById(id);
       if (!el){
@@ -8830,7 +8833,7 @@
   }); })();
 
   if (els.saveOrderBtn) els.saveOrderBtn.addEventListener('click', function(){ saveCurrentOrder(false); });
-  if (els.saveAssignBtn) els.saveAssignBtn.addEventListener('click', function(){ saveCurrentOrder(false); });
+  if (els.saveAssignBtn) els.saveAssignBtn.addEventListener('click', function(){ saveCurrentOrder(false); setTimeout(function(){ try { renderUnsavedDrv(); } catch(e){} }, 300); setTimeout(function(){ try { renderUnsavedDrv(); } catch(e){} }, 2000); });
   if (els.saveOrderAsNewBtn) els.saveOrderAsNewBtn.addEventListener('click', function(){ saveCurrentOrder(true); });
   if (els.dDriverSelect) els.dDriverSelect.addEventListener('change', function(){ keptDriverSnap = null; });
   if (els.recentOrderList){
