@@ -1144,6 +1144,7 @@
               <input type="text" id="dContactPhone">
             </div>
           </div>
+          <div class="field" style="margin-bottom:10px"><label for="dContactPhone2">第二聯絡電話（選填）</label><input type="text" id="dContactPhone2" inputmode="tel" placeholder="例：家人或備用手機"></div>
           <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dShowContact" checked> 行程單顯示聯絡人（司機直接聯絡用車人時取消勾選）</label>
           <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dAnon"> 匿名（知名客人：給司機的派車單只寫姓氏）<select id="dAnonTitle" style="width:auto;margin-left:8px"><option>先生</option><option>小姐</option></select></label>
           <div class="field" id="dRiderBox"><!-- 2026-10-15 代訂：用車人（跟聯絡人不同時） -->
@@ -2260,6 +2261,7 @@
     saveOrderBtn: document.getElementById('saveOrderBtn'),
     dContactName: document.getElementById('dContactName'),
     dContactPhone: document.getElementById('dContactPhone'),
+    dContactPhone2: document.getElementById('dContactPhone2'),   // 2026-11-05 Nicole：第二聯絡電話
     dPickupAddr: document.getElementById('dPickupAddr'),
     dDropoffAddr: document.getElementById('dDropoffAddr'),
     dPax: document.getElementById('dPax'),
@@ -4150,7 +4152,7 @@
       svc: {'送機':'送機','接機':'接機','接送':'接送','包車':'包車','其他':'其他'},
       useDate:'用車日期：', pickupTime:'上車時間：', flightInfo:'航班資訊', flightNo:'　班機航班號：',
       depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園 TPE', otherAirport:'　對方機場：',
-      contact:'聯絡人：', contactPhone:'聯絡電話：', rider:'用車人：', riderPhone:'用車人電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
+      contact:'聯絡人：', contactPhone:'聯絡電話：', contactPhone2:'第二聯絡電話：', rider:'用車人：', riderPhone:'用車人電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
       extraStop:'加點地址：',
       pax:'搭乘人數：', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
       note:'備註／其他需求：', driverInfo:'［司機資訊］', driver:'駕駛：', phone:'電話：', car:'車款：', plate:'車號：'
@@ -4159,7 +4161,7 @@
       svc: {'送機':'Airport Drop-off','接機':'Airport Pick-up','接送':'Transfer','包車':'Charter','其他':'Other'},
       useDate:'Service Date: ', pickupTime:'Pickup Time: ', flightInfo:'Flight Information', flightNo:'  Flight No.: ',
       depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan TPE', otherAirport:'  Other Airport: ',
-      contact:'Contact: ', contactPhone:'Contact Phone: ', rider:'Passenger: ', riderPhone:'Passenger Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
+      contact:'Contact: ', contactPhone:'Contact Phone: ', contactPhone2:'Alt. Phone: ', rider:'Passenger: ', riderPhone:'Passenger Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
       extraStop:'Extra Stop: ',
       pax:'Passengers: ', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
       note:'Notes: ', driverInfo:'[Driver Information]', driver:'Driver: ', phone:'Phone: ', car:'Vehicle: ', plate:'License Plate: '
@@ -4168,7 +4170,7 @@
       svc: {'送機':'送迎（出発）','接機':'送迎（到着）','接送':'送迎','包車':'チャーター','其他':'その他'},
       useDate:'ご利用日：', pickupTime:'お迎え時刻：', flightInfo:'フライト情報', flightNo:'　便名：',
       depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園 TPE', otherAirport:'　到着地の空港：',
-      contact:'ご担当者：', contactPhone:'電話番号：', rider:'ご乗車の方：', riderPhone:'ご乗車の方の電話：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
+      contact:'ご担当者：', contactPhone:'電話番号：', contactPhone2:'予備の電話番号：', rider:'ご乗車の方：', riderPhone:'ご乗車の方の電話：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
       extraStop:'追加立寄り先：',
       pax:'人数：', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
@@ -4332,7 +4334,8 @@
     var anonOn = !!(opts.forDriver && document.getElementById('dAnon') && document.getElementById('dAnon').checked), anonT = (document.getElementById('dAnonTitle') || {}).value || '先生';
     var anonNm = function(n){ n = String(n || '').trim(); if (!anonOn || !n) return n; if (/(先生|小姐|女士)$/.test(n)) return n; return /^[A-Za-z]/.test(n) ? n.split(/\s+/).pop() + ' ' + anonT : n.charAt(0) + anonT; };
     if (showCt){ lines.push(L.contact + (anonNm(els.dContactName.value) || '—'));
-    lines.push(L.contactPhone + (els.dContactPhone.value || '—')); }
+    lines.push(L.contactPhone + (els.dContactPhone.value || '—'));
+    if (els.dContactPhone2 && els.dContactPhone2.value.trim()) lines.push(L.contactPhone2 + els.dContactPhone2.value.trim()); }
     (function(){ var rn = riderVal('dRiderName'), rp = riderVal('dRiderPhone'); if (rn || rp){ lines.push(L.rider + (anonNm(rn) || '—')); lines.push(L.riderPhone + (rp || '—')); } })();
     // 上／下車地址如果是桃園國際機場，後面加註航廈（第一／第二航廈），方便司機
     // 跟乘客直接知道要去哪個航廈，不用再對照上面的航班資訊。
@@ -4832,7 +4835,7 @@
       '上車：' + (o.pickupFullAddr || o.pickupAddr || ''),
       '下車：' + (o.dropoffFullAddr || o.dropoffAddr || '') + (o.extraStopChk && o.extraStopAddr ? '（加點：' + o.extraStopAddr + '）' : ''),
       o.flightNo ? '航班：' + [o.flightNo, o.terminal].filter(String).join(' ') : '',
-      '客人：' + [o.contactName, o.contactPhone].filter(String).join(' ') + (o.pax ? '｜' + o.pax + ' 人' : '') + (o.luggageCount ? '｜行李 ' + o.luggageCount : ''),
+      '客人：' + [o.contactName, o.contactPhone, o.contactPhone2].filter(String).join(' ') + (o.pax ? '｜' + o.pax + ' 人' : '') + (o.luggageCount ? '｜行李 ' + o.luggageCount : ''),
       o.driverName ? '司機：' + [o.driverName, o.driverPhone, o.driverCar, o.driverPlate].filter(String).join(' ') : '司機：尚未指派',
       (typeof o.amount === 'number') ? '金額：$' + fmtNum(o.amount) : '',
       o.note ? '備註：' + o.note : ''
@@ -4952,7 +4955,7 @@
     renderFindDriverDoc();
   });
 
-  ['dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dContactName','dContactPhone',
+  ['dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dContactName','dContactPhone','dContactPhone2',
    'dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dExtraStopAddr','dPax','dLuggageCount','dLuggageSize','dNote'].forEach(function(key){
     if (els[key]){
       els[key].addEventListener('input', function(){ renderPassengerDoc(); renderDispatchSheet(); });
@@ -8247,6 +8250,7 @@
       otherAirport: els.dOtherAirport ? els.dOtherAirport.value.trim() : '',
       contactName: els.dContactName.value.trim(),
       contactPhone: els.dContactPhone.value.trim(),
+      contactPhone2: els.dContactPhone2 ? els.dContactPhone2.value.trim() : '',
       riderName: riderVal('dRiderName'), riderPhone: riderVal('dRiderPhone'), showContact: !(document.getElementById('dShowContact') && !document.getElementById('dShowContact').checked), anon: !!(document.getElementById('dAnon') && document.getElementById('dAnon').checked), anonTitle: (document.getElementById('dAnonTitle') || {}).value || '先生',
       pickupAddr: els.dPickupAddr.value.trim(),
       dropoffAddr: els.dDropoffAddr.value.trim(),
@@ -8422,7 +8426,7 @@
       id: o.id, savedAt: o.savedAt, svcType: o.svcType || '', date: o.date || '', pickupTime: o.pickupTime || '', fixedPickup: !!o.fixedPickup,
       formalNo: o.formalNo || '', quoteNo: o.quoteNo || '',
       flightNo: o.flightNo || '', terminal: o.terminal || '', flightDepTime: o.flightDepTime || '', flightArrTime: o.flightArrTime || '',
-      otherAirport: o.otherAirport || '', contactName: o.contactName || '', contactPhone: o.contactPhone || '',
+      otherAirport: o.otherAirport || '', contactName: o.contactName || '', contactPhone: o.contactPhone || '', contactPhone2: o.contactPhone2 || '',
       pickupAddr: o.pickupAddr || '', dropoffAddr: o.dropoffAddr || '', pickupFullAddr: o.pickupFullAddr || '', dropoffFullAddr: o.dropoffFullAddr || '',
       extraStopChk: !!o.extraStopChk, extraStopAddr: o.extraStopAddr || '', pax: o.pax || '', luggageCount: o.luggageCount || '', luggageSize: o.luggageSize || '',
       note: o.note || '', addrNote: o.addrNote || '', custSource: o.custSource || '', custSourceName: o.custSourceName || '', custNote: o.custNote || '',
@@ -8501,7 +8505,7 @@
   function botOrderToLocal(b){
     var o = {};
     ['id','savedAt','svcType','date','pickupTime','flightNo','terminal','flightDepTime','flightArrTime','otherAirport',
-     'contactName','contactPhone','pickupAddr','dropoffAddr','pickupFullAddr','dropoffFullAddr','extraStopAddr','pax','luggageCount',
+     'contactName','contactPhone','contactPhone2','pickupAddr','dropoffAddr','pickupFullAddr','dropoffFullAddr','extraStopAddr','pax','luggageCount',
      'note','custSource','custSourceName','custNote','driverName','driverPhone','driverCar','driverPlate','formalNo','quoteNo'].forEach(function(k){ o[k] = (b[k] == null ? '' : String(b[k])); });
     o.extraStopChk = !!b.extraStopChk;
     o.fixedPickup = !!b.fixedPickup;
@@ -8797,6 +8801,7 @@
     if (els.dOtherAirport) els.dOtherAirport.value = o.otherAirport || '';
     els.dContactName.value = o.contactName || '';
     els.dContactPhone.value = o.contactPhone || '';
+    if (els.dContactPhone2) els.dContactPhone2.value = o.contactPhone2 || '';
     try { riderSet(o.riderName || '', o.riderPhone || ''); } catch(e){}
     try { document.getElementById('dShowContact').checked = o.showContact !== false; document.getElementById('dAnon').checked = !!o.anon; document.getElementById('dAnonTitle').value = o.anonTitle || '先生'; } catch(e){}
     try { var ms = document.getElementById('dManualSent'); ms.checked = !!(o.manualSent && o.manualSent === o.driverName); ms.dataset.drv = ms.checked ? o.manualSent : ''; } catch(e){}
@@ -8853,7 +8858,7 @@
   function blankDispatchForm(){
     editingOrderId = null; keptDriverSnap = null; currentOrderNos = { quoteNo: '', formalNo: '', code: '' }; lastImportedLegAmount = null; oqLoadedFor = '';
     var src = document.querySelector('input[name="dCustSource"][value="LINE"]'); if (src) src.checked = true;
-    ['dCustSourceName','dContactName','dContactPhone','dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dExtraStopAddr','dNote','dAmount','dDriverFee','dLuggageSize','dCustNote'].forEach(function(k){ var el = els[k] || document.getElementById(k); if (el) el.value = ''; });
+    ['dCustSourceName','dContactName','dContactPhone','dContactPhone2','dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dExtraStopAddr','dNote','dAmount','dDriverFee','dLuggageSize','dCustNote'].forEach(function(k){ var el = els[k] || document.getElementById(k); if (el) el.value = ''; });
     ['dFoundVia','dRcptReq','dLugBig','dLugSmall','dLuggageCount','dPax'].forEach(function(k){ var el = document.getElementById(k); if (el) el.value = ''; });
     if (els.dPax) els.dPax.value = els.dPax.getAttribute('value') || '';
     ['dFixedPickup','dPaperRcpt','dAnon'].forEach(function(k){ var el = document.getElementById(k); if (el) el.checked = false; });
