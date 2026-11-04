@@ -1187,6 +1187,11 @@
             <div class="check-row"><input type="checkbox" id="dExtraStopChk"><label for="dExtraStopChk" style="margin:0;">增加地點（客人途中還要多上／下車一個地方）</label></div>
             <textarea id="dExtraStopAddr" rows="2" placeholder="貼上加點地址，多個地點請分行" style="display:none; margin-top:6px;"></textarea>
           </div>
+          <!-- 2026-11-04 Nicole：接送機每個地點都可以填聯絡人跟電話（選填，不擋派車、不列待辦） -->
+          <div class="field" id="dPtCtBox">
+            <label>每個地點的聯絡人 <small style="font-weight:400;color:#8a7a6a">選填，沒填就聯絡上面的訂單聯絡人</small></label>
+            <div id="dPtCt"></div>
+          </div>
 
           <div class="row2">
             <div class="field">
@@ -4327,9 +4332,10 @@
     // 地址照行車順序列：上車 1 → 加點 2、3… → 下車；沒有加點就維持「上車地址／下車地址」。地址去掉郵遞區號和「○○里」「○鄰」
     var extras = (els.dExtraStopChk && els.dExtraStopChk.checked && els.dExtraStopAddr) ? els.dExtraStopAddr.value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean) : [];
     var numL = function(lbl, n){ return extras.length ? String(lbl).replace(/([：:]\s*)$/, ' ' + n + '$1') : lbl; };
-    lines.push(numL(L.pickupAddr, 1) + cleanAddrText(pickupAddrVal));
-    extras.forEach(function(addr, i){ lines.push(numL(L.extraStop, i + 2) + cleanAddrText(addr)); });
-    lines.push(L.dropoffAddr + cleanAddrText(dropoffAddrVal));
+    var ptCt = function(x){ x = x || {}; var n = anonNm(String(x.n || '').trim()), p = String(x.p || '').trim(); if (n || p) lines.push('　' + L.contact + [n, p].filter(Boolean).join(' ')); };   // 2026-11-04 每個地點的聯絡人
+    lines.push(numL(L.pickupAddr, 1) + cleanAddrText(pickupAddrVal)); ptCt(PTCT.pu);
+    extras.forEach(function(addr, i){ lines.push(numL(L.extraStop, i + 2) + cleanAddrText(addr)); ptCt(PTCT.ex[i]); });
+    lines.push(L.dropoffAddr + cleanAddrText(dropoffAddrVal)); ptCt(PTCT.dr);
     if (opts.forDriver){ var an = orderAddrNote(els.dPickupFullAddr && els.dPickupFullAddr.value, els.dDropoffFullAddr && els.dDropoffFullAddr.value); if (an) lines.push('📍 地址提醒｜' + an); }
     if (!compact) lines.push('');
     lines.push(L.pax + (els.dPax.value || '0'));
@@ -4944,9 +4950,32 @@
   // 「增加地點」勾選才顯示貼地址的欄位；沒勾選就不算有加點，就算欄位裡還留著
   // 舊文字也不會出現在文件上（避免使用者取消勾選後忘記清空內容，結果加點地址
   // 還是跑出來）。
+  /* 2026-11-04 Nicole：每個地點（上車、加點、下車）各自的聯絡人＋電話 */
+  var PTCT = { pu: { n: '', p: '' }, ex: [], dr: { n: '', p: '' } };
+  function ptCtNorm(o){ var f = function(x){ x = x || {}; return { n: String(x.n || ''), p: String(x.p || '') }; }; o = o || {}; return { pu: f(o.pu), ex: (Array.isArray(o.ex) ? o.ex : []).map(f), dr: f(o.dr) }; }
+  function ptCtExtras(){ return (els.dExtraStopChk && els.dExtraStopChk.checked && els.dExtraStopAddr) ? els.dExtraStopAddr.value.split('\n').map(function(t){ return t.trim(); }).filter(Boolean) : []; }
+  function ptCtGet(k, i){ var x = k === 'ex' ? PTCT.ex[i] : PTCT[k]; return x || { n: '', p: '' }; }
+  function renderPtCt(){
+    var box = document.getElementById('dPtCt'); if (!box) return;
+    var ex = ptCtExtras(), pu = (els.dPickupFullAddr && els.dPickupFullAddr.value) || els.dPickupAddr.value || '', dr = (els.dDropoffFullAddr && els.dDropoffFullAddr.value) || els.dDropoffAddr.value || '';
+    var rows = [['pu', 0, ex.length ? '上車 1' : '上車', pu]].concat(ex.map(function(a, i){ return ['ex', i, '加點 ' + (i + 2), a]; })).concat([['dr', 0, '下車', dr]]);
+    var foc = document.activeElement && box.contains(document.activeElement) ? [document.activeElement.dataset.k, document.activeElement.dataset.i, document.activeElement.dataset.f] : null;
+    box.innerHTML = rows.map(function(r){ var v = ptCtGet(r[0], r[1]);
+      return '<div style="margin:6px 0 10px"><div style="font-size:13px;color:#6b5a48;margin-bottom:4px"><b>' + r[2] + '</b>' + (r[3] ? '｜' + escapeHtml(String(r[3]).slice(0, 40)) : '') + '</div>' +
+        '<div style="display:flex;gap:6px"><input type="text" data-k="' + r[0] + '" data-i="' + r[1] + '" data-f="n" placeholder="聯絡人" value="' + escapeHtml(v.n) + '" style="flex:1;min-width:0"><input type="tel" inputmode="tel" data-k="' + r[0] + '" data-i="' + r[1] + '" data-f="p" placeholder="電話" value="' + escapeHtml(v.p) + '" style="flex:1;min-width:0"></div></div>'; }).join('');
+    if (foc){ var el = box.querySelector('[data-k="' + foc[0] + '"][data-i="' + foc[1] + '"][data-f="' + foc[2] + '"]'); if (el){ el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch(e){} } }
+  }
+  (function(){ var box = document.getElementById('dPtCt'); if (!box) return;
+    box.addEventListener('input', function(e){ var t = e.target, k = t.dataset.k, i = +t.dataset.i, f = t.dataset.f; if (!k || !f) return;
+      if (k === 'ex'){ while (PTCT.ex.length <= i) PTCT.ex.push({ n: '', p: '' }); PTCT.ex[i][f] = t.value; } else PTCT[k][f] = t.value;
+      renderPassengerDoc(); renderDispatchSheet(); }); })();
+  ['dExtraStopAddr', 'dPickupFullAddr', 'dDropoffFullAddr'].forEach(function(k){ if (els[k]) els[k].addEventListener('change', renderPtCt); });
+  if (els.dExtraStopAddr) els.dExtraStopAddr.addEventListener('blur', renderPtCt);
+  setTimeout(renderPtCt, 0);
   if (els.dExtraStopChk){
     els.dExtraStopChk.addEventListener('change', function(){
       if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = els.dExtraStopChk.checked ? '' : 'none';
+      renderPtCt();
       renderPassengerDoc();
       renderDispatchSheet();
     });
@@ -8210,6 +8239,7 @@
       dropoffFullAddr: els.dDropoffFullAddr ? els.dDropoffFullAddr.value.trim() : '',
       extraStopChk: !!(els.dExtraStopChk && els.dExtraStopChk.checked),
       extraStopAddr: els.dExtraStopAddr ? els.dExtraStopAddr.value.trim() : '',
+      ptContacts: ptCtNorm(PTCT),
       pax: els.dPax.value,
       luggageCount: els.dLuggageCount.value,
       lugBig: (document.getElementById('dLugBig') || {}).value || '', lugSmall: (document.getElementById('dLugSmall') || {}).value || '',
@@ -8764,6 +8794,7 @@
       if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = els.dExtraStopChk.checked ? '' : 'none';
     }
     if (els.dExtraStopAddr) els.dExtraStopAddr.value = o.extraStopAddr || '';
+    PTCT = ptCtNorm(o.ptContacts); renderPtCt();
     if (o.pax != null) els.dPax.value = o.pax;
     if (o.luggageCount != null) els.dLuggageCount.value = o.luggageCount;
     (function(){ var b = document.getElementById('dLugBig'), s = document.getElementById('dLugSmall'); if (!b || !s) return; b.value = o.lugBig || ''; s.value = o.lugSmall || ''; b.placeholder = (!o.lugBig && !o.lugSmall && o.luggageCount) ? '大箱（原共 ' + o.luggageCount + ' 件）' : '大箱'; })();
@@ -8812,6 +8843,7 @@
     if (els.dPax) els.dPax.value = els.dPax.getAttribute('value') || '';
     ['dFixedPickup','dPaperRcpt','dAnon'].forEach(function(k){ var el = document.getElementById(k); if (el) el.checked = false; });
     if (els.dExtraStopChk){ els.dExtraStopChk.checked = false; if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = 'none'; }
+    PTCT = ptCtNorm(); renderPtCt();
     try { document.getElementById('dShowContact').checked = true; document.getElementById('dAnonTitle').value = '先生'; } catch(e){}
     try { var ms = document.getElementById('dManualSent'); ms.checked = false; ms.dataset.drv = ''; } catch(e){}
     try { riderSet('', ''); } catch(e){}
