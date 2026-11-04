@@ -1547,6 +1547,17 @@
               <input type="text" id="qCustPhone">
             </div>
           </div>
+          <!-- 2026-11-04 Nicole：報價時就能填用車人（幫家人朋友代訂），轉成訂單自動帶入 -->
+          <div class="row2">
+            <div class="field">
+              <label for="qRiderName">用車人姓名 <small style="font-weight:400;color:#8a7a6a">代訂時填</small></label>
+              <input type="text" id="qRiderName" placeholder="跟客戶同一人就留空">
+            </div>
+            <div class="field">
+              <label for="qRiderPhone">用車人電話</label>
+              <input type="text" id="qRiderPhone" inputmode="tel">
+            </div>
+          </div>
           <div class="field">
             <label for="qCustNote">客人備註（只有自己看得到，不會出現在報價單）</label>
             <input type="text" id="qCustNote" placeholder="例如：王經理的朋友、阿明介紹、台積電">
@@ -3441,6 +3452,7 @@
     currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = o.formalNo || ''; requotePrev = '';
     var src = document.querySelector('input[name="qCustSource"][value="' + (o.custSource || 'LINE') + '"]'); if (src) src.checked = true;
     els.qCustSourceName.value = o.custSourceName || ''; els.qCustName.value = o.contactName || ''; els.qCustPhone.value = o.contactPhone || '';
+    (function(){ var a = document.getElementById('qRiderName'), b = document.getElementById('qRiderPhone'); if (a) a.value = o.riderName || ''; if (b) b.value = o.riderPhone || ''; })();
     if (els.qCustNote) els.qCustNote.value = o.custNote || '';
     els.quoteLegsContainer.innerHTML = '';
     var air = o.svcType === '送機' ? 'drop' : o.svcType === '接機' ? 'pick' : '';
@@ -3469,7 +3481,7 @@
   // ＋ 新報價：清空報價頁（不載入任何訂單或報價）
   function newQuote(){
     var src = document.querySelector('input[name="qCustSource"][value="LINE"]'); if (src) src.checked = true;
-    ['qCustSourceName','qCustName','qCustPhone','qCustNote','qFoundVia'].forEach(function(k){ var e = els[k] || document.getElementById(k); if (e) e.value = ''; });
+    ['qCustSourceName','qCustName','qCustPhone','qCustNote','qFoundVia','qRiderName','qRiderPhone'].forEach(function(k){ var e = els[k] || document.getElementById(k); if (e) e.value = ''; });
     els.quoteLegsContainer.innerHTML = '';
     addQuoteLegRow({});
     [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qComp, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay')].forEach(function(e){ if (e) e.checked = false; });
@@ -6813,7 +6825,7 @@
     return (q.legs || []).map(function(l, i){
       var sa = function(a){ try { return shortAreaForFindDriver(a); } catch (e) { return a; } };
       return { svcType: l.svc, date: l.date, pickupTime: l.pickupTime || (l.svc === '接機' ? '' : l.dep) || '', flightNo: l.flight, terminal: l.terminal,
-        flightDepTime: l.dep || '', flightArrTime: l.arr || '', contactName: q.custName || q.custSourceName, contactPhone: q.custPhone,
+        flightDepTime: l.dep || '', flightArrTime: l.arr || '', contactName: q.custName || q.custSourceName, contactPhone: q.custPhone, riderName: q.riderName || '', riderPhone: q.riderPhone || '',
         pickupAddr: sa(l.pickupArea), dropoffAddr: sa(l.dropoffArea), pickupFullAddr: l.pickupArea, dropoffFullAddr: l.dropoffArea,
         extraStopChk: !!l.extraStopChk, extraStopAddr: l.extraStopAddr || '', pax: l.pax || '', luggageCount: l.luggageCount || '', lugBig: l.lugBig || '', lugSmall: l.lugSmall || '', luggageSize: lugText(l.lugBig, l.lugSmall),
         note: [(src ? '[' + src.value + ']' : ''), l.modelLabel ? '車款 ' + l.modelLabel : '', q.quoteNo ? '報價 ' + q.quoteNo : ''].filter(Boolean).join(' '),
@@ -7732,6 +7744,7 @@
       custNote: els.qCustNote ? els.qCustNote.value.trim() : '',
       custName: els.qCustName.value.trim(),
       custPhone: els.qCustPhone.value.trim(),
+      riderName: ((document.getElementById('qRiderName') || {}).value || '').trim(), riderPhone: ((document.getElementById('qRiderPhone') || {}).value || '').trim(),
       legs: legs,
       discounts: {
         roundTrip: els.qRoundTrip.checked,
@@ -7808,6 +7821,7 @@
     if (els.qCustNote) els.qCustNote.value = q.custNote || '';
     els.qCustName.value = q.custName || '';
     els.qCustPhone.value = q.custPhone || '';
+    (function(){ var a = document.getElementById('qRiderName'), b = document.getElementById('qRiderPhone'); if (a) a.value = q.riderName || ''; if (b) b.value = q.riderPhone || ''; })();
     if (els.qIsKnownCustomer) els.qIsKnownCustomer.checked = true;
     if (q.lang) setQuoteLang(q.lang); else applyCustLang(findKnownCustomerByContact(q.custSourceName || q.custName, q.custPhone));
     els.quoteLegsContainer.innerHTML = '';
@@ -7969,7 +7983,7 @@
   function riderSet(name, phone){
     var sel = document.getElementById('dRiderSel'); if (!sel) return;
     riderRenderSel(name ? 'h:' + riderNorm(name) : '');
-    if (name && sel.value !== 'h:' + riderNorm(name)) sel.value = 'new';
+    if ((name || phone) && sel.value !== 'h:' + riderNorm(name)){ if (![].some.call(sel.options, function(o){ return o.value === 'new'; })) riderRenderSel(''); sel.value = 'new'; }   // 2026-11-04 只有電話也算
     document.getElementById('dRiderName').value = name || ''; document.getElementById('dRiderPhone').value = phone || '';
     document.getElementById('dRiderFields').style.display = ''; document.getElementById('dRiderHint').style.display = 'none';
   }
@@ -8971,6 +8985,7 @@
     o.svcType = svcMap[leg.svc] || '其他'; o.date = leg.date || ''; o.pickupTime = leg.pickupTime || leg.dep || leg.arr || ''; o.fixedPickup = !!leg.fixedPickup;
     o.flightNo = leg.flight || ''; o.terminal = leg.terminal || ''; o.flightDepTime = leg.dep || ''; o.flightArrTime = leg.arr || '';
     o.contactName = q.custName || ''; o.contactPhone = q.custPhone || '';
+    if (q.riderName || q.riderPhone){ o.riderName = q.riderName || ''; o.riderPhone = q.riderPhone || ''; }   // 2026-11-04 報價填的用車人帶進訂單
     o.pickupFullAddr = leg.pickupArea || ''; o.dropoffFullAddr = leg.dropoffArea || '';
     o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || ''; o.lugBig = leg.lugBig || ''; o.lugSmall = leg.lugSmall || ''; if (lugText(leg.lugBig, leg.lugSmall)) o.luggageSize = lugText(leg.lugBig, leg.lugSmall);
     o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign'; o.rcptReq = q.rcptReq || ''; if (q.rcptReq === 'paper') o.paperRcpt = true;
@@ -9066,6 +9081,7 @@
     if (els.dCustNote) els.dCustNote.value = q.custNote || custNoteLookup(q.custPhone, q.custSourceName, q.custName);
     if (q.custName) els.dContactName.value = q.custName;
     if (q.custPhone) els.dContactPhone.value = q.custPhone;
+    if (q.riderName || q.riderPhone){ try { riderSet(q.riderName || '', q.riderPhone || ''); } catch(e){} }
     if (leg){
       var svcMap = { '送機': '送機', '接機': '接機', '接送': '接送', '包車': '包車' };
       var svcVal = svcMap[leg.svc] || '其他';
