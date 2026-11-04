@@ -1147,9 +1147,9 @@
           <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dShowContact" checked> 行程單顯示聯絡人（司機直接聯絡用車人時取消勾選）</label>
           <label class="check-row" style="margin:-4px 0 10px;"><input type="checkbox" id="dAnon"> 匿名（知名客人：給司機的派車單只寫姓氏）<select id="dAnonTitle" style="width:auto;margin-left:8px"><option>先生</option><option>小姐</option></select></label>
           <div class="field" id="dRiderBox"><!-- 2026-10-15 代訂：用車人（跟聯絡人不同時） -->
-            <label for="dRiderSel">用車人（幫家人朋友代訂時選）</label>
+            <label for="dRiderSel">用車人（幫家人朋友代訂時填；跟聯絡人同一人就留空）</label>
             <select id="dRiderSel"><option value="">同聯絡人</option></select>
-            <div class="row2" id="dRiderFields" style="display:none;margin-top:8px">
+            <div class="row2" id="dRiderFields" style="margin-top:8px">
               <div class="field" style="margin-bottom:0"><label for="dRiderName">用車人姓名</label><input type="text" id="dRiderName" placeholder="例如：王媽媽"></div>
               <div class="field" style="margin-bottom:0"><label for="dRiderPhone">用車人電話</label><input type="text" id="dRiderPhone"></div>
             </div>
@@ -7963,7 +7963,7 @@
     var H = riderHistory(), cur = keep != null ? keep : sel.value;
     sel.innerHTML = '<option value="">同聯絡人</option>' + H.map(function(r){ return '<option value="h:' + escapeHtml(riderNorm(r.name)) + '">' + escapeHtml(r.name + (r.phone ? '｜' + r.phone : '') + '') + '</option>'; }).join('') + '<option value="new">＋ 新增用車人</option>';
     sel.value = [].some.call(sel.options, function(o){ return o.value === cur; }) ? cur : (cur ? 'new' : '');
-    var on = !!sel.value; document.getElementById('dRiderFields').style.display = on ? '' : 'none';
+    document.getElementById('dRiderFields').style.display = '';   // 2026-11-04 Nicole：用車人姓名／電話一直顯示，直接填
   }
   ['dCustSourceName', 'dContactPhone'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('change', function(){ try { riderRenderSel(); } catch (e) {} }); });
   function riderSet(name, phone){
@@ -7971,14 +7971,14 @@
     riderRenderSel(name ? 'h:' + riderNorm(name) : '');
     if (name && sel.value !== 'h:' + riderNorm(name)) sel.value = 'new';
     document.getElementById('dRiderName').value = name || ''; document.getElementById('dRiderPhone').value = phone || '';
-    document.getElementById('dRiderFields').style.display = sel.value ? '' : 'none'; document.getElementById('dRiderHint').style.display = 'none';
+    document.getElementById('dRiderFields').style.display = ''; document.getElementById('dRiderHint').style.display = 'none';
   }
   (function(){
     var sel = document.getElementById('dRiderSel'); if (!sel) return;
     sel.addEventListener('focus', function(){ riderRenderSel(); });
     sel.addEventListener('change', function(){
       var v = sel.value, hint = document.getElementById('dRiderHint');
-      document.getElementById('dRiderFields').style.display = v ? '' : 'none'; hint.style.display = 'none';
+      document.getElementById('dRiderFields').style.display = ''; hint.style.display = 'none';
       if (!v){ document.getElementById('dRiderName').value = ''; document.getElementById('dRiderPhone').value = ''; }
       else if (v === 'new'){ document.getElementById('dRiderName').value = ''; document.getElementById('dRiderPhone').value = ''; document.getElementById('dRiderName').focus(); }
       else {
@@ -7994,6 +7994,7 @@
       try { renderActiveDoc(); } catch(e){}
     });
     ['dRiderName', 'dRiderPhone', 'dShowContact', 'dAnon', 'dAnonTitle'].forEach(function(id){ var el = document.getElementById(id); if (el){ el.addEventListener('input', function(){ try { renderActiveDoc(); } catch(e){} }); el.addEventListener('change', function(){ try { renderActiveDoc(); } catch(e){} }); } });
+    ['dRiderName', 'dRiderPhone'].forEach(function(id){ var el = document.getElementById(id); if (el) el.addEventListener('input', function(){ if (!sel.value && el.value.trim()){ if (![].some.call(sel.options, function(o){ return o.value === 'new'; })) riderRenderSel(''); sel.value = 'new'; } }, true); });   // 2026-11-04 直接打字就算新增用車人
     riderRenderSel('');
   })();
   function docNoteClean(n){
