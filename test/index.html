@@ -6613,6 +6613,8 @@
     if (compQ){ lines.push(''); lines.push(({ en: 'Your driver and vehicle details will be sent the day before.' })[currentQuoteLang] || '出發前一天會提供車輛資訊及司機聯絡方式'); return lines.join('\n'); }   // 2026-11-01 招待：不附收據／發票說明、付款連結
     // 收據／發票說明在前；付款資訊（付款連結訊息／收現／月結）一律放在最後
     var noticeText = currentQuoteLang === 'zh-TW' ? els.qNoticeBlock.value.trim() : (NOTICE_BLOCK_I18N[currentQuoteLang] || '');
+    // 2026-11-06 Nicole：月結的不要「如需收據或三聯式發票…」那句（月底統一請款），其餘說明照留
+    if (noticeText && isMonthlyChoice()) noticeText = noticeText.split(/\n\s*\n/).filter(function(p){ return !/收據|發票|收据|发票|receipt|invoice|領収書|発票/i.test(p); }).join('\n\n').trim();
     if (noticeText){
       // 「（費用需另+5%營業稅）」這類括號補充接在上一行後面，不另起一行
       noticeText = noticeText.replace(/\n+\s*(?=[（(])/g, '');
