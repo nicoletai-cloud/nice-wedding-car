@@ -1196,8 +1196,8 @@
 
           <div class="row2">
             <div class="field">
-              <label for="dPax">搭乘人數</label>
-              <input type="number" id="dPax" min="0" value="1">
+              <label for="dPax">搭乘人數（含小孩）</label>
+              <div style="display:flex;gap:6px"><input type="number" id="dPax" min="0" value="1"><input type="number" id="dKids" min="0" placeholder="其中小孩"></div>
             </div>
             <div class="field">
               <label for="dLugBig">行李（大箱／小箱）</label>
@@ -1205,6 +1205,7 @@
               <input type="hidden" id="dLuggageCount">
             </div>
           </div>
+          <div id="dLugSpWrap"></div>
           <div class="field">
             <label for="dLuggageSize">行李尺寸</label>
             <input type="text" id="dLuggageSize" placeholder="例如：大2、中1">
@@ -4162,7 +4163,7 @@
       depTime:'　起飛時間：', arrTime:'　抵達時間：', depAirport:'桃園 TPE', otherAirport:'　對方機場：',
       contact:'聯絡人：', contactPhone:'聯絡電話：', contactPhone2:'第二聯絡電話：', rider:'用車人：', riderPhone:'用車人電話：', pickupAddr:'上車地址：', dropoffAddr:'下車地址：',
       extraStop:'加點地址：',
-      pax:'搭乘人數：', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
+      pax:'搭乘人數：', kidsFmt:'（含小孩 {n}）', luggageCount:'行李箱數量：', luggageSize:'行李尺寸：', tbd:'待確認',
       note:'備註／其他需求：', driverInfo:'［司機資訊］', driver:'駕駛：', phone:'電話：', car:'車款：', plate:'車號：'
     },
     en: {
@@ -4171,7 +4172,7 @@
       depTime:'  Departure Time: ', arrTime:'  Arrival Time: ', depAirport:'Taoyuan TPE', otherAirport:'  Other Airport: ',
       contact:'Contact: ', contactPhone:'Contact Phone: ', contactPhone2:'Alt. Phone: ', rider:'Passenger: ', riderPhone:'Passenger Phone: ', pickupAddr:'Pickup Address: ', dropoffAddr:'Drop-off Address: ',
       extraStop:'Extra Stop: ',
-      pax:'Passengers: ', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
+      pax:'Passengers: ', kidsFmt:' (incl. {n} child)', luggageCount:'Luggage Count: ', luggageSize:'Luggage Size: ', tbd:'TBD',
       note:'Notes: ', driverInfo:'[Driver Information]', driver:'Driver: ', phone:'Phone: ', car:'Vehicle: ', plate:'License Plate: '
     },
     ja: {
@@ -4180,7 +4181,7 @@
       depTime:'　出発時刻：', arrTime:'　到着時刻：', depAirport:'桃園 TPE', otherAirport:'　到着地の空港：',
       contact:'ご担当者：', contactPhone:'電話番号：', contactPhone2:'予備の電話番号：', rider:'ご乗車の方：', riderPhone:'ご乗車の方の電話：', pickupAddr:'お迎え場所：', dropoffAddr:'目的地：',
       extraStop:'追加立寄り先：',
-      pax:'人数：', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
+      pax:'人数：', kidsFmt:'（うち子ども {n}）', luggageCount:'スーツケース数：', luggageSize:'荷物サイズ：', tbd:'確認中',
       note:'備考：', driverInfo:'【ドライバー情報】', driver:'ドライバー：', phone:'電話：', car:'車種：', plate:'ナンバー：'
     }
   };
@@ -4277,21 +4278,28 @@
   // 版面用的符號不一樣（乘客版是［司機資訊］，司機版是｜司機資訊｜），可個別指定。
   // 行李分大箱／小箱：總數照舊存在「行李件數」，尺寸欄自動寫成「大箱 2、小箱 1」
   function lugTotal(b, s){ if (String(b || '') === '' && String(s || '') === '') return ''; return String((+b || 0) + (+s || 0)); }
-  function lugText(b, s){ var L = []; if (String(b || '') !== '') L.push('大箱 ' + (+b || 0)); if (String(s || '') !== '') L.push('小箱 ' + (+s || 0)); return L.join('、'); }
+  // 2026-11-11 Nicole：行李加特殊項目（雪板／球具／手推車 × 數量），寫進行李尺寸文字，司機和機器人訊息都看得到
+  var LUG_SP = [['snow', '雪板'], ['ball', '球具'], ['stroller', '手推車']];
+  function lugText(b, s, sp){ var L = []; if (String(b || '') !== '') L.push('大箱 ' + (+b || 0)); if (String(s || '') !== '') L.push('小箱 ' + (+s || 0));
+    if (sp) LUG_SP.forEach(function(k){ var n = +sp[k[0]] || 0; if (n > 0) L.push(k[1] + ' ' + n); }); return L.join('、'); }
+  function lugSpOf(o){ return { snow: o.lugSnow || '', ball: o.lugBall || '', stroller: o.lugStroller || '' }; }
+  function lugSpRead(root, pre){ var r = {}; LUG_SP.forEach(function(k){ var el = root.querySelector(pre + k[0]); r[k[0]] = el ? el.value : ''; }); return r; }
+  function lugSpHtml(cls, idPre){ return '<div class="field"><label>特殊行李（數量）</label><div style="display:flex;gap:6px">' + LUG_SP.map(function(k){ return '<input type="number" min="0" placeholder="' + k[1] + '"' + (cls ? ' class="' + cls + k[0] + '"' : '') + (idPre ? ' id="' + idPre + k[0] + '"' : '') + '>'; }).join('') + '</div></div>'; }
   function setDispatchLug(b, s){
     var B = document.getElementById('dLugBig'), S = document.getElementById('dLugSmall'); if (!B || !S) return;
     B.value = (b != null) ? b : ''; S.value = (s != null) ? s : ''; syncDispatchLug(true);
   }
   function syncDispatchLug(quiet){
     var B = document.getElementById('dLugBig'), S = document.getElementById('dLugSmall'); if (!B || !S) return;
-    var tot = lugTotal(B.value, S.value), txt = lugText(B.value, S.value);
-    if (tot === '') return;
+    var sp = lugSpRead(document, '#dLugSp_'), tot = lugTotal(B.value, S.value), txt = lugText(B.value, S.value, sp);
+    if (tot === '' && !txt) return;
+    if (tot === '') tot = '0';
     els.dLuggageCount.value = tot;
     els.dLuggageSize.value = txt; if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = false;
     try { syncLuggageSizeTBD(); } catch (e) {}
     if (!quiet) els.dLuggageSize.dispatchEvent(new Event('input', { bubbles: true }));
   }
-  setTimeout(function(){ ['dLugBig', 'dLugSmall'].forEach(function(id){ var e = document.getElementById(id); if (e) e.addEventListener('input', function(){ syncDispatchLug(false); }); }); }, 0);
+  setTimeout(function(){ (function(){ var w = document.getElementById('dLugSpWrap'); if (w && !w.innerHTML) w.innerHTML = lugSpHtml('', 'dLugSp_'); })(); ['dLugBig', 'dLugSmall', 'dLugSp_snow', 'dLugSp_ball', 'dLugSp_stroller'].forEach(function(id){ var e = document.getElementById(id); if (e) e.addEventListener('input', function(){ syncDispatchLug(false); }); }); }, 0);
   // 熟客地址上的「給司機的提醒」（例如：要開進地下室）：派車單上的地址只要對得上，就自動帶給司機
   // 給客人／司機看的地址：去掉開頭郵遞區號、「○○里」「○鄰」（例：111臺北市士林區天和里中山北路… → 臺北市士林區中山北路…）
   function cleanAddrText(a){
@@ -4361,7 +4369,7 @@
     lines.push(L.dropoffAddr + cleanAddrText(dropoffAddrVal)); ptCt(PTCT.dr);
     if (opts.forDriver){ var an = orderAddrNote(els.dPickupFullAddr && els.dPickupFullAddr.value, els.dDropoffFullAddr && els.dDropoffFullAddr.value); if (an) lines.push('📍 地址提醒｜' + an); }
     if (!compact) lines.push('');
-    lines.push(L.pax + (els.dPax.value || '0'));
+    { var kN = +((document.getElementById('dKids') || {}).value || 0); lines.push(L.pax + (els.dPax.value || '0') + (kN > 0 ? String(L.kidsFmt || '（含小孩 {n}）').replace('{n}', kN) : '')); }
     lines.push(L.luggageCount + (els.dLuggageCount.value !== '' ? els.dLuggageCount.value : L.tbd));
     lines.push(L.luggageSize + (els.dLuggageSize.value || L.tbd));
     // 2026-10-15 Nicole：行程單／派車單的備註不顯示系統自動加的付款、來源文字（訂單裡仍保留，系統判斷要用）
@@ -5211,8 +5219,9 @@
       '<textarea class="q-extra-stop-addr" rows="2" placeholder="貼上加點地址，多個地點請分行" style="display:none; margin-top:6px;"></textarea>' +
       '<div class="hint q-extra-km-note" style="display:none; margin-top:4px;"></div>' +
       '</div>' +
-      '<div class="row2"><div class="field"><label>搭乘人數</label><input type="number" class="q-pax" min="0" placeholder="選填"></div>' +
+      '<div class="row2"><div class="field"><label>搭乘人數（含小孩）</label><div style="display:flex;gap:6px"><input type="number" class="q-pax" min="0" placeholder="總人數"><input type="number" class="q-kids" min="0" placeholder="其中小孩"></div></div>' +
       '<div class="field"><label>行李（大箱／小箱）</label><div style="display:flex;gap:6px"><input type="number" class="q-lug-big" min="0" placeholder="大箱"><input type="number" class="q-lug-small" min="0" placeholder="小箱"></div><input type="hidden" class="q-luggage"></div></div>' +
+      lugSpHtml('q-lugsp-', '') +
       '<div class="field"><label>車型</label><select class="q-model"></select></div>' +
       '<div class="field"><label>基本價格（可手動調整）</label><input type="number" class="q-base" min="0"></div>' +
       '<div class="check-row"><input type="checkbox" class="q-friend-chk"><label style="margin:0;">親友一口價（不加接機、夜間加成）</label></div>' +
@@ -5225,6 +5234,8 @@
       '<span class="amt-inline"><input type="number" class="q-sign-amt" value="200" min="0"></span></div>' +
       '<div class="check-row"><input type="checkbox" class="q-seat-chk"><label style="margin:0;">兒童座椅</label>' +
       '<span class="amt-inline"><input type="number" class="q-seat-amt" value="250" min="0"></span></div>' +
+      '<div class="check-row"><input type="checkbox" class="q-cny-chk"><label style="margin:0;">春節加成</label>' +
+      '<span class="amt-inline"><input type="number" class="q-cny-amt" value="1000" min="0" style="width:84px"></span></div>' +
       '<div class="check-row"><input type="checkbox" class="q-extra-chk"><label style="margin:0;">加點</label>' +
       '<span class="amt-inline"><input type="number" class="q-extra-amt" value="100" min="0"></span></div>' +
       '<div class="check-row"><input type="checkbox" class="q-remote-chk"><label style="margin:0;">偏遠地區加價<span class="q-remote-note" style="color:#8a6d3b;"></span></label>' +
@@ -5278,6 +5289,8 @@
     if (prefill.luggageCount != null) row.querySelector('.q-luggage').value = prefill.luggageCount;
     if (prefill.lugBig != null) row.querySelector('.q-lug-big').value = prefill.lugBig;
     if (prefill.lugSmall != null) row.querySelector('.q-lug-small').value = prefill.lugSmall;
+    if (prefill.kids != null) row.querySelector('.q-kids').value = prefill.kids;
+    LUG_SP.forEach(function(k){ var v = prefill['lug' + k[0].charAt(0).toUpperCase() + k[0].slice(1)]; if (v != null) row.querySelector('.q-lugsp-' + k[0]).value = v; });
     if (prefill.lugBig == null && prefill.lugSmall == null && prefill.luggageCount) row.querySelector('.q-lug-big').placeholder = '大箱（原共 ' + prefill.luggageCount + ' 件）';
     (function(r){ var f = function(){ r.querySelector('.q-luggage').value = lugTotal(r.querySelector('.q-lug-big').value, r.querySelector('.q-lug-small').value); };
       r.querySelector('.q-lug-big').addEventListener('input', f); r.querySelector('.q-lug-small').addEventListener('input', f); })(row);
@@ -5300,6 +5313,8 @@
     if (prefill.signAmt != null) row.querySelector('.q-sign-amt').value = prefill.signAmt;
     if (prefill.seatChk) row.querySelector('.q-seat-chk').checked = true;
     if (prefill.seatAmt != null) row.querySelector('.q-seat-amt').value = prefill.seatAmt;
+    if (prefill.cnyChk) row.querySelector('.q-cny-chk').checked = true;
+    if (prefill.cnyAmt != null) row.querySelector('.q-cny-amt').value = prefill.cnyAmt;
     if (prefill.extraChk) row.querySelector('.q-extra-chk').checked = true;
     if (prefill.extraAmt != null){
       row.querySelector('.q-extra-amt').value = prefill.extraAmt;
@@ -5357,7 +5372,7 @@
       var el = row.querySelector(emptyFieldSelectors[i]);
       if (el && el.value && el.value.trim()) return false;
     }
-    var checkedSelectors = ['.q-extra-stop-chk', '.q-air-chk', '.q-night-chk', '.q-sign-chk', '.q-seat-chk', '.q-extra-chk', '.q-remote-chk'];
+    var checkedSelectors = ['.q-extra-stop-chk', '.q-air-chk', '.q-night-chk', '.q-sign-chk', '.q-seat-chk', '.q-cny-chk', '.q-extra-chk', '.q-remote-chk'];
     for (var j = 0; j < checkedSelectors.length; j++){
       var chk = row.querySelector(checkedSelectors[j]);
       if (chk && chk.checked) return false;
@@ -5834,7 +5849,7 @@
     // 上／下車地區原本沒有接 input 監聽，使用者打字或用快速按鈕帶入地址時，
     // 報價文字預覽不會馬上更新（要等其他欄位剛好也觸發才會一起更新），
     // 容易讓人誤以為地址沒存到。這裡補上，輸入當下就即時反映在預覽裡。
-    ['.q-date','.q-flight','.q-base','.q-air-amt','.q-night-amt','.q-sign-amt','.q-seat-amt','.q-extra-amt'].forEach(function(sel){
+    ['.q-date','.q-flight','.q-base','.q-air-amt','.q-night-amt','.q-sign-amt','.q-seat-amt','.q-cny-amt','.q-extra-amt'].forEach(function(sel){
       row.querySelector(sel).addEventListener('input', renderQuoteDoc);
     });
     // 上／下車地區另外接自動判斷偏遠地區加價（見 autoApplyRemoteSurcharge），
@@ -5872,7 +5887,7 @@
         renderQuoteDoc();
       });
     }
-    ['.q-air-chk','.q-night-chk','.q-sign-chk','.q-seat-chk','.q-extra-chk'].forEach(function(sel){
+    ['.q-air-chk','.q-night-chk','.q-sign-chk','.q-seat-chk','.q-cny-chk','.q-extra-chk'].forEach(function(sel){
       row.querySelector(sel).addEventListener('change', renderQuoteDoc);
     });
     row.querySelector('.q-extra-chk').addEventListener('change', function(){ row.dataset.extraManual = 'true'; });
@@ -6397,6 +6412,7 @@
       var nightChk = row.querySelector('.q-night-chk').checked;
       var signChk = row.querySelector('.q-sign-chk').checked;
       var seatChk = row.querySelector('.q-seat-chk').checked;
+      var cnyChk = row.querySelector('.q-cny-chk') ? row.querySelector('.q-cny-chk').checked : false;
       var extraChk = row.querySelector('.q-extra-chk').checked;
       var remoteChk = row.querySelector('.q-remote-chk').checked;
       var friendChk = isFriendRow(row);
@@ -6405,6 +6421,7 @@
       var nightAmt = Number(row.querySelector('.q-night-amt').value) || 0;
       var signAmt = Number(row.querySelector('.q-sign-amt').value) || 0;
       var seatAmt = Number(row.querySelector('.q-seat-amt').value) || 0;
+      var cnyAmt = row.querySelector('.q-cny-amt') ? (Number(row.querySelector('.q-cny-amt').value) || 0) : 0;
       var extraAmt = Number(row.querySelector('.q-extra-amt').value) || 0;
       var remoteAmt = Number(row.querySelector('.q-remote-amt').value) || 0;
       var charter = isCharterRow(row), cHours = 0, cRate = 0, cModel = '';
@@ -6413,7 +6430,7 @@
         var cmSel = row.querySelector('.q-c-model'), cmP = charterPriceList.find(function(x){ return x.id === cmSel.value; });
         cModel = cmP ? cmP.model : ''; base = Math.round(cRate * cHours); airChk = false; nightChk = false; signChk = false; friendChk = false;
       }
-      var subtotal = base + (airChk ? airAmt : 0) + (nightChk ? nightAmt : 0) + (signChk ? signAmt : 0) + (seatChk ? seatAmt : 0) + (extraChk ? extraAmt : 0) + (remoteChk ? remoteAmt : 0);
+      var subtotal = base + (airChk ? airAmt : 0) + (nightChk ? nightAmt : 0) + (signChk ? signAmt : 0) + (seatChk ? seatAmt : 0) + (cnyChk ? cnyAmt : 0) + (extraChk ? extraAmt : 0) + (remoteChk ? remoteAmt : 0);
       row.querySelector('.q-subtotal').textContent = 'NT$ ' + fmtNum(subtotal);
       var modelSel = row.querySelector('.q-model');
       var modelOpt = charter ? { textContent: cModel } : modelSel.options[modelSel.selectedIndex];
@@ -6435,6 +6452,8 @@
         pax: row.querySelector('.q-pax').value,
         luggageCount: row.querySelector('.q-luggage').value,
         lugBig: row.querySelector('.q-lug-big') ? row.querySelector('.q-lug-big').value : '', lugSmall: row.querySelector('.q-lug-small') ? row.querySelector('.q-lug-small').value : '',
+        kids: row.querySelector('.q-kids') ? row.querySelector('.q-kids').value : '', lugSnow: (row.querySelector('.q-lugsp-snow') || {}).value || '', lugBall: (row.querySelector('.q-lugsp-ball') || {}).value || '', lugStroller: (row.querySelector('.q-lugsp-stroller') || {}).value || '',
+        cnyChk: cnyChk, cnyAmt: cnyAmt,
         modelId: charter ? (row.querySelector('.q-c-model').value || '') : modelSel.value,
         hours: charter ? cHours : undefined, rate: charter ? cRate : undefined,
         modelLabel: modelOpt ? modelOpt.textContent.split('　')[0] : '',
@@ -6452,9 +6471,9 @@
 
   var currentQuoteLang = safeGet('hhlc_quote_lang') || 'zh-TW';
   var QLABELS = {
-    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', extra:'加點', remote:'偏遠地區', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discEsim:'eSIM優惠', discNameSep:'、', discNameSuffix:'' },
-    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', extra:'Extra Stop', remote:'Remote Area', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discEsim:'eSIM discount', discNameSep:' + ', discNameSuffix:' ' },
-    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', extra:'追加立寄り', remote:'遠隔地', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discEsim:'eSIM割引', discNameSep:'・', discNameSuffix:'' }
+    'zh-TW': { svc: PLABELS['zh-TW'].svc, air:'接機', night:'夜間', sign:'舉牌', seat:'兒童座椅', cny:'春節', extra:'加點', remote:'偏遠地區', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'折扣後$', afterTaxLabel:'稅後$', afterDiscountAndTaxLabel:'折扣、稅後$', creditCard:'刷卡 ', creditCardNote:'（刷卡成功後請截圖回傳）', discRoundTrip:'來回優惠', discFriends:'親友優惠', discWedding:'禮車新人', discManager:'主管優惠', discEsim:'eSIM優惠', discNameSep:'、', discNameSuffix:'' },
+    en: { svc: PLABELS.en.svc, air:'Pickup Surcharge', night:'Night', sign:'Name Sign', seat:'Child Seat', cny:'Lunar New Year', extra:'Extra Stop', remote:'Remote Area', total:'Total = $', totalDiscounted:'Total = ', afterDiscountLabel:'after discount $', afterTaxLabel:'after tax $', afterDiscountAndTaxLabel:'after discount & tax $', creditCard:'Card Payment ', creditCardNote:'(Please send a screenshot after payment)', discRoundTrip:'Round-trip discount', discFriends:'Friends & family discount', discWedding:'Wedding-car new-couple discount', discManager:'Manager discount', discEsim:'eSIM discount', discNameSep:' + ', discNameSuffix:' ' },
+    ja: { svc: PLABELS.ja.svc, air:'到着送迎料金', night:'深夜料金', sign:'プラカード', seat:'チャイルドシート', cny:'旧正月', extra:'追加立寄り', remote:'遠隔地', total:'合計 = $', totalDiscounted:'合計 = ', afterDiscountLabel:'適用後$', afterTaxLabel:'税込後$', afterDiscountAndTaxLabel:'割引・税込後$', creditCard:'カード決済 ', creditCardNote:'（決済完了後、スクリーンショットをお送りください）', discRoundTrip:'往復割引', discFriends:'友人・家族割引', discWedding:'ウェディングカー新郎新婦割引', discManager:'マネージャー割引', discEsim:'eSIM割引', discNameSep:'・', discNameSuffix:'' }
   };
   function ql(){ return QLABELS[currentQuoteLang] || QLABELS['zh-TW']; }
   function updateQuoteLangButtons(){
@@ -6562,6 +6581,7 @@
         var cPrice = '$' + fmtNum(leg.rate || 0) + ' x ' + (leg.hours || 0) + ' = $' + fmtNum(leg.base);
         var cExtra = '';
         if (leg.seatChk) cExtra += '+' + fmtNum(leg.seatAmt) + '(' + L.seat + ')';
+        if (leg.cnyChk) cExtra += '+' + fmtNum(leg.cnyAmt) + '(' + (L.cny || '春節') + ')';
         if (leg.extraChk) cExtra += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
         if (leg.remoteChk && leg.remoteAmt) cExtra += '+' + fmtNum(leg.remoteAmt) + '(' + L.remote + ')';
         lines.push(cParts.join(' ') + ' ' + cPrice + (cExtra ? cExtra + '=$' + fmtNum(leg.subtotal) : ''));
@@ -6573,6 +6593,7 @@
       if (leg.nightChk) breakdown += '+' + fmtNum(leg.nightAmt) + '(' + L.night + ')';
       if (leg.signChk) breakdown += '+' + fmtNum(leg.signAmt) + '(' + L.sign + ')';
       if (leg.seatChk) breakdown += '+' + fmtNum(leg.seatAmt) + '(' + L.seat + ')';
+      if (leg.cnyChk) breakdown += '+' + fmtNum(leg.cnyAmt) + '(' + (L.cny || '春節') + ')';
       if (leg.extraChk) breakdown += '+' + fmtNum(leg.extraAmt) + '(' + L.extra + ')';
       if (leg.remoteChk && leg.remoteAmt) breakdown += '+' + fmtNum(leg.remoteAmt) + '(' + L.remote + ')';
       if (breakdown) priceStr = '$' + fmtNum(leg.base) + breakdown + '=$' + fmtNum(leg.subtotal);
@@ -6979,6 +7000,8 @@
       if (luggage !== '') prefill.luggageCount = luggage;
       if (last.querySelector('.q-lug-big') && last.querySelector('.q-lug-big').value !== '') prefill.lugBig = last.querySelector('.q-lug-big').value;
       if (last.querySelector('.q-lug-small') && last.querySelector('.q-lug-small').value !== '') prefill.lugSmall = last.querySelector('.q-lug-small').value;
+      if (last.querySelector('.q-kids') && last.querySelector('.q-kids').value !== '') prefill.kids = last.querySelector('.q-kids').value;
+      LUG_SP.forEach(function(k){ var el = last.querySelector('.q-lugsp-' + k[0]); if (el && el.value !== '') prefill['lug' + k[0].charAt(0).toUpperCase() + k[0].slice(1)] = el.value; });
       prefill.modelId = last.querySelector('.q-model').value;
       // 親友一口價：回程同樣是一口價、同金額
       if (isFriendRow(last)){ prefill.friendChk = true; prefill.base = last.querySelector('.q-base').value; }
@@ -6990,6 +7013,7 @@
       prefill.signAmt = last.querySelector('.q-sign-amt').value;
       prefill.seatChk = last.querySelector('.q-seat-chk').checked;
       prefill.seatAmt = last.querySelector('.q-seat-amt').value;
+      if (last.querySelector('.q-cny-chk')){ prefill.cnyChk = last.querySelector('.q-cny-chk').checked; prefill.cnyAmt = last.querySelector('.q-cny-amt').value; }
       prefill.extraChk = last.querySelector('.q-extra-chk').checked;
       prefill.extraAmt = last.querySelector('.q-extra-amt').value;
       var lastExtraStopChk = last.querySelector('.q-extra-stop-chk');
@@ -7841,12 +7865,13 @@
     (q.legs || []).forEach(function(leg){
       addQuoteLegRow({
         svc: leg.svc, date: leg.date, dep: leg.dep, arr: leg.arr, pickupTime: leg.pickupTime, fixedPickup: !!leg.fixedPickup, flight: leg.flight, terminal: leg.terminal,
-        pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pickupPlace: leg.pickupPlace || '', dropoffPlace: leg.dropoffPlace || '', pax: leg.pax, luggageCount: leg.luggageCount, lugBig: leg.lugBig, lugSmall: leg.lugSmall,
+        pickupArea: leg.pickupArea, dropoffArea: leg.dropoffArea, pickupPlace: leg.pickupPlace || '', dropoffPlace: leg.dropoffPlace || '', pax: leg.pax, luggageCount: leg.luggageCount, lugBig: leg.lugBig, lugSmall: leg.lugSmall, kids: leg.kids, lugSnow: leg.lugSnow, lugBall: leg.lugBall, lugStroller: leg.lugStroller,
         modelId: leg.modelId, base: leg.base, friendChk: !!leg.friendChk,
         airChk: leg.airChk, airAmt: leg.airAmt,
         nightChk: leg.nightChk, nightAmt: leg.nightAmt,
         signChk: leg.signChk, signAmt: leg.signAmt,
         seatChk: leg.seatChk, seatAmt: leg.seatAmt,
+        cnyChk: leg.cnyChk, cnyAmt: leg.cnyAmt,
         extraChk: leg.extraChk, extraAmt: leg.extraAmt,
         remoteChk: leg.remoteChk, remoteAmt: leg.remoteAmt,
         extraStopChk: leg.extraStopChk, extraStopAddr: leg.extraStopAddr
@@ -8272,6 +8297,7 @@
       pax: els.dPax.value,
       luggageCount: els.dLuggageCount.value,
       lugBig: (document.getElementById('dLugBig') || {}).value || '', lugSmall: (document.getElementById('dLugSmall') || {}).value || '',
+      kids: (document.getElementById('dKids') || {}).value || '', lugSnow: (document.getElementById('dLugSp_snow') || {}).value || '', lugBall: (document.getElementById('dLugSp_ball') || {}).value || '', lugStroller: (document.getElementById('dLugSp_stroller') || {}).value || '',
       luggageSize: els.dLuggageSize.value,
       note: els.dNote.value.trim(),
       addrNote: orderAddrNote(els.dPickupFullAddr ? els.dPickupFullAddr.value : '', els.dDropoffFullAddr ? els.dDropoffFullAddr.value : ''),
@@ -8830,6 +8856,7 @@
     PTCT = ptCtNorm(o.ptContacts); renderPtCt();
     if (o.pax != null) els.dPax.value = o.pax;
     if (o.luggageCount != null) els.dLuggageCount.value = o.luggageCount;
+    [['dKids', 'kids'], ['dLugSp_snow', 'lugSnow'], ['dLugSp_ball', 'lugBall'], ['dLugSp_stroller', 'lugStroller']].forEach(function(x){ var el = document.getElementById(x[0]); if (el) el.value = o[x[1]] || ''; });
     (function(){ var b = document.getElementById('dLugBig'), s = document.getElementById('dLugSmall'); if (!b || !s) return; b.value = o.lugBig || ''; s.value = o.lugSmall || ''; b.placeholder = (!o.lugBig && !o.lugSmall && o.luggageCount) ? '大箱（原共 ' + o.luggageCount + ' 件）' : '大箱'; })();
     if (els.dLuggageSizeTBD) els.dLuggageSizeTBD.checked = !o.luggageSize || o.luggageSize === '待確認';
     els.dLuggageSize.value = o.luggageSize || '';
@@ -8872,7 +8899,7 @@
     editingOrderId = null; keptDriverSnap = null; currentOrderNos = { quoteNo: '', formalNo: '', code: '' }; lastImportedLegAmount = null; oqLoadedFor = '';
     var src = document.querySelector('input[name="dCustSource"][value="LINE"]'); if (src) src.checked = true;
     ['dCustSourceName','dContactName','dContactPhone','dContactPhone2','dUseDate','dPickupTime','dFlightNo','dTerminal','dFlightDepTime','dFlightArrTime','dOtherAirport','dPickupAddr','dDropoffAddr','dPickupFullAddr','dDropoffFullAddr','dExtraStopAddr','dNote','dAmount','dDriverFee','dLuggageSize','dCustNote'].forEach(function(k){ var el = els[k] || document.getElementById(k); if (el) el.value = ''; });
-    ['dFoundVia','dRcptReq','dLugBig','dLugSmall','dLuggageCount','dPax'].forEach(function(k){ var el = document.getElementById(k); if (el) el.value = ''; });
+    ['dFoundVia','dRcptReq','dLugBig','dLugSmall','dLuggageCount','dPax','dKids','dLugSp_snow','dLugSp_ball','dLugSp_stroller'].forEach(function(k){ var el = document.getElementById(k); if (el) el.value = ''; });
     if (els.dPax) els.dPax.value = els.dPax.getAttribute('value') || '';
     ['dFixedPickup','dPaperRcpt','dAnon'].forEach(function(k){ var el = document.getElementById(k); if (el) el.checked = false; });
     if (els.dExtraStopChk){ els.dExtraStopChk.checked = false; if (els.dExtraStopAddr) els.dExtraStopAddr.style.display = 'none'; }
@@ -9006,7 +9033,8 @@
     o.contactName = q.custName || ''; o.contactPhone = q.custPhone || '';
     if (q.riderName || q.riderPhone){ o.riderName = q.riderName || ''; o.riderPhone = q.riderPhone || ''; }   // 2026-11-04 報價填的用車人帶進訂單
     o.pickupFullAddr = leg.pickupArea || ''; o.dropoffFullAddr = leg.dropoffArea || '';
-    o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || ''; o.lugBig = leg.lugBig || ''; o.lugSmall = leg.lugSmall || ''; if (lugText(leg.lugBig, leg.lugSmall)) o.luggageSize = lugText(leg.lugBig, leg.lugSmall);
+    o.extraStopChk = !!leg.extraStopChk; o.extraStopAddr = leg.extraStopAddr || ''; o.pax = leg.pax || ''; o.luggageCount = leg.luggageCount || ''; o.lugBig = leg.lugBig || ''; o.lugSmall = leg.lugSmall || ''; o.kids = leg.kids || ''; o.lugSnow = leg.lugSnow || ''; o.lugBall = leg.lugBall || ''; o.lugStroller = leg.lugStroller || ''; if (lugText(leg.lugBig, leg.lugSmall, lugSpOf(leg))) o.luggageSize = lugText(leg.lugBig, leg.lugSmall, lugSpOf(leg));
+    if (+leg.kids > 0 && !/小孩/.test(o.note || '')) o.note = ('小孩 ' + (+leg.kids) + ' 位' + (o.note ? '｜' + o.note : ''));   /* 2026-11-11 機器人行程訊息讀備註，小孩人數寫進備註司機才看得到 */
     o.amount = amt; o.paymentMethod = q.cashPay ? 'cash' : 'noSign'; o.rcptReq = q.rcptReq || ''; if (q.rcptReq === 'paper') o.paperRcpt = true;
     o.quoteNo = q.quoteNo || ''; o.quoteLeg = i; o.autoFromQuote = true;
     o.lang = q.lang || o.lang || '';
