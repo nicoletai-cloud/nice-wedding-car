@@ -2082,6 +2082,7 @@
           <div class="r-foot">
             <div class="thanks" id="rThanks">感謝您選擇好好禮車</div>
             <span id="rFooterLine">祝您旅途愉快・此為系統產生之電子收據</span>
+            <div id="rLineId" style="margin-top:4px">LINE ID: @niceweddingcar</div>
           </div>
         </div>
       </div>
@@ -2684,6 +2685,8 @@
     if (els.rTotalLabel) els.rTotalLabel.textContent = L.total;
     if (els.rThanks) els.rThanks.textContent = L.thanks;
     if (els.rFooterLine) els.rFooterLine.textContent = L.footer;
+    // 2026-11-10 Nicole：收據最下面加官方 LINE ID
+    var lineEl = document.getElementById('rLineId'); if (lineEl) lineEl.textContent = 'LINE ID: @niceweddingcar';
 
     els.rPhone.textContent = els.companyPhone.value ? L.tel + intlPhone(els.companyPhone.value) : '';
     els.rPhone.style.display = els.companyPhone.value ? '' : 'none';
