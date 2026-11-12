@@ -1691,6 +1691,7 @@
           <p class="hint">一般客人不用勾：付款連結會給綠界 ATM 轉帳或綠界刷卡兩種。客人用國外信用卡就勾「海外付款」，連結只給 PayPal。收現金的客人勾「收現」，就不產生付款連結（接送機刷卡不加收手續費）。按「複製文字」時：收現／月結會直接建立訂單；其他會自動產生付款連結，客人付款後自動成單</p>
           <div class="field" style="margin-bottom:0;">
             <div class="check-row"><input type="checkbox" id="qCashPay"><label for="qCashPay" style="margin:0;">收現（司機現場收現金，不給付款連結）</label></div>
+            <div class="check-row"><input type="checkbox" id="qAtmOnly"><label for="qAtmOnly" style="margin:0;">只給匯款（付款連結只有 ATM 轉帳，不給刷卡）</label></div>
             <div class="check-row" style="margin-bottom:0;"><input type="checkbox" id="qOverseasPay"><label for="qOverseasPay" style="margin:0;">海外付款（只給 PayPal）</label></div>
             <div hidden><input type="checkbox" id="qShowBankInfo" checked><input type="checkbox" id="qShowCardLink" checked></div>
           </div>
@@ -3495,7 +3496,7 @@
     ['qCustSourceName','qCustName','qCustPhone','qCustNote','qFoundVia','qRiderName','qRiderPhone'].forEach(function(k){ var e = els[k] || document.getElementById(k); if (e) e.value = ''; });
     els.quoteLegsContainer.innerHTML = '';
     addQuoteLegRow({});
-    [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qComp, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay')].forEach(function(e){ if (e) e.checked = false; });
+    [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qComp, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay'), document.getElementById('qAtmOnly')].forEach(function(e){ if (e) e.checked = false; });
     currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = ''; requotePrev = ''; currentQuoteKey = ''; currentQuoteFlags = {};
     currentPaymentReceiptNo = ''; currentPaymentConfirmedAt = ''; roundTripManual = false;
     if (document.getElementById('qRcptReq')) document.getElementById('qRcptReq').value = '';
@@ -6837,8 +6838,8 @@
   }
   function paylinkEn(){ var l = (typeof currentQuoteLang !== 'undefined' && currentQuoteLang) || currentLang; return l && l.indexOf('zh') !== 0; }
   function paylinkMethods(){
-    var o = document.getElementById('qOverseasPay');
-    return o && o.checked ? ['paypal'] : ['atm', 'card'];
+    var o = document.getElementById('qOverseasPay'), a = document.getElementById('qAtmOnly');   /* 2026-11-12 Nicole：可以只給匯款 */
+    return o && o.checked ? ['paypal'] : (a && a.checked ? ['atm'] : ['atm', 'card']);
   }
   function paylinkMethodText(methods, en){
     var t = { atm: en ? 'bank transfer (ATM)' : 'ATM 轉帳', card: en ? 'credit card' : '信用卡', paypal: en ? 'PayPal / credit card' : 'PayPal（可刷卡）' };
@@ -6938,10 +6939,9 @@
   }
   if (els.paylinkCheckBtn) els.paylinkCheckBtn.addEventListener('click', function(){ paylinkCheck(false); });
   function qCash(){ var c = document.getElementById('qCashPay'); return !!(c && c.checked); }
-  ['qCashPay', 'qOverseasPay'].forEach(function(id){ var x = document.getElementById(id); if (!x) return; x.addEventListener('change', function(){
-    if (id === 'qCashPay' && x.checked){ var o = document.getElementById('qOverseasPay'); if (o) o.checked = false; }
-    if (id === 'qOverseasPay' && x.checked){ var c = document.getElementById('qCashPay'); if (c) c.checked = false; }
-    var r = paylinkMap()[paylinkRef()]; if (r && id === 'qOverseasPay') setDispatchStatus(els.paylinkStatus, '付款方式已改，請按「更新付款連結」', 'err');
+  ['qCashPay', 'qOverseasPay', 'qAtmOnly'].forEach(function(id){ var x = document.getElementById(id); if (!x) return; x.addEventListener('change', function(){
+    if (x.checked) ['qCashPay', 'qOverseasPay', 'qAtmOnly'].forEach(function(o){ if (o !== id){ var e = document.getElementById(o); if (e) e.checked = false; } });   /* 三選一 */
+    var r = paylinkMap()[paylinkRef()]; if (r && (id === 'qOverseasPay' || id === 'qAtmOnly')) setDispatchStatus(els.paylinkStatus, '付款方式已改，請按「更新付款連結」', 'err');
     renderQuoteDoc();
   }); });
   if (document.getElementById('paylinkCopyBtn')) document.getElementById('paylinkCopyBtn').addEventListener('click', function(){ previewAndCopy(els.paylinkMsg.textContent, els.paylinkStatus, '預覽付款訊息'); });
@@ -7800,6 +7800,7 @@
       showCardLink: shouldShowCardLink(),
       cashPay: !!(document.getElementById('qCashPay') && document.getElementById('qCashPay').checked),
       overseasPay: !!(document.getElementById('qOverseasPay') && document.getElementById('qOverseasPay').checked),
+      atmOnly: !!(document.getElementById('qAtmOnly') && document.getElementById('qAtmOnly').checked),
       rawTotal: rawTotal,
       finalTotal: finalTotal,
       isKnownCustomer: true,   // 2026-10-13 起所有客人都存客人資料，不再分熟客
@@ -7901,6 +7902,7 @@
     if (els.qShowCardLink) els.qShowCardLink.checked = q.showCardLink !== false;
     if (document.getElementById('qCashPay')) document.getElementById('qCashPay').checked = !!q.cashPay;
     if (document.getElementById('qOverseasPay')) document.getElementById('qOverseasPay').checked = !!q.overseasPay;
+    if (document.getElementById('qAtmOnly')) document.getElementById('qAtmOnly').checked = !!q.atmOnly;
     currentPaymentReceiptNo = q.paymentReceiptNo || '';
     if (document.getElementById('qRcptReq')) document.getElementById('qRcptReq').value = q.rcptReq || '';
     currentPaymentConfirmedAt = q.paymentConfirmedAt || '';
