@@ -963,6 +963,7 @@
         <button type="button" class="add-btn" id="newQuoteBtn" title="清空報價頁，開一張全新的報價">＋ 新報價</button>
         <button type="button" class="add-btn ghost" id="syncNowBtn">同步</button>
         <button type="button" class="add-btn ghost" id="todoBtn">待辦</button>
+        <button type="button" class="add-btn ghost" id="airRecentBtn" title="官方 LINE、FB／IG 最近來問機場接送、包車的客人">最近詢問</button>   <!-- 2026-11-12 Nicole -->
         <span class="sync-status" id="syncStatusMsg">尚未設定同步</span>
       </div>
       <div class="kw-search">
@@ -7916,11 +7917,51 @@
 
   if (els.saveQuoteBtn) els.saveQuoteBtn.addEventListener('click', saveCurrentQuote);
   // 禮車工具按「✈️ 轉機場接送」→ 開新分頁到這裡，帶入客人資料與地址（資料透過同網域的瀏覽器暫存交接，不放在網址上）
+  /* 2026-11-12 Nicole：最近詢問的機場接送／包車客人 → 開新報價，帶入帳號、名稱、客人說過的內容 */
+  function airIbApply(h){
+    switchTab('quote'); try { newQuote(); } catch (e) {}
+    currentQuoteIbUid = h.ibUid || '';
+    var s2 = (h.channel === 'FB' || h.channel === 'IG') ? 'FB' : 'LINE', r2 = document.querySelector('input[name="qCustSource"][value="' + s2 + '"]'); if (r2){ r2.checked = true; r2.dispatchEvent(new Event('change', { bubbles: true })); }
+    [['qCustSourceName', h.chatName], ['qCustNote', '最近詢問' + (h.channel === 'IG' ? '・IG' : '')]].forEach(function(x){ var el = document.getElementById(x[0]); if (!el || !x[1]) return; el.value = x[1]; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+    var ta = document.getElementById('quotePasteInput');
+    if (ta && h.text){ ta.value = h.text; ta.dispatchEvent(new Event('input', { bubbles: true })); try { els.quotePasteBtn.click(); } catch (e) {} }
+    setDispatchStatus(els.quoteStatusMsg, '已帶入「' + (h.chatName || '') + '」的資料' + (h.text ? '，並自動辨識客人說過的行程' : '') + '，請核對日期、時間、地址後報價', 'ok');
+    try { window.scrollTo(0, 0); } catch (e) {}
+  }
+  var AIR_IB = [];
+  function airIbCh(uid){ return /^fb:/.test(uid) ? 'FB' : /^ig:/.test(uid) ? 'IG' : /^U[0-9a-f]{32}$/.test(uid) ? 'LINE' : ''; }
+  function airIbAgo(t){ var m = Math.round((Date.now() - t) / 60000); return m < 60 ? m + ' 分鐘前' : m < 1440 ? Math.round(m / 60) + ' 小時前' : Math.round(m / 1440) + ' 天前'; }
+  function airIbText(u){ var d = (u.ab && u.ab.data) || {}, L = []; var a = [d.date || '', d.flight || '', d.time || '', d.place || '', d.pax ? d.pax + '人' : '', d.lug || ''].filter(Boolean).join(' '); if (a) L.push(a);
+    (u.texts || []).forEach(function(t){ if (t && !/^（.*）$/.test(t) && !/^#/.test(t) && L.indexOf(t) < 0) L.push(t); }); return L.join('\n'); }
+  function airRecentModal(){ var m = document.getElementById('airRecentModal'); if (m) return m;
+    m = document.createElement('div'); m.id = 'airRecentModal'; m.hidden = true; m.style.cssText = 'position:fixed;inset:0;z-index:90;background:rgba(40,30,20,.45);overflow:auto;padding:24px 16px';
+    m.innerHTML = '<div style="max-width:720px;margin:0 auto;background:var(--surface,#fff);color:inherit;border-radius:14px;padding:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="flex:1;font-size:1.05rem">最近詢問（機場接送、包車）</b><button type="button" class="add-btn ghost" id="airRecentClose">關閉</button></div><div id="airRecentList"><p class="hint">讀取中…</p></div></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function(e){ if (e.target === m || e.target.id === 'airRecentClose'){ m.hidden = true; return; }
+      var b = e.target.closest && e.target.closest('[data-airib]'); if (!b) return; var u = AIR_IB.find(function(x){ return x.uid === b.getAttribute('data-airib'); }); if (!u) return;
+      m.hidden = true; airIbApply({ ibUid: u.uid, channel: airIbCh(u.uid), chatName: String(u.name || '').replace(/^\((fb|ig)\)/, ''), text: airIbText(u) }); });
+    return m; }
+  function airRecentOpen(){ var m = airRecentModal(), box = document.getElementById('airRecentList'); m.hidden = false; box.innerHTML = '<p class="hint">讀取中…</p>';
+    var cfg = botConfig(); if (!cfg){ box.innerHTML = '<p class="hint">還沒設定機器人連線，請到設定填好機器人網址和金鑰</p>'; return; }
+    fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: cfg.token, action: 'inbox' }) }).then(function(r){ return r.json(); }).then(function(j){
+      var all = Array.isArray(j) ? j : (j.inbox || []);
+      AIR_IB = all.filter(function(u){ return u && !u.vendor && !u.spam && (u.cat === '接送機' || u.cat === '包車' || (u.ab && u.cat !== '禮車')); }).sort(function(a, b){ return (b.last || 0) - (a.last || 0); }).slice(0, 12);
+      if (!AIR_IB.length){ box.innerHTML = '<p class="hint">最近沒有機場接送、包車的詢問</p>'; return; }
+      box.innerHTML = AIR_IB.map(function(u){ var d = (u.ab && u.ab.data) || {}, k = [u.cat === '包車' ? '包車' : '機場接送', d.date && '日期 ' + d.date, d.flight && '航班 ' + d.flight, d.time && '時間 ' + d.time, d.place && '地點 ' + d.place, d.pax && d.pax + ' 人', d.lug && '行李 ' + d.lug].filter(Boolean).join('｜');
+        var last = (u.texts || []).filter(function(t){ return !/^（.*）$/.test(t); }).slice(-2).join('｜');
+        return '<div style="display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line,#e4dbce)"><div style="flex:1;min-width:0"><div><b>' + escapeHtml(String(u.name || '（讀不到名字）').replace(/^\((fb|ig)\)/, '')) + '</b> <span class="hint" style="margin:0">' + airIbCh(u.uid) + '｜' + airIbAgo(u.last || u.since || Date.now()) + (u.pending ? '｜待回覆' : '') + '</span></div>' +
+          '<div class="hint" style="margin:2px 0 0;color:#8a6a3a">' + escapeHtml(k) + '</div>' + (last ? '<div class="hint" style="margin:2px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(last) + '</div>' : '') + '</div>' +
+          '<button type="button" class="add-btn" data-airib="' + escapeHtml(u.uid) + '" style="flex:none">建立接送報價</button></div>'; }).join('');
+    }).catch(function(){ box.innerHTML = '<p class="hint">讀取失敗，請稍後再試</p>'; }); }
+  (function(){ var b = document.getElementById('airRecentBtn'); if (b) b.addEventListener('click', airRecentOpen); })();
   function consumeWedHandoff(){
     var h = null; try { h = JSON.parse(localStorage.getItem('hhlc_handoff') || 'null'); } catch (e) {}
     /* 2026-11-12 Nicole：禮車工具「最近詢問」的機場接送／包車客人 → 開新報價，帶入客人帳號、名稱和客人說過的內容（自動辨識行程） */
     if (h && h.from === 'ib' && Date.now() - (h.ts || 0) < 10 * 60000){
       try { localStorage.removeItem('hhlc_handoff'); } catch (e) {}
+      airIbApply(h); return;
+    }
+    if (false){
       switchTab('quote'); try { newQuote(); } catch (e) {}
       currentQuoteIbUid = h.ibUid || '';
       var s2 = (h.channel === 'FB' || h.channel === 'IG') ? 'FB' : 'LINE', r2 = document.querySelector('input[name="qCustSource"][value="' + s2 + '"]'); if (r2){ r2.checked = true; r2.dispatchEvent(new Event('change', { bubbles: true })); }
