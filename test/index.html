@@ -3497,7 +3497,7 @@
     els.quoteLegsContainer.innerHTML = '';
     addQuoteLegRow({});
     [els.qRoundTrip, els.qFriends, els.qWedding, els.qManager, els.qComp, els.qInvoice, document.getElementById('qEsim'), document.getElementById('qCashPay'), document.getElementById('qOverseasPay'), document.getElementById('qAtmOnly')].forEach(function(e){ if (e) e.checked = false; });
-    currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = ''; requotePrev = ''; currentQuoteKey = ''; currentQuoteFlags = {};
+    currentQuoteId = null; currentQuoteNo = ''; currentQuoteFormalNo = ''; requotePrev = ''; currentQuoteKey = ''; currentQuoteFlags = {}; currentQuoteIbUid = '';
     currentPaymentReceiptNo = ''; currentPaymentConfirmedAt = ''; roundTripManual = false;
     if (document.getElementById('qRcptReq')) document.getElementById('qRcptReq').value = '';
     oqLoadedFor = editingOrderId || '';   // 不要自動帶入目前選的訂單（上方黃條還可以手動載入）
@@ -6864,7 +6864,7 @@
         pickupAddr: sa(l.pickupArea), dropoffAddr: sa(l.dropoffArea), pickupFullAddr: l.pickupArea, dropoffFullAddr: l.dropoffArea,
         extraStopChk: !!l.extraStopChk, extraStopAddr: l.extraStopAddr || '', pax: l.pax || '', luggageCount: l.luggageCount || '', lugBig: l.lugBig || '', lugSmall: l.lugSmall || '', luggageSize: lugText(l.lugBig, l.lugSmall),
         note: [(src ? '[' + src.value + ']' : ''), l.modelLabel ? '車款 ' + l.modelLabel : '', q.quoteNo ? '報價 ' + q.quoteNo : ''].filter(Boolean).join(' '),
-        custSourceName: q.custSourceName || q.custName, amount: typeof amts[i] === 'number' ? amts[i] : l.subtotal };
+        custSourceName: q.custSourceName || q.custName, ibUid: q.ibUid || '', amount: typeof amts[i] === 'number' ? amts[i] : l.subtotal };
     });
   }
   function paylinkPickup(){
@@ -7674,6 +7674,7 @@
   // 同一張報價只留最新一版：同編號只留最新；沒編號的，同客人＋同行程只留最新。
   // 只整理「最近報價」清單，不會動到付款連結（已經傳給客人的連結照樣有效）
   var currentQuoteId = '';
+  var currentQuoteIbUid = '';   // 2026-11-12 從禮車工具「最近詢問」轉來的客人帳號（系統用帳號認客人，不看暱稱）
   function quoteSig(q){ return (q.custSource || '') + '|' + String(q.custSourceName || q.custName || '').trim().toLowerCase() + '|' + (q.legs || []).map(function(l){ return (l.date || '') + (l.svc || ''); }).join('+'); }
   function dedupeQuotes(){
     var keep = {}, drop = [];
@@ -7777,6 +7778,7 @@
       savedAt: new Date().toISOString(),
       custSource: sourceEl ? sourceEl.value : 'LINE',
       custSourceName: els.qCustSourceName.value.trim(),
+      ibUid: currentQuoteIbUid || '',
       foundVia: (document.getElementById('qFoundVia') || {}).value || '',
       custNote: els.qCustNote ? els.qCustNote.value.trim() : '',
       custName: els.qCustName.value.trim(),
@@ -7848,7 +7850,7 @@
     if (!q) return;
     setTimeout(function(){ try { renderPaylink(); paylinkCheck(true); } catch (e) {} }, 300);
     oqLoadedFor = editingOrderId || ''; oqBlank = false;   // 手動載入了報價 → 切分頁時不要再被訂單蓋掉
-    currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || ''; requotePrev = ''; currentQuoteId = q.id;
+    currentQuoteNo = q.quoteNo || ''; currentQuoteFormalNo = q.formalNo || ''; requotePrev = ''; currentQuoteId = q.id; currentQuoteIbUid = q.ibUid || '';
     currentQuoteFlags = { followN: q.followN || 0, followAt: q.followAt || 0 };
     currentQuoteKey = friendCustomerKey(q.custPhone, q.custSourceName, q.custName);
     roundTripManual = true; // 載入已存報價：優惠勾選以當時存的為準，不被自動判斷改掉
@@ -7916,6 +7918,19 @@
   // 禮車工具按「✈️ 轉機場接送」→ 開新分頁到這裡，帶入客人資料與地址（資料透過同網域的瀏覽器暫存交接，不放在網址上）
   function consumeWedHandoff(){
     var h = null; try { h = JSON.parse(localStorage.getItem('hhlc_handoff') || 'null'); } catch (e) {}
+    /* 2026-11-12 Nicole：禮車工具「最近詢問」的機場接送／包車客人 → 開新報價，帶入客人帳號、名稱和客人說過的內容（自動辨識行程） */
+    if (h && h.from === 'ib' && Date.now() - (h.ts || 0) < 10 * 60000){
+      try { localStorage.removeItem('hhlc_handoff'); } catch (e) {}
+      switchTab('quote'); try { newQuote(); } catch (e) {}
+      currentQuoteIbUid = h.ibUid || '';
+      var s2 = (h.channel === 'FB' || h.channel === 'IG') ? 'FB' : 'LINE', r2 = document.querySelector('input[name="qCustSource"][value="' + s2 + '"]'); if (r2){ r2.checked = true; r2.dispatchEvent(new Event('change', { bubbles: true })); }
+      [['qCustSourceName', h.chatName], ['qCustNote', '最近詢問' + (h.channel === 'IG' ? '・IG' : '')]].forEach(function(x){ var el = document.getElementById(x[0]); if (!el || !x[1]) return; el.value = x[1]; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+      var ta = document.getElementById('quotePasteInput');
+      if (ta && h.text){ ta.value = h.text; ta.dispatchEvent(new Event('input', { bubbles: true })); try { els.quotePasteBtn.click(); } catch (e) {} }
+      setDispatchStatus(els.quoteStatusMsg, '已帶入「' + (h.chatName || '') + '」的資料' + (h.text ? '，並自動辨識客人說過的行程' : '') + '，請核對日期、時間、地址後報價', 'ok');
+      try { window.scrollTo(0, 0); } catch (e) {}
+      return;
+    }
     if (!h || h.from !== 'wed' || !(Date.now() - (h.ts || 0) < 10 * 60000)) return;
     try { localStorage.removeItem('hhlc_handoff'); } catch (e) {}
     switchTab('quote');
