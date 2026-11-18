@@ -6923,6 +6923,8 @@
     return paylinkApi('paylink', { orders: paylinkOrders(), methods: methods, amount: amount, name: name, phone: els.qCustPhone.value.trim(), lang: paylinkEn() ? 'en' : 'zh', ref: ref, summary: paylinkSummary(), pickup: paylinkPickup() })
       .then(function(j){
         var m = paylinkMap(); m[ref] = { id: j.id, url: j.url, amount: j.amount, deadline: j.deadline, methods: j.methods || methods, at: Date.now() }; paylinkSave(m);
+        // 2026-11-17 Nicole：客人付款完成後由機器人自動傳「付款完成通知」→ 先把這張付款連結對應的客人帳號、語言登記給機器人
+        try { var pc = botConfig(); if (pc && j.id) botPost(pc, { action: 'airPayReg', id: j.id, ib: currentQuoteIbUid || '', lang: currentQuoteLang || 'zh-TW' }).catch(function(){}); } catch (e) {}
         renderPaylink();
         if (j.paid) paylinkMarkPaid(j); else setDispatchStatus(els.paylinkStatus, '已產生付款連結，報價文字已換成這個連結；也可以按「複製付款訊息」單獨貼給客人' + (methods.indexOf('atm') >= 0 && j.atmOn === false ? '（⚠️ 官網目前沒開綠界 ATM，客人只會看到刷卡）' : ''), 'ok'); renderQuoteDoc();
       })
