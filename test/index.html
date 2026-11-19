@@ -8128,12 +8128,13 @@
   function renderOrderSwitcher(){
     var sel = els.orderSel; if (!sel) return;
     var keep = sel.value;
-    var list = recentOrders.slice().sort(function(a, b){ return String(b.date || '').localeCompare(String(a.date || '')); });
+    var list = recentOrders.slice().sort(function(a, b){ return (String(b.date || '') + ' ' + String(b.pickupTime || '')).localeCompare(String(a.date || '') + ' ' + String(a.pickupTime || '')) || String(b.formalNo || '').localeCompare(String(a.formalNo || '')); });   /* 2026-11-19 Nicole：照用車日期＋上車時間排列 */
     var today = new Date(); var t = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
     var up = list.filter(function(o){ return (o.date || '') >= t; }).reverse(), past = list.filter(function(o){ return (o.date || '') < t; });
     function opt(o){
       var nm = o.contactName || o.custSourceName || '未命名';
-      return '<option value="' + escapeHtml(o.id) + '">' + escapeHtml((o.formalNo ? o.formalNo + ' ' : '') + fmtMD(o.date) + ' ' + (o.svcType || '') + ' ' + nm + (isWebOrder(o) ? (isWebCancelled(o) ? '（' + webLabel(o) + '取消）' : '（' + webLabel(o) + '）') : '') + (orderDriverLabel(o) || isWebCancelled(o) ? '' : ' ・未指派')) + '</option>';
+      var dl = orderDriverLabel(o);   /* 2026-11-19 Nicole：同一位客人同時段多台車時要分得出來：加上車時間、司機、金額 */
+      return '<option value="' + escapeHtml(o.id) + '">' + escapeHtml(fmtMD(o.date) + ' ' + (o.pickupTime || '') + ' ' + (o.svcType || '') + ' ' + nm + (isWebOrder(o) ? (isWebCancelled(o) ? '（' + webLabel(o) + '取消）' : '（' + webLabel(o) + '）') : '') + (dl ? '・' + dl : (isWebCancelled(o) ? '' : '・未指派')) + (+o.amount ? ' $' + fmtNum(+o.amount) : '') + (o.formalNo ? '｜' + o.formalNo : '')) + '</option>';
     }
     // 報價和訂單放同一個選單：已成單的一區、還在報價的一區（用車日已過的報價不列）
     var qs = (recentQuotes || []).filter(function(q){ var d = firstLegDate(q); return q && !q.lost && (!d || d >= t) && !quoteHasOrder(q); })
