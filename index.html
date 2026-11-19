@@ -4527,8 +4527,10 @@
   function shortAreaForFindDriver(addr){
     var s = String(addr || '').trim();
     if (!s) return s;
+    /* 2026-11-19 Nicole：找司機不能出現客人完整地址：先去掉郵遞區號、「台灣」再判斷縣市區；判斷不出來又像門牌地址的就不顯示 */
+    s = s.replace(/\s/g, '').replace(/^\d{3,6}/, '').replace(/^(臺灣|台灣)/, '').replace(/^\d{3,6}/, '');
     var hit = extractCityDistrict(s);
-    if (!hit) return s;
+    if (!hit) return /\d|[巷弄號樓]/.test(s) ? '' : s;
     // 2026-10-19 一律「縣市＋鄉鎮區」（Nicole：本來就都要縣市）：台北內湖、新竹東區、新北新店、新竹竹北
     var c = String(hit.cityShort || '').replace(/臺/g, '台');
     return c + shortDistrictName(hit.district);
@@ -4548,7 +4550,7 @@
 
   // 地址 → 「北投光明路」：鄉鎮區（去掉區字）＋路／街名（含段），跳過里、鄰
   function fdAreaRoad(addr){
-    var s = String(addr || '').replace(/\s/g, '').replace(/^(臺灣|台灣)/, '').replace(/^\d{3,6}/, '');
+    var s = String(addr || '').replace(/\s/g, '').replace(/^\d{3,6}/, '').replace(/^(臺灣|台灣)/, '').replace(/^\d{3,6}/, '');
     if (!s) return '';
     var area = shortAreaForFindDriver(s);
     var rest = s.replace(/^.*?[^市縣]{1,3}?[區鄉鎮市](?=[^區鄉鎮市]*[路街道])/, '').replace(/^[^路街]{1,4}?[里村]/, '').replace(/^\d+鄰/, '');
